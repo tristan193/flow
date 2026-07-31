@@ -3,14 +3,16 @@
 # Flow: Gmail (dirk@) → ingest → nm_deals.db artifact → POST Flow App /api/import
 # Google Drive is not part of this path.
 #
-# Schedule: three times daily as redundancy — GitHub cron often skips or
-# delays a single slot. CDT (UTC-5, roughly Mar–Nov):
-#   11:00 UTC = 6:00 AM CT
-#   13:00 UTC = 8:00 AM CT
-#   15:00 UTC = 10:00 AM CT
-# In CST (UTC-6) those land one hour earlier. Ingest is idempotent (2-day
-# lookback + ext_id upsert), so extra successful runs are harmless.
-# concurrency below ensures overlapping ticks wait rather than collide.
+# Schedule: GitHub's native cron is best-effort and often SKIPS jobs scheduled
+# exactly on :00 (peak load). We still keep three native slots at odd minutes
+# as a soft backup. The reliable trigger is an EXTERNAL cron calling
+# workflow_dispatch (see pipeline/GMAIL_SETUP.md §3).
+#
+# Native backup slots (CDT = UTC-5):
+#   11:17 UTC ≈ 6:17 AM CT
+#   13:23 UTC ≈ 8:23 AM CT
+#   15:41 UTC ≈ 10:41 AM CT
+# Ingest is idempotent; concurrency waits if two ticks overlap.
 #
 # Secrets required:
 #   GMAIL_CLIENT_SECRET_JSON, GMAIL_TOKEN_JSON
@@ -24,10 +26,13 @@ name: Daily harvest
 
 on:
   schedule:
-    - cron: "0 11 * * *" # 6:00 AM CT (CDT)
-    - cron: "0 13 * * *" # 8:00 AM CT (CDT)
-    - cron: "0 15 * * *" # 10:00 AM CT (CDT)
-  workflow_dispatch: # manual "Run workflow" button
+    # Odd minutes on purpose — :00/:30 are where GitHub drops schedules.
+    - cron: "17 11 * * *" # ~6:17 AM CT (CDT)
+    - cron: "23 13 * * *" # ~8:23 AM CT (CDT)
+    - cron: "41 15 * * *" # ~10:41 AM CT (CDT)
+  workflow_dispatch: # manual button + external cron (reliable path)
+  repository_dispatch:
+    types: [harvest]
 
 concurrency:
   group: daily-harvest

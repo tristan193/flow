@@ -41,16 +41,51 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 
 **Required.** If either is missing, the “Push snapshot to Flow App” step fails the workflow. Harvest artifacts are still uploaded, but Flow App will not update.
 
-## 3. Daily workflow
+## 3. Daily workflow (and why native cron alone failed)
 
 File: `.github/workflows/daily-harvest.yml`
 
-- **Cron:** `0 11 * * *` (11:00 UTC ≈ 6am Central)
-- **Manual:** Actions → Daily harvest → Run workflow
+**Reality check (2026-07-31):** GitHub’s `schedule:` trigger never fired for this
+repo — every successful run was `workflow_dispatch` (manual). GitHub documents
+that scheduled jobs are best-effort and can be **skipped under load**, especially
+at the top of the hour. Triple redundancy at `:00` does not fix that.
+
+### Reliable path — external cron → workflow_dispatch
+
+Use a free external scheduler ([cron-job.org](https://cron-job.org) or Google
+Cloud Scheduler) to POST to GitHub. That uses the same path as the green
+“Run workflow” button.
+
+1. GitHub → **Settings → Developer settings → Personal access tokens**
+   - Fine-grained token on `tristan193/flow`
+   - Permission: **Actions: Read and write**
+   - Copy the token once
+2. Create a repo Actions secret: `HARVEST_DISPATCH_TOKEN` = that PAT  
+   (optional — only needed if you store it in GitHub; cron-job.org can hold it itself)
+3. In cron-job.org, create a job:
+   - **URL:** `https://api.github.com/repos/tristan193/flow/actions/workflows/daily-harvest.yml/dispatches`
+   - **Method:** POST
+   - **Headers:**
+     - `Authorization: Bearer YOUR_PAT`
+     - `Accept: application/vnd.github+json`
+     - `X-GitHub-Api-Version: 2022-11-28`
+   - **Body:** `{"ref":"main"}`
+   - **Schedule:** e.g. `17 11,13,15 * * *` (6:17 / 8:17 / 10:17 UTC ≈ CT mornings)
+
+### Soft backup — native GitHub cron (odd minutes)
+
+Still configured at ~6:17 / 8:23 / 10:41 AM CT, but treat it as best-effort only.
+
+### Manual
+
+Actions → Daily harvest → Run workflow
+
+### Behavior
+
 - **Retries:** script tries 3× (1m / 5m / 15m backoff)
-- **State:** previous `nm_deals.db` restored from last successful artifact, then re-uploaded
-- **Live push:** `export_snapshot.py --post` into Flow App after a successful ingest
-- **Backup outputs:** artifacts `nm-deals-db` and `deals-csv`
+- **State:** previous `nm_deals.db` restored from last successful artifact
+- **Live push:** `export_snapshot.py --post` into Flow App after ingest
+- **Backup outputs:** artifacts `nm-deals-db-v2` and `deals-csv`
 
 ## 4. Local scripts (dev / one-off only)
 
