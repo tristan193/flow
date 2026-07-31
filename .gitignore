@@ -15,6 +15,13 @@ deals_export.csv
 pipeline/nm_deals.db
 pipeline/deals_export.csv
 
+# Gmail OAuth secrets (dirk@ catcher) — keep credentials/README.md
+pipeline/credentials/*
+!pipeline/credentials/README.md
+pipeline/.venv/
+
+# Local harvest logs live under %LOCALAPPDATA%\nm-deal-flow\ (not in repo)
+
 # Node / Next.js
 web/node_modules/
 web/.next/

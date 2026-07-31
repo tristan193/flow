@@ -159,7 +159,8 @@ class Listing:
 # =====================================================================
 
 SOURCE_RULES = [
-    ("bizbuysell", [r"bizbuysell\.com", r"bizalert"]),
+    ("bizbuysell", [r"bizbuysell\.com", r"bizalert",
+                    r"\bnew business matches?\b"]),  # BizAlert subject; covers Tristan Fwds
     ("axial",      [r"axial\.(net|com)", r"axialmarket"]),
     ("bizquest",   [r"bizquest\.com"]),
     ("dealstream", [r"dealstream\.com"]),
@@ -168,7 +169,9 @@ SOURCE_RULES = [
 ]
 
 def route(em: RawEmail) -> str:
-    hay = f"{em.sender} {em.subject}".lower()
+    # Include body so Gmail "Fwd:" / auto-forward still matches original
+    # sender domains and platform URLs even when From: is Tristan.
+    hay = f"{em.sender} {em.subject} {em.body[:4000]}".lower()
     for src, pats in SOURCE_RULES:
         if any(re.search(p, hay) for p in pats):
             return src
@@ -200,11 +203,11 @@ SUB_SOURCE_RULES = [
 _DOMAIN = re.compile(r"@([\w.-]+\.[a-z]{2,})", re.I)
 
 def sub_source(em: RawEmail) -> str:
-    hay = em.sender.lower()
+    hay = f"{em.sender} {em.subject} {em.body[:4000]}".lower()
     for pat, name in SUB_SOURCE_RULES:
         if re.search(pat, hay):
             return name
-    m = _DOMAIN.search(hay)
+    m = _DOMAIN.search(em.sender.lower())
     if m:
         # unknown domain — turn "mail.somenewsletter.co" into "Somenewsletter"
         core = m.group(1).split(".")[-2] if m.group(1).count(".") >= 1 else m.group(1)
