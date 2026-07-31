@@ -3,8 +3,14 @@
 # Flow: Gmail (dirk@) → ingest → nm_deals.db artifact → POST Flow App /api/import
 # Google Drive is not part of this path.
 #
-# Schedule: 11:00 UTC ≈ 6:00 AM Central (CST); during CDT this is 5:00 AM —
-# close enough; adjust cron if you want strict CT year-round.
+# Schedule: three times daily as redundancy — GitHub cron often skips or
+# delays a single slot. CDT (UTC-5, roughly Mar–Nov):
+#   11:00 UTC = 6:00 AM CT
+#   13:00 UTC = 8:00 AM CT
+#   15:00 UTC = 10:00 AM CT
+# In CST (UTC-6) those land one hour earlier. Ingest is idempotent (2-day
+# lookback + ext_id upsert), so extra successful runs are harmless.
+# concurrency below ensures overlapping ticks wait rather than collide.
 #
 # Secrets required:
 #   GMAIL_CLIENT_SECRET_JSON, GMAIL_TOKEN_JSON
@@ -18,7 +24,9 @@ name: Daily harvest
 
 on:
   schedule:
-    - cron: "0 11 * * *"
+    - cron: "0 11 * * *" # 6:00 AM CT (CDT)
+    - cron: "0 13 * * *" # 8:00 AM CT (CDT)
+    - cron: "0 15 * * *" # 10:00 AM CT (CDT)
   workflow_dispatch: # manual "Run workflow" button
 
 concurrency:
