@@ -171,7 +171,7 @@ SOURCE_RULES = [
 def route(em: RawEmail) -> str:
     # Include body so Gmail "Fwd:" / auto-forward still matches original
     # sender domains and platform URLs even when From: is Tristan.
-    hay = f"{em.sender} {em.subject} {em.body[:4000]}".lower()
+    hay = f"{em.sender} {em.subject} {em.body[:8000]}".lower()
     for src, pats in SOURCE_RULES:
         if any(re.search(p, hay) for p in pats):
             return src
@@ -189,7 +189,9 @@ def route(em: RawEmail) -> str:
 # instead of just "newsletter" again.
 SUB_SOURCE_RULES = [
     (r"smbdealhunter\.xyz", "SMB Deal Hunter"),
+    (r"smbdealexchange\.com", "SMB Deal Exchange"),
     (r"gulfcoastma\.com", "Gulf Coast M&A"),
+    (r"gatewayma\.com", "Gateway M&A"),
     (r"vanlagroup\.com", "Vanla Group"),
     (r"businessexits\.com", "BusinessExits"),
     (r"benchmarktennessee\.com", "Benchmark International (TN)"),
@@ -200,18 +202,85 @@ SUB_SOURCE_RULES = [
     (r"dealstream\.com", "DealStream"),
 ]
 
+# Personal / catcher inboxes used to forward deals into dirk@. Never treat
+# these as the deal provider — look at the original sender or body domains.
+FORWARDER_DOMAINS = {
+    "tullyinvesting.com",
+    "gmail.com", "googlemail.com",
+    "hotmail.com", "outlook.com", "live.com", "msn.com",
+    "yahoo.com", "ymail.com",
+    "icloud.com", "me.com", "mac.com",
+}
+# Click-tracking hosts that appear in bodies but are not providers.
+TRACKING_DOMAIN_CORES = {
+    "crmact", "elink", "mailchimp", "sendgrid", "hubspot",
+    "constantcontact", "klaviyo", "beehiiv",
+}
+
 _DOMAIN = re.compile(r"@([\w.-]+\.[a-z]{2,})", re.I)
+_FORWARD_FROM = re.compile(
+    r"^-+\s*Forwarded message\s*-+\s*^From:\s*(.+)$",
+    re.I | re.M,
+)
+_BODY_DOMAIN = re.compile(
+    r"(?:https?://(?:www\.)?|@)([\w.-]+\.[a-z]{2,})",
+    re.I,
+)
+
+
+def _email_domain(sender: str) -> Optional[str]:
+    m = _DOMAIN.search((sender or "").lower())
+    return m.group(1).lower() if m else None
+
+
+def _domain_core(domain: str) -> str:
+    parts = domain.lower().split(".")
+    return parts[-2] if len(parts) >= 2 else domain
+
+
+def _forwarded_original_from(body: str) -> str:
+    """Gmail 'Forwarded message' block — the broker, not the human forwarder."""
+    m = _FORWARD_FROM.search(body or "")
+    return m.group(1).strip() if m else ""
+
+
+def _label_from_domain(domain: str) -> Optional[str]:
+    if not domain:
+        return None
+    d = domain.lower()
+    if d in FORWARDER_DOMAINS:
+        return None
+    core = _domain_core(d)
+    if core in TRACKING_DOMAIN_CORES or core in {"tullyinvesting"}:
+        return None
+    for pat, name in SUB_SOURCE_RULES:
+        if re.search(pat, d):
+            return name
+    return core.capitalize()
+
 
 def sub_source(em: RawEmail) -> str:
-    hay = f"{em.sender} {em.subject} {em.body[:4000]}".lower()
+    """Human-facing provider label.
+
+    Never attribute a forwarder's personal domain (Tullyinvesting, Gmail, …).
+    Prefer: known provider rules → original Forwarded-From → other body domains.
+    """
+    original = _forwarded_original_from(em.body)
+    hay = f"{original} {em.sender} {em.subject} {em.body[:8000]}".lower()
     for pat, name in SUB_SOURCE_RULES:
         if re.search(pat, hay):
             return name
-    m = _DOMAIN.search(em.sender.lower())
-    if m:
-        # unknown domain — turn "mail.somenewsletter.co" into "Somenewsletter"
-        core = m.group(1).split(".")[-2] if m.group(1).count(".") >= 1 else m.group(1)
-        return core.capitalize()
+
+    for candidate in (original, em.sender):
+        label = _label_from_domain(_email_domain(candidate) or "")
+        if label:
+            return label
+
+    # Last resort: any non-forwarder / non-tracking domain in the body.
+    for d in _BODY_DOMAIN.findall(em.body or ""):
+        label = _label_from_domain(d)
+        if label:
+            return label
     return "Unknown"
 
 
@@ -248,8 +317,14 @@ BIZALERT_LISTING = re.compile(
     # Use \r?\n — Gmail API bodies are CRLF; a bare \n+ after '>' fails to
     # consume the line ending, the URL-skipper matches nothing, and the title
     # group then swallows a mangled URL (observed as title 'ttps://...').
+    #
+    # Title cap was 160 and that truncated live BizAlert lines: strip_html
+    # glues "(https://www.bizbuysell.com/listings/Profile/?…long utm…)" onto
+    # the business name (~200+ chars). The engine then started mid-word
+    # ("rations", "usiness", "rovider") so every Texas digest came back
+    # broken. Cap is high enough for name + URL; TRAILING_LINK peels the URL.
     r"(?:<?https?://[^\s>]+>?\r?\n+)*"
-    r"(?P<title>(?!<?https?://)[^\r\n]{5,160}?)\r?\n+"
+    r"(?P<title>(?!<?https?://)[^\r\n]{5,500}?)\r?\n+"
     r"(?:<?https?://[^\s>]+>?\r?\n+)*"
     r"\s*Asking Price:\s*(?:\r?\n+\s*)?(?P<price>[^\r\n]+?)\r?\n+"
     r"\s*Location:\s*(?:\r?\n+\s*)?(?P<loc>[^\r\n]+)",
@@ -267,6 +342,14 @@ TRAILING_LINK = re.compile(r"\s*\((https?://[^\s)]+)\)\s*$")
 
 def split_bizbuysell(body: str) -> List[str]:
     body = FRANCHISE_SECTION.split(body)[0]
+    # Peel glued "(https://listings/...)" onto its own line before matching
+    # so the title group never has to swallow a 200-char tracking URL.
+    body = re.sub(
+        r"([^\r\n]{5,240}?)\s*\((https?://www\.bizbuysell\.com/listings/[^)]+)\)",
+        r"\1\n\2",
+        body,
+        flags=re.I,
+    )
     out = []
     for m in BIZALERT_LISTING.finditer(body):
         title = m.group("title").strip()
@@ -279,6 +362,9 @@ def split_bizbuysell(body: str) -> List[str]:
             continue
         if re.search(r"businesses recently posted|search criteria|search all business", title, re.I):
             continue
+        # Mid-word leftovers if a glue peel ever fails ("rations", "usiness").
+        if len(title) < 20 and title[:1].islower():
+            continue
         url = ""
         lm = TRAILING_LINK.search(title)
         if lm:
@@ -287,12 +373,15 @@ def split_bizbuysell(body: str) -> List[str]:
         # Prefer the listing Profile URL that sits between title and Asking
         # in layout (B); first https in the match span works.
         if not url:
-            um = re.search(r"https?://www\.bizbuysell\.com/listings/[^\s>]+", m.group(0))
+            um = re.search(r"https?://www\.bizbuysell\.com/listings/[^\s>)]+", m.group(0))
             if um:
                 url = um.group(0).rstrip(">")
         # Re-normalize onto single lines so the generic (source-agnostic)
         # extractor — which expects label and value close together on one
         # line — can read it without a BizBuySell-specific code path.
+        # Price lines sometimes arrive as a bare NBSP; keep looking for $.
+        if not re.search(r"\$", price):
+            continue
         block = f"{title}\nAsking Price: {price}\nLocation: {loc}"
         if url:
             block += f"\n{url}"
@@ -345,11 +434,30 @@ def _only_financials(p: str) -> bool:
 # price attached). These emails are reliably one-listing-per-email, so when
 # the teaser markers below are present, treat the WHOLE body as a single
 # block instead of trying to split it.
-BROKER_TEASER_MARKERS = [r"sign\s+(?:the\s+)?nda", r"confidential\s+information\s+memorandum", r"\bcim\b"]
+BROKER_TEASER_MARKERS = [
+    r"sign\s+(?:the\s+)?nda",
+    r"confidential\s+information\s+memorandum",
+    r"\bcim\b",
+    r"listing\s*id\s*:",
+    # Asking + Revenue often sit on separate lines in broker one-pagers.
+    r"asking\s*price\s*:[\s\S]{0,120}?\brevenue\s*:",
+]
 OTHER_LISTINGS_BOUNDARY = re.compile(r"other\s+[\w']+\s+listings", re.I)
 
 def _is_single_listing_teaser(body: str) -> bool:
     return any(re.search(p, body, re.I) for p in BROKER_TEASER_MARKERS)
+
+
+def _strip_forward_chrome(body: str) -> str:
+    """Drop the human forwarder's sig; keep the original broker message."""
+    m = re.search(r"^-+\s*Forwarded message\s*-+\s*", body or "", re.I | re.M)
+    if not m:
+        return body
+    rest = body[m.end():]
+    # Skip From/Date/Subject/To header block that follows the marker.
+    parts = re.split(r"\n\s*\n", rest, maxsplit=1)
+    return parts[1] if len(parts) == 2 else rest
+
 
 # Verified against a live SMB Deal Hunter email: it presents each deal TWICE
 # — once as a clean one-line entry in an "In Today's Issue" list near the
@@ -538,15 +646,8 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
     that look like a deal — but a bare stat block has its headline in the
     PRECEDING paragraph, so reattach it. Without this the title extracts as
     'Revenue: $6,400,000' and the location is lost entirely."""
-    if _is_single_listing_teaser(body):
-        primary = OTHER_LISTINGS_BOUNDARY.split(body)[0]
-        if MONEY_SIGNAL.search(primary):
-            return [primary]
-
-    # SMB Deal Hunter: prefer stitched detail cards (title+Location+Rev) over
-    # the intro digest list (title+EBITDA only). Never fall through to generic
-    # paragraph splitting — that halves each card into a title listing and a
-    # junk "Location: *Texas" listing.
+    # SMB before broker-teaser: digests can mention revenue near other labels
+    # and must not collapse into a single one-pager block.
     if _is_smb_deal_hunter(body, sender):
         cards = _smb_detail_cards(body)
         if cards:
@@ -555,6 +656,11 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
         if digest_items:
             return digest_items
         return []
+
+    if _is_single_listing_teaser(body):
+        primary = OTHER_LISTINGS_BOUNDARY.split(_strip_forward_chrome(body))[0]
+        if MONEY_SIGNAL.search(primary):
+            return [primary]
 
     digest_items = _numbered_digest_items(body)
     if digest_items:
@@ -839,7 +945,9 @@ def classify_model(text: str) -> Tuple[str, bool]:
 NOISE_LINE = re.compile(
     r"^(view image|follow image link|caption|sign nda|sign up|podcast|"
     r"work with me|-{3,}|see the revenue|sponsored|\||new listing|"
-    r"sba eligible|partially sba eligible)",
+    r"sba eligible|partially sba eligible|"
+    r"this highly|i am contacting|i'm contacting|we are representing|"
+    r"i thought you might|thank you,?$|tristan,?$)",
     re.I,
 )
 
@@ -859,12 +967,18 @@ def _is_financial_summary_line(s: str) -> bool:
                [r"\basking\b", r"\brevenue\b", r"\bsde\b", r"\bebitda\b", r"cash\s*flow"])
     return hits >= 2 and s.count("$") >= 2
 
-def extract_title(block: str) -> str:
+def extract_title(block: str, subject: str = "") -> str:
     for line in block.strip().split("\n"):
         s = line.strip()
         if not s or re.fullmatch(r"[\$\d,.\sKMB]+", s):
             continue
+        if re.fullmatch(r"[\d\s()./+-]{7,}", s):  # phone / fax lines
+            continue
         if NOISE_LINE.match(s) or _is_financial_summary_line(s):
+            continue
+        if re.match(r"^https?://", s, re.I):
+            continue
+        if re.match(r"^asking price\s*:", s, re.I):
             continue
         s = re.sub(r"^#{1,6}\s*", "", s)             # markdown heading marks
         s = re.sub(r"^#?\d+[:.]\s*", "", s)          # "#1:" / "1." list numbering
@@ -873,8 +987,29 @@ def extract_title(block: str) -> str:
         if m:
             s = m.group(1)
         s = re.sub(r"^\W+", "", s)
+        # Skip broker prose openers; prefer a real headline / subject below.
+        if re.match(
+            r"^(this|i am|we are|i'm|dear|hello|hi\b|tristan\b|"
+            r"i thought|interested in|similar businesses)\b",
+            s,
+            re.I,
+        ):
+            continue
         if len(s) > 6:
+            # Long sentence-like lines are broker prose, not listing names.
+            # Prefer the email subject when we have one (Gateway / Vanla / etc.).
+            if subject and (len(s) > 80 or ". " in s):
+                cleaned = re.sub(r"^(?:fwd|fw|re)\s*:\s*", "", subject, flags=re.I).strip()
+                cleaned = re.sub(r"\s+", " ", cleaned)
+                if len(cleaned) > 6:
+                    return cleaned[:110]
             return s[:110]
+    # Single-listing broker mail often has the real name only in Subject.
+    if subject:
+        cleaned = re.sub(r"^(?:fwd|fw|re)\s*:\s*", "", subject, flags=re.I).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        if len(cleaned) > 6:
+            return cleaned[:110]
     return "(untitled listing)"
 
 
@@ -920,7 +1055,8 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
     return text[:600]
 
 
-def extract(block: str, source: str, msg_id: str, idx: int, sub_src: str = "") -> Listing:
+def extract(block: str, source: str, msg_id: str, idx: int,
+            sub_src: str = "", subject: str = "") -> Listing:
     money = extract_money_fields(block)
     city, state, county = extract_location(block)
     model, confident = classify_model(block)
@@ -934,7 +1070,7 @@ def extract(block: str, source: str, msg_id: str, idx: int, sub_src: str = "") -
 
     lst = Listing(
         ext_id=f"{source}:{msg_id}:{idx}",
-        title=extract_title(block),
+        title=extract_title(block, subject=subject),
         blurb=clean_blurb(block, url),
         source=source,
         sub_source=sub_src,
@@ -1073,9 +1209,21 @@ def health(per_source: Dict[str, int]) -> List[str]:
 # ORCHESTRATOR
 # =====================================================================
 
-def _is_location_chip_title(title: str) -> bool:
-    """Junk half-listings from SMB Deal Hunter paragraph splits."""
-    return bool(re.match(r"^location\s*:", title or "", re.I))
+def _is_junk_title(title: str) -> bool:
+    """Drop half-listings and URL crumbs that should never reach the board."""
+    t = (title or "").strip()
+    if not t or t == "(untitled listing)":
+        return True
+    if re.match(r"^location\s*:", t, re.I):
+        return True
+    if re.match(r"^https?://", t, re.I):
+        return True
+    if re.match(r"^asking price\s*:", t, re.I):
+        return True
+    # Mid-word BizAlert leftovers ("rations", "usiness") if peel ever fails.
+    if len(t) < 20 and t[:1].islower():
+        return True
+    return False
 
 
 def ingest(emails: List[RawEmail]):
@@ -1083,15 +1231,15 @@ def ingest(emails: List[RawEmail]):
     for em in emails:
         src = route(em)
         sub = sub_source(em)
-        if src == "newsletter":
+        if src in ("newsletter", "dealstream", "businessexits", "benchmark"):
             blocks = split_newsletter(em.body, sender=em.sender)
         else:
             blocks = SPLITTERS[src](em.body)
         per_source[src] = per_source.get(src, 0) + len(blocks)
         per_sub_source[sub] = per_sub_source.get(sub, 0) + len(blocks)
         for i, b in enumerate(blocks):
-            listing = extract(b, src, em.msg_id, i, sub_src=sub)
-            if _is_location_chip_title(listing.title):
+            listing = extract(b, src, em.msg_id, i, sub_src=sub, subject=em.subject)
+            if _is_junk_title(listing.title):
                 continue
             raw.append(listing)
     kept, merged = dedupe(raw)
