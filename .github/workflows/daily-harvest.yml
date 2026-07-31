@@ -1,10 +1,17 @@
-# Daily deal harvest from dirk@ (cloud — not on Tristan's PC)
+# Daily deal harvest from dirk@ — LIVE pipeline (cloud, not Tristan's PC).
+#
+# Flow: Gmail (dirk@) → ingest → nm_deals.db artifact → POST Flow App /api/import
+# Google Drive is not part of this path.
 #
 # Schedule: 11:00 UTC ≈ 6:00 AM Central (CST); during CDT this is 5:00 AM —
 # close enough; adjust cron if you want strict CT year-round.
 #
-# Retries: run_daily_harvest.sh tries 3x with backoff. The job also uses
-# GitHub's retry guidance via a failure notification on the Actions tab.
+# Secrets required:
+#   GMAIL_CLIENT_SECRET_JSON, GMAIL_TOKEN_JSON
+#   FLOW_APP_URL (e.g. https://web-tau-seven-77.vercel.app)
+#   FLOW_IMPORT_TOKEN (same value as Vercel env FLOW_IMPORT_TOKEN)
+#
+# Retries: run_daily_harvest.sh tries 3x with backoff.
 # Re-run failed workflow: Actions → Daily harvest → Re-run jobs.
 
 name: Daily harvest
@@ -68,11 +75,13 @@ jobs:
           printf '%s' "$CLIENT" > credentials/client_secret.json
           printf '%s' "$TOKEN" > credentials/token.json
 
-      - name: Harvest + ingest (with retries)
+      - name: Harvest + ingest + push to Flow App (with retries)
         env:
           DAYS: "2"
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
+          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh

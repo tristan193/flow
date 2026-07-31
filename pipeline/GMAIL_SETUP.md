@@ -1,6 +1,8 @@
-# Connect dirk@ (Gmail API) — cloud harvest, no PC scheduler
+# Connect dirk@ (Gmail API) — LIVE cloud harvest
 
-Goal: durable harvest for `dirk@tullyinvesting.com` that feeds `ingest.py`,
+**This is the live deal pipeline.** It feeds Flow App. Google Drive is not used.
+
+Goal: durable harvest for `dirk@tullyinvesting.com` → `ingest.py` → Flow App,
 running on **GitHub Actions** (not Tristan's laptop).
 
 ## 0. Mailbox
@@ -34,6 +36,10 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 |--------|--------|
 | `GMAIL_CLIENT_SECRET_JSON` | Full contents of `credentials/client_secret.json` |
 | `GMAIL_TOKEN_JSON` | Full contents of `credentials/token.json` |
+| `FLOW_APP_URL` | `https://web-tau-seven-77.vercel.app` |
+| `FLOW_IMPORT_TOKEN` | Same value as Vercel project env `FLOW_IMPORT_TOKEN` |
+
+Without `FLOW_APP_URL` / `FLOW_IMPORT_TOKEN`, the harvest still builds `nm_deals.db` and CSV artifacts, but Flow App will not get new deals.
 
 ## 3. Daily workflow
 
@@ -41,16 +47,16 @@ File: `.github/workflows/daily-harvest.yml`
 
 - **Cron:** `0 11 * * *` (11:00 UTC ≈ 6am Central)
 - **Manual:** Actions → Daily harvest → Run workflow
-- **Retries:** script tries 3× (1m / 5m / 15m backoff). If the job still fails, open Actions and click **Re-run jobs** (or fix secrets and re-run).
-- **State:** previous `nm_deals.db` is restored from the last successful artifact, then re-uploaded (90-day retention).
-- **Outputs:** artifacts `nm-deals-db` and `deals-csv`.
-
-Flow App import / Drive upload can be wired later (`export_snapshot.py --post`).
+- **Retries:** script tries 3× (1m / 5m / 15m backoff)
+- **State:** previous `nm_deals.db` restored from last successful artifact, then re-uploaded
+- **Live push:** `export_snapshot.py --post` into Flow App after a successful ingest
+- **Backup outputs:** artifacts `nm-deals-db` and `deals-csv`
 
 ## 4. Local scripts (dev / one-off only)
 
 ```powershell
 python harvest_gmail.py --days 1 --ingest
+python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $env:FLOW_IMPORT_TOKEN
 ```
 
 Do **not** register a Windows Scheduled Task for production. `register_daily_task.ps1` is legacy — cloud is the source of truth.

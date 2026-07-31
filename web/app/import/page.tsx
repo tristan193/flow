@@ -3,7 +3,6 @@ import { ImportPanel } from "@/components/import-panel";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { query } from "@/lib/db";
-import { driveConfigured } from "@/lib/drive";
 import { memberLabel } from "@/lib/model";
 
 export const dynamic = "force-dynamic";
@@ -29,11 +28,11 @@ export default async function ImportPage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Data</h1>
           <p className="text-ink-dim text-[12.5px]">
-            Bring fresh deals in from Drive or a CSV snapshot
+            Live feed is the GitHub harvest — manual upload is fallback only
           </p>
         </div>
 
-        <ImportPanel driveReady={driveConfigured()} />
+        <ImportPanel />
 
         <section className="mt-6">
           <h2 className="text-ink-faint mb-1.5 text-[11.5px] font-bold tracking-wide uppercase">

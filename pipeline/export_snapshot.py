@@ -6,12 +6,11 @@ nm_deals.db. Flow App reads deals from its own hosted database, so this script
 is the bridge: it flattens v_deals + verdicts into a single JSON document that
 Flow App can import, either as a seed file or by POSTing to /api/import.
 
-  python export_snapshot.py [--db nm_deals.db] [--out ../web/prisma/seed-data.json]
-  python export_snapshot.py --post https://flow.example.com --token $FLOW_IMPORT_TOKEN
+  python export_snapshot.py [--db nm_deals.db] [--out ../web/db/seed-data.json]
+  python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $FLOW_IMPORT_TOKEN
 
-Deal identity travels as ext_id, which is stable across pipeline runs. Flow App
-upserts on it, so re-exporting the same database never duplicates a deal and
-never clobbers a verdict made in the app.
+Live path: GitHub Actions daily harvest calls --post after each successful ingest.
+Google Drive is not involved.
 """
 import argparse
 import json

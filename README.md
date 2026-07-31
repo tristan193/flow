@@ -1,16 +1,42 @@
 # Flow App
 
-Deal review and pipeline for **Nails & Mercy**. Replaces the old Cowork HTML artifact with a shared web app both partners can use from phone or laptop.
+Deal review and pipeline for **Nails & Mercy**. Shared web app for Tristan and partner.
 
-## What it does
+## Live architecture
 
-- **Review** — swipe or list through deals; shortlist / discuss / pass with live shared verdicts
-- **Pipeline** — shortlisted deals move onto a board (contacted → NDA → CIM → offer → closed / dead)
-- **Data** — import fresh deals from Google Drive CSV snapshots or a manual upload
+```
+dirk@tullyinvesting.com
+   │  GitHub Actions · Daily harvest (cron 11:00 UTC / manual)
+   ├─ harvest_gmail.py → ingest.py → nm_deals.db
+   └─ export_snapshot.py --post → Flow App /api/import
+                                      │
+                                      ▼
+                         https://web-tau-seven-77.vercel.app
+                         (review · shortlist · pipeline)
+```
 
-The Python email ingestion pipeline (`pipeline/`) is unchanged and still owns extraction. Flow App is where you review and track deals.
+**Google Drive is not part of the live path.** CSV artifacts from the harvest are kept on Actions for backup only.
 
-## Local development
+## What Flow App does
+
+- **Review** — swipe or list; shortlist / discuss / pass with live shared verdicts
+- **Pipeline** — shortlisted deals on a board (contacted → NDA → CIM → offer → closed / dead)
+- **Data** — status of the live harvest; manual CSV upload as fallback
+
+## Pipeline setup (Gmail → Actions)
+
+See [`pipeline/GMAIL_SETUP.md`](pipeline/GMAIL_SETUP.md).
+
+GitHub Actions secrets:
+
+| Secret | Purpose |
+|--------|---------|
+| `GMAIL_CLIENT_SECRET_JSON` | OAuth client for dirk@ |
+| `GMAIL_TOKEN_JSON` | Refresh token from `gmail_auth.py` |
+| `FLOW_APP_URL` | e.g. `https://web-tau-seven-77.vercel.app` |
+| `FLOW_IMPORT_TOKEN` | Same bearer token as Vercel `FLOW_IMPORT_TOKEN` |
+
+## Local development (web)
 
 ```powershell
 cd web
@@ -20,56 +46,26 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Default local passcodes (in `web/.env.local`, not committed):
-
-| Person  | Passcode |
-|---------|----------|
+| Person  | Passcode (local `.env.local`) |
+|---------|-------------------------------|
 | Tristan | `nails`  |
 | Partner | `mercy`  |
 
-On first boot the app seeds itself from `web/db/seed-data.json` (exported from the existing `nm_deals.db`). Local Postgres data lives outside OneDrive at `%LOCALAPPDATA%\flow-app\pglite` so cloud sync cannot corrupt it.
-
-## Environment
+## Flow App environment (Vercel)
 
 | Variable | Purpose |
 |----------|---------|
 | `FLOW_SESSION_SECRET` | Random 32+ char string for signed cookies |
 | `FLOW_PASSCODE_TRISTAN` | Tristan's passcode |
 | `FLOW_PASSCODE_PARTNER` | Partner's passcode |
-| `FLOW_IMPORT_TOKEN` | Bearer token for `POST /api/import` from the pipeline |
-| `FLOW_DRIVE_FOLDER_ID` | Shared Drive folder id |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Service account key (JSON or base64) for Drive |
-| `DATABASE_URL` | Hosted Postgres URL (omit for local embedded Postgres) |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` |
+| `DATABASE_URL` | Neon / hosted Postgres |
 
-## Pushing deals from the pipeline
+## Manual push (dev / one-off)
 
 ```powershell
 cd pipeline
-python export_snapshot.py --post https://YOUR_APP_URL --token YOUR_IMPORT_TOKEN
+python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $env:FLOW_IMPORT_TOKEN
 ```
-
-Or write a seed file:
-
-```powershell
-python export_snapshot.py
-```
-
-## Connecting Google Drive
-
-1. Create a Google Cloud service account and download its JSON key.
-2. Share [the Drive folder](https://drive.google.com/drive/u/0/folders/0AIRHZYgxe1w-Uk9PVA) with the service account email as **Viewer**.
-3. Set `GOOGLE_SERVICE_ACCOUNT_JSON` (paste the JSON, or base64-encode it) and `FLOW_DRIVE_FOLDER_ID=0AIRHZYgxe1w-Uk9PVA`.
-4. Use **Data → Sync from Drive** in the app.
-
-Drive sync only imports CSV snapshots (`nails-mercy-deals-*.csv`). Old browser verdict logs stay in Drive but are no longer needed — verdicts live in the app database now.
-
-## Deploy (hosted)
-
-Recommended: Vercel + Neon (or any Postgres).
-
-1. Create a Neon/Postgres database and set `DATABASE_URL`.
-2. Set the Flow env vars above (including both passcodes and a strong session secret).
-3. Deploy the `web/` directory.
-4. Optionally wire Drive with the service account.
 
 Buy-box scoring (`pipeline/buybox.yaml`, `pipeline/score.py`) stays parked until you agree criteria against real flow.
