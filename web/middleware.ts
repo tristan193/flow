@@ -3,12 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, readSession } from "./lib/session";
 
 /**
- * Everything is private except the login screen and the two machine endpoints.
+ * Everything is private except the login screen and the machine endpoints.
  *
  * /api/import authenticates with a bearer token instead of a session, because
- * it is called by the Python pipeline rather than a browser.
+ * it is called by the Python pipeline rather than a browser. /api/cron is the
+ * same idea for Vercel Cron, which checks CRON_SECRET inside the route.
  */
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/import"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/import", "/api/cron"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

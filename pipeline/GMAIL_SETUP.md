@@ -41,47 +41,62 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 
 **Required.** If either is missing, the “Push snapshot to Flow App” step fails the workflow. Harvest artifacts are still uploaded, but Flow App will not update.
 
-## 3. Daily workflow (and why native cron alone failed)
+## 3. Scheduling — Vercel Cron drives it, not GitHub cron
 
 File: `.github/workflows/daily-harvest.yml`
 
-**Reality check (2026-07-31):** GitHub’s `schedule:` trigger never fired for this
-repo — every successful run was `workflow_dispatch` (manual). GitHub documents
-that scheduled jobs are best-effort and can be **skipped under load**, especially
-at the top of the hour. Triple redundancy at `:00` does not fix that.
+**Why (2026-07-31):** GitHub’s `schedule:` trigger never fired once for this repo.
+Every run in history was `workflow_dispatch`. GitHub documents scheduled runs as
+best-effort and drops them under load, and brand-new repos often don’t register a
+schedule at all. Adding more cron lines does not fix that.
 
-### Reliable path — external cron → workflow_dispatch
+**Trigger chain now:**
 
-Use a free external scheduler ([cron-job.org](https://cron-job.org) or Google
-Cloud Scheduler) to POST to GitHub. That uses the same path as the green
-“Run workflow” button.
+```
+Vercel Cron  →  GET /api/cron/harvest  (Flow App)
+             →  POST workflow_dispatch  (GitHub API)
+             →  Daily harvest workflow  →  Gmail → ingest → Flow App
+```
 
-1. GitHub → **Settings → Developer settings → Personal access tokens**
-   - Fine-grained token on `tristan193/flow`
-   - Permission: **Actions: Read and write**
-   - Copy the token once
-2. Create a repo Actions secret: `HARVEST_DISPATCH_TOKEN` = that PAT  
-   (optional — only needed if you store it in GitHub; cron-job.org can hold it itself)
-3. In cron-job.org, create a job:
-   - **URL:** `https://api.github.com/repos/tristan193/flow/actions/workflows/daily-harvest.yml/dispatches`
-   - **Method:** POST
-   - **Headers:**
-     - `Authorization: Bearer YOUR_PAT`
-     - `Accept: application/vnd.github+json`
-     - `X-GitHub-Api-Version: 2022-11-28`
-   - **Body:** `{"ref":"main"}`
-   - **Schedule:** e.g. `17 11,13,15 * * *` (6:17 / 8:17 / 10:17 UTC ≈ CT mornings)
+### Vercel setup (one time)
 
-### Soft backup — native GitHub cron (odd minutes)
+The cron schedule itself lives in `web/vercel.json`, so it deploys with the app.
+Add two environment variables in **Vercel → Project → Settings → Environment
+Variables** (Production):
 
-Still configured at ~6:17 / 8:23 / 10:41 AM CT, but treat it as best-effort only.
+| Variable | Value |
+|----------|-------|
+| `CRON_SECRET` | Any long random string. Vercel sends it back as `Authorization: Bearer …`, and the route rejects anything else. |
+| `GITHUB_DISPATCH_TOKEN` | GitHub fine-grained PAT — repo `tristan193/flow`, permission **Actions: Read and write** |
 
-### Manual
+Create the PAT at **GitHub → Settings → Developer settings → Personal access
+tokens → Fine-grained tokens**.
 
-Actions → Daily harvest → Run workflow
+Optional overrides: `GITHUB_REPO`, `GITHUB_WORKFLOW_FILE`, `GITHUB_REF_NAME`.
+
+Redeploy after adding the variables, then confirm under **Vercel → Cron Jobs**.
+
+Cron times are UTC: `20 11 * * *` ≈ 6:20 AM CT and `20 15 * * *` ≈ 10:20 AM CT.
+On the Hobby plan each cron fires once a day and may land anywhere in that hour.
+
+### Manual test (no waiting)
+
+```powershell
+curl -X POST https://web-tau-seven-77.vercel.app/api/cron/harvest `
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+`{"ok":true,...}` means a new run appeared under Actions → Daily harvest.
+
+### Backups
+
+- GitHub native cron at odd minutes (~6:17 / 8:23 / 10:41 AM CT) — best-effort
+- Actions → Daily harvest → **Run workflow** — always works
+- `repository_dispatch` type `harvest` — for any other scheduler
 
 ### Behavior
 
+- **Lookback:** 3 days, so a skipped trigger cannot lose mail
 - **Retries:** script tries 3× (1m / 5m / 15m backoff)
 - **State:** previous `nm_deals.db` restored from last successful artifact
 - **Live push:** `export_snapshot.py --post` into Flow App after ingest
