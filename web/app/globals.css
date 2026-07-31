@@ -1,26 +1,55 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/**
+ * Flow App is used mostly on a phone, often in the evening, for long triage
+ * sessions. The palette is dark and low-contrast on purpose: the only things
+ * allowed to be bright are money figures and the three verdict actions.
+ */
+@theme {
+  --color-canvas: #0e1013;
+  --color-surface: #171a1f;
+  --color-surface-raised: #1e222a;
+  --color-line: #2a2f38;
+  --color-line-bright: #3a4149;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-ink: #e8eaed;
+  --color-ink-dim: #9aa3ad;
+  --color-ink-faint: #6b747e;
+
+  --color-short: #2fa36b;
+  --color-short-bg: #14301f;
+  --color-discuss: #6b8cc4;
+  --color-discuss-bg: #1a2233;
+  --color-pass: #c4564a;
+  --color-pass-bg: #331a18;
+  --color-flag: #c9922b;
+  --color-flag-bg: #2e2413;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Hide scrollbars on the horizontal filter and board rails without disabling
+   scrolling itself. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The swipe deck sets its own transforms from JavaScript; this keeps the browser
+   from also trying to pan or select while a card is being dragged. */
+.deck-card {
+  touch-action: none;
+  user-select: none;
 }
