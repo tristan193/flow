@@ -26,6 +26,8 @@ name: Daily harvest
 
 on:
   schedule:
+    # TEMP watch slot — 10:58 AM CT (CDT) today; remove after we confirm schedule fires
+    - cron: "58 15 * * *"
     # Odd minutes on purpose — :00/:30 are where GitHub drops schedules.
     - cron: "17 11 * * *" # ~6:17 AM CT (CDT)
     - cron: "23 13 * * *" # ~8:23 AM CT (CDT)
