@@ -14,6 +14,7 @@ import {
   money,
 } from "@/lib/model";
 import { DealListCard, NeedsTags, SourcePill, VerdictChips } from "./deal-card";
+import { BlurbText } from "./blurb-text";
 import { TrainAiButton } from "./train-ai-button";
 
 type Override = { action: VerdictAction | null; reason: string | null };
@@ -503,7 +504,7 @@ function SwipeDeck({
                 </div>
 
                 <p className="text-ink-dim mt-3 flex-1 overflow-auto text-[14px] leading-relaxed">
-                  {deal.blurb || "No description in the source email."}
+                  <BlurbText text={deal.blurb} listingUrl={deal.url} />
                 </p>
 
                 <div className="mt-3 space-y-2">

@@ -82,6 +82,11 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
       skipped += 1;
       continue;
     }
+    // SMB Deal Hunter half-listings from an older paragraph split.
+    if (/^location\s*:/i.test(title)) {
+      skipped += 1;
+      continue;
+    }
 
     const existing = await query<{ id: number }>("SELECT id FROM deals WHERE ext_id = $1", [extId]);
 
@@ -287,6 +292,10 @@ export async function importCsv(
  * in the app. Regenerate the file with pipeline/export_snapshot.py.
  */
 export async function seedIfEmpty(): Promise<ImportResult | null> {
+  // Hosted Neon must stay empty after a flush until harvest posts — never
+  // rehydrate from the checked-in seed snapshot in production.
+  if (process.env.DATABASE_URL) return null;
+
   const [{ count }] = await query<{ count: string }>("SELECT COUNT(*)::text AS count FROM deals");
   if (Number(count) > 0) return null;
 

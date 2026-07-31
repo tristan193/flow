@@ -63,7 +63,8 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: daily-harvest.yml
-          name: nm-deals-db
+          # v2: fresh start after 2026-07-31 flush (old artifact had split SMB cards)
+          name: nm-deals-db-v2
           path: pipeline
           search_artifacts: true
           check_artifacts: true
@@ -125,7 +126,7 @@ jobs:
       - name: Upload SQLite db
         uses: actions/upload-artifact@v4
         with:
-          name: nm-deals-db
+          name: nm-deals-db-v2
           path: pipeline/nm_deals.db
           if-no-files-found: error
           retention-days: 90

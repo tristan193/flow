@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BlurbText } from "@/components/blurb-text";
 import { DealActions } from "@/components/deal-actions";
 import { NeedsTags, SourcePill, VerdictChips } from "@/components/deal-card";
 import { Nav } from "@/components/nav";
@@ -82,7 +83,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 From the source email
               </h2>
               <p className="border-line bg-surface text-ink-dim rounded-xl border p-3.5 text-[13.5px] leading-relaxed">
-                {deal.blurb}
+                <BlurbText text={deal.blurb} listingUrl={deal.url} empty="" />
               </p>
             </section>
           )}

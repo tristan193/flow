@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   type Deal,
+  isTrainReason,
   type MemberId,
   TRAIN_REASONS,
   type TrainReason,
@@ -27,22 +28,47 @@ export function TrainAiButton({
 }) {
   const router = useRouter();
   const existing = deal.trainFlags[member];
+  const existingReason =
+    existing && isTrainReason(existing.reason) ? existing.reason : null;
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<TrainReason | null>(existingReason);
+  const [notes, setNotes] = useState(existing?.detail ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save(reason: TrainReason | null) {
+  useEffect(() => {
+    if (!open) return;
+    setReason(existingReason);
+    setNotes(existing?.detail ?? "");
+    setError(null);
+  }, [open, existingReason, existing?.detail]);
+
+  async function save(nextReason: TrainReason | null = reason) {
+    if (nextReason === null && !existing) {
+      setOpen(false);
+      return;
+    }
+    if (nextReason !== null && !TRAIN_REASONS.includes(nextReason)) {
+      setError("Pick what’s wrong first.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
-      const next =
-        reason !== null && existing?.reason === reason
-          ? null
-          : reason;
       const response = await fetch("/api/train", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId: deal.id, reason: next }),
+        body: JSON.stringify({
+          dealId: deal.id,
+          reason: nextReason,
+          detail:
+            nextReason === null
+              ? null
+              : notes.trim()
+                ? notes.trim().slice(0, 500)
+                : null,
+        }),
       });
       if (!response.ok) throw new Error("rejected");
       setOpen(false);
@@ -76,32 +102,56 @@ export function TrainAiButton({
             shortlist / pass.
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {TRAIN_REASONS.map((reason) => (
+            {TRAIN_REASONS.map((option) => (
               <button
-                key={reason}
+                key={option}
                 type="button"
                 disabled={busy}
-                onClick={() => save(reason)}
+                onClick={() => setReason(option)}
                 className={`rounded-md border px-2 py-1 text-[11.5px] transition-colors disabled:opacity-50 ${
-                  existing?.reason === reason
+                  reason === option
                     ? "border-flag bg-flag text-canvas"
                     : "border-line bg-surface text-ink-dim"
                 }`}
               >
-                {reason}
+                {option}
               </button>
             ))}
           </div>
-          {existing && (
+          <label className="mt-2.5 block">
+            <span className="text-ink-faint mb-1 block text-[11px]">
+              Notes (optional)
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={busy}
+              rows={3}
+              maxLength={500}
+              placeholder="e.g. Title pulled the wrong line; EBITDA is actually SDE…"
+              className="border-line bg-surface text-ink placeholder:text-ink-faint w-full resize-y rounded-md border px-2.5 py-2 text-[12.5px] leading-relaxed outline-none focus:border-flag disabled:opacity-50"
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={busy}
-              onClick={() => save(null)}
-              className="text-ink-faint mt-2 text-[11px] underline disabled:opacity-50"
+              disabled={busy || !reason}
+              onClick={() => save(reason)}
+              className="bg-flag text-canvas rounded-md px-2.5 py-1 text-[11.5px] font-medium disabled:opacity-50"
             >
-              Clear flag
+              {busy ? "Saving…" : existing ? "Update" : "Save"}
             </button>
-          )}
+            {existing && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => save(null)}
+                className="text-ink-faint text-[11px] underline disabled:opacity-50"
+              >
+                Clear flag
+              </button>
+            )}
+          </div>
           {error && <p className="text-pass mt-1.5 text-[11px]">{error}</p>}
         </div>
       )}

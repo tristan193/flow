@@ -407,11 +407,15 @@ def _numbered_digest_items(body: str) -> List[str]:
         if cur_n is None:
             return
         text = " ".join(s.strip() for s in cur_lines if s.strip())
+        # Markdown links first — stripping the URL alone leaves "[Title](" crumbs.
+        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
         # Drop bare URL continuation lines / trailing <https://...> crumbs.
         text = re.sub(r"<?https?://[^\s>]+>?", " ", text)
         text = re.sub(r"\s+", " ", text).strip(" -|")
+        # Do not re-prefix "#N:" — extract_title already strips list numbers, but
+        # the blurb used to keep them (#2: Automotive…) and show junk in the UI.
         if text:
-            items.append(f"#{cur_n}: {text}")
+            items.append(text)
         cur_n, cur_lines = None, []
 
     for line in window.splitlines():
@@ -438,10 +442,98 @@ def _numbered_digest_items(body: str) -> List[str]:
     flush()
     return items
 
-def _is_smb_deal_hunter(body: str) -> bool:
-    return bool(re.search(r"smbdealhunter\.xyz|smb deal hunter", body, re.I))
+def _is_smb_deal_hunter(body: str, sender: str = "") -> bool:
+    # Sender matters: some HTML→text bodies drop the branded domain while
+    # From: is still helen@mail.smbdealhunter.xyz. Body-only detection then
+    # missed the guard and fell through to paragraph splitting.
+    return bool(re.search(
+        r"smbdealhunter\.xyz|smb deal hunter",
+        f"{sender}\n{body}",
+        re.I,
+    ))
 
-def split_newsletter(body: str) -> List[str]:
+
+_SMB_FIELD_START = re.compile(
+    r"^(?:📍\s*)?(?:location|revenue|ebitda|sde|asking|multiple|cash flow)\s*:",
+    re.I,
+)
+_SMB_CHROME = re.compile(
+    r"looking for deals in your area|proudly sponsored|unsubscribe|"
+    r"in today[’']?s issue|off the grid",
+    re.I,
+)
+
+
+def _smb_detail_cards(body: str) -> List[str]:
+    """Stitch SMB Deal Hunter detail cards into one block per deal.
+
+    Live shape (verified 2026-07-31 against split 'Location: *Texas' junk):
+        <title … $910K EBITDA>
+        <blank>
+        Location: *Texas
+        <blank>
+        Revenue: $7.0M
+        EBITDA: $910K
+        Multiple: …
+
+    Generic blank-line splitting treated the title as one listing and the
+    Location+stats reattachment as another titled "Location: *Texas". Only
+    return blocks when a title actually absorbed a Location/stat follow-on,
+    so a digest-list-only email still falls through to _numbered_digest_items.
+    """
+    parts = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    blocks: List[str] = []
+    i = 0
+    while i < len(parts):
+        p = parts[i]
+        if _SMB_CHROME.search(p) or NUMBERED_ITEM_START.match(p):
+            i += 1
+            continue
+        if _SMB_FIELD_START.match(p) or _only_financials(p):
+            i += 1
+            continue
+        if not MONEY_SIGNAL.search(p) or len(p) < 40:
+            i += 1
+            continue
+
+        chunk = [p]
+        absorbed = False
+        j = i + 1
+        while j < len(parts):
+            nxt = parts[j]
+            if _SMB_CHROME.search(nxt) or NUMBERED_ITEM_START.match(nxt):
+                break
+            if re.match(r"my 2 cents", nxt, re.I):
+                chunk.append(nxt)
+                j += 1
+                break
+            if _SMB_FIELD_START.match(nxt) or _only_financials(nxt):
+                chunk.append(nxt)
+                absorbed = True
+                j += 1
+                continue
+            # Short labeled field lines ("Employees: 12") belong on the card.
+            if re.match(r"^[A-Za-z0-9'.\s]{3,40}:\s*", nxt) and len(nxt) < 160:
+                chunk.append(nxt)
+                absorbed = True
+                j += 1
+                continue
+            # Next title-sized money paragraph → new deal.
+            if MONEY_SIGNAL.search(nxt) and len(nxt) >= 40 and not _only_financials(nxt):
+                break
+            break
+
+        if absorbed:
+            block = "\n\n".join(chunk)
+            if len(block) >= 60:
+                blocks.append(block)
+            i = j
+        else:
+            i += 1
+    return blocks
+
+
+def split_newsletter(body: str, sender: str = "") -> List[str]:
     """Newsletters are the wild west. Blank-line blocks, keeping only those
     that look like a deal — but a bare stat block has its headline in the
     PRECEDING paragraph, so reattach it. Without this the title extracts as
@@ -451,16 +543,22 @@ def split_newsletter(body: str) -> List[str]:
         if MONEY_SIGNAL.search(primary):
             return [primary]
 
+    # SMB Deal Hunter: prefer stitched detail cards (title+Location+Rev) over
+    # the intro digest list (title+EBITDA only). Never fall through to generic
+    # paragraph splitting — that halves each card into a title listing and a
+    # junk "Location: *Texas" listing.
+    if _is_smb_deal_hunter(body, sender):
+        cards = _smb_detail_cards(body)
+        if cards:
+            return cards
+        digest_items = _numbered_digest_items(body)
+        if digest_items:
+            return digest_items
+        return []
+
     digest_items = _numbered_digest_items(body)
     if digest_items:
         return digest_items
-
-    # SMB Deal Hunter promo / alumni / LOI-brag issues have $ amounts everywhere
-    # but no 'In Today's Issue' listing list. Paragraph-splitting those produced
-    # dozens of phantom deals (forward headers, My 2 Cents, Location chips).
-    # If this is that sender and there's no digest list, yield nothing.
-    if _is_smb_deal_hunter(body):
-        return []
 
     parts = [p for p in re.split(r"\n\s*\n", body)]
     out, consumed = [], set()
@@ -780,20 +878,68 @@ def extract_title(block: str) -> str:
     return "(untitled listing)"
 
 
+_BLURB_URL = re.compile(r"<?(https?://[^\s<>\]]+)>?", re.I)
+
+
+def _url_core(u: str) -> str:
+    """Loose identity for 'same destination as View original listing'."""
+    if not u:
+        return ""
+    u = u.strip().rstrip("/").lower()
+    if "#" in u:
+        u = u.split("#", 1)[0]
+    # Tracking wrappers (SMB Deal Hunter elinks) are never the listing itself.
+    if "elink" in u or "mail.smbdealhunter" in u:
+        return ""
+    if "?" in u:
+        base, qs = u.split("?", 1)
+        kept = [p for p in qs.split("&") if p and not p.lower().startswith(
+            ("utm_", "ref=", "fbclid=", "gclid=", "mc_"))]
+        u = base + (("?" + "&".join(kept)) if kept else "")
+    return u
+
+
+def clean_blurb(block: str, listing_url: str = "") -> str:
+    """Human-readable blurb: drop digest numbers and tracking/duplicate URLs."""
+    text = block.strip()
+    text = re.sub(r"^#?\d+[:.]\s*", "", text)
+    listing = _url_core(listing_url)
+
+    def repl(m: re.Match) -> str:
+        raw = m.group(1)
+        core = _url_core(raw)
+        if listing and core and core == listing:
+            return " "
+        # Long tracking / redirect URLs add nothing once we have View original.
+        if len(raw) > 60 or "elink" in raw.lower() or "utm_" in raw.lower():
+            return " "
+        return " "
+
+    text = _BLURB_URL.sub(repl, text)
+    text = re.sub(r"\s+", " ", text).strip(" -|")
+    return text[:600]
+
+
 def extract(block: str, source: str, msg_id: str, idx: int, sub_src: str = "") -> Listing:
     money = extract_money_fields(block)
     city, state, county = extract_location(block)
     model, confident = classify_model(block)
     url_m = re.search(r"https?://[^\s\)>\]]+", block)
+    url = url_m.group(0) if url_m else ""
+    # Prefer a real listing URL over an elink wrapper when both appear.
+    for candidate in re.findall(r"https?://[^\s\)>\]]+", block):
+        if "elink" not in candidate.lower() and "mail.smbdealhunter" not in candidate.lower():
+            url = candidate
+            break
 
     lst = Listing(
         ext_id=f"{source}:{msg_id}:{idx}",
         title=extract_title(block),
-        blurb=re.sub(r"\s+", " ", block.strip())[:600],
+        blurb=clean_blurb(block, url),
         source=source,
         sub_source=sub_src,
         source_msg=msg_id,
-        url=url_m.group(0) if url_m else "",
+        url=url,
         city=city, state=state, county=county,
         revenue=money.get("revenue"),
         ebitda=money.get("ebitda"),
@@ -801,7 +947,7 @@ def extract(block: str, source: str, msg_id: str, idx: int, sub_src: str = "") -
         asking=money.get("asking"),
         business_model_type=model,
         seen_in=[source],
-        refs=[(source, msg_id, url_m.group(0) if url_m else "")],
+        refs=[(source, msg_id, url)],
     )
     if lst.earnings is None: lst.needs_llm.append("earnings")
     if lst.state is None:    lst.needs_llm.append("location")
@@ -927,16 +1073,27 @@ def health(per_source: Dict[str, int]) -> List[str]:
 # ORCHESTRATOR
 # =====================================================================
 
+def _is_location_chip_title(title: str) -> bool:
+    """Junk half-listings from SMB Deal Hunter paragraph splits."""
+    return bool(re.match(r"^location\s*:", title or "", re.I))
+
+
 def ingest(emails: List[RawEmail]):
     raw, per_source, per_sub_source = [], {}, {}
     for em in emails:
         src = route(em)
         sub = sub_source(em)
-        blocks = SPLITTERS[src](em.body)
+        if src == "newsletter":
+            blocks = split_newsletter(em.body, sender=em.sender)
+        else:
+            blocks = SPLITTERS[src](em.body)
         per_source[src] = per_source.get(src, 0) + len(blocks)
         per_sub_source[sub] = per_sub_source.get(sub, 0) + len(blocks)
         for i, b in enumerate(blocks):
-            raw.append(extract(b, src, em.msg_id, i, sub_src=sub))
+            listing = extract(b, src, em.msg_id, i, sub_src=sub)
+            if _is_location_chip_title(listing.title):
+                continue
+            raw.append(listing)
     kept, merged = dedupe(raw)
     return kept, {"raw": len(raw), "kept": len(kept), "merged": merged,
                   "per_source": per_source, "per_sub_source": per_sub_source,
