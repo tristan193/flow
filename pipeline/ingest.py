@@ -219,23 +219,40 @@ def sub_source(em: RawEmail) -> str:
 # 3. SPLIT — digest -> listing blocks
 # =====================================================================
 
-FRANCHISE_SECTION = re.compile(r"following franchises match your search criteria", re.I)
+# Franchise block often arrives with the heading split across lines after
+# HTML→text ("The following franchises\n…\nmatch your search criteria").
+FRANCHISE_SECTION = re.compile(
+    r"following\s+franchises[\s\S]{0,120}?match your search criteria", re.I
+)
 
-# Verified against a live BizAlert email (converted from HTML — BizBuySell
-# sends no plaintext body at all). Real structure is four separate lines:
-#   Title
-#   Asking Price:
-#   $214,000
-#   Location:
-#   Austin, TX
-# The original pattern assumed a single "$price\ntitle" line and never
-# matched real mail. Also confirmed: these alert emails carry NO financials
-# beyond asking price — no EBITDA/revenue/cash flow appears anywhere in
-# them, regardless of saved-search criteria. And a franchise section is
-# bundled into the same email even when franchises are excluded from the
-# search, so it's dropped here rather than relying on the buy-box filter.
+# Verified against live BizAlert mail (converted from HTML — BizBuySell
+# sends no plaintext body at all). Two layouts appear in the wild:
+#   (A) label and value on separate lines (older):
+#         Title
+#         Asking Price:
+#         $214,000
+#         Location:
+#         Austin, TX
+#   (B) label and value on one line (Gmail HTML strip / Fwd, 2026-07):
+#         Title
+#         <https://www.bizbuysell.com/listings/...>
+#         Asking Price:   $550,000
+#         Location: TX
+# Optional URL line(s) between title and Asking are common after strip_html
+# keeps hrefs. Alerts still carry NO earnings — asking + location only.
+# Franchise section is bundled even when franchises are excluded from the
+# search, so it's dropped via FRANCHISE_SECTION rather than buy-box.
 BIZALERT_LISTING = re.compile(
-    r"([^\n]{5,140}?)\n+\s*Asking Price:\s*\n+\s*([^\n]+?)\n+\s*Location:\s*\n+\s*([^\n]+)",
+    # Gmail HTML→text often emits the listing URL on its own line ABOVE the
+    # title as well as below it. Allow optional URL lines on either side.
+    # Use \r?\n — Gmail API bodies are CRLF; a bare \n+ after '>' fails to
+    # consume the line ending, the URL-skipper matches nothing, and the title
+    # group then swallows a mangled URL (observed as title 'ttps://...').
+    r"(?:<?https?://[^\s>]+>?\r?\n+)*"
+    r"(?P<title>(?!<?https?://)[^\r\n]{5,160}?)\r?\n+"
+    r"(?:<?https?://[^\s>]+>?\r?\n+)*"
+    r"\s*Asking Price:\s*(?:\r?\n+\s*)?(?P<price>[^\r\n]+?)\r?\n+"
+    r"\s*Location:\s*(?:\r?\n+\s*)?(?P<loc>[^\r\n]+)",
     re.I,
 )
 
@@ -252,12 +269,27 @@ def split_bizbuysell(body: str) -> List[str]:
     body = FRANCHISE_SECTION.split(body)[0]
     out = []
     for m in BIZALERT_LISTING.finditer(body):
-        title, price, loc = (g.strip() for g in m.groups())
+        title = m.group("title").strip()
+        price = m.group("price").strip()
+        loc = m.group("loc").strip()
+        # Franchise leftovers that escaped the section cut.
+        if re.search(r"available in a location near you", loc, re.I):
+            continue
+        if re.match(r"<?https?://", title, re.I):
+            continue
+        if re.search(r"businesses recently posted|search criteria|search all business", title, re.I):
+            continue
         url = ""
         lm = TRAILING_LINK.search(title)
         if lm:
             url = lm.group(1)
             title = TRAILING_LINK.sub("", title).strip()
+        # Prefer the listing Profile URL that sits between title and Asking
+        # in layout (B); first https in the match span works.
+        if not url:
+            um = re.search(r"https?://www\.bizbuysell\.com/listings/[^\s>]+", m.group(0))
+            if um:
+                url = um.group(0).rstrip(">")
         # Re-normalize onto single lines so the generic (source-agnostic)
         # extractor — which expects label and value close together on one
         # line — can read it without a BizBuySell-specific code path.
@@ -340,14 +372,74 @@ def _is_single_listing_teaser(body: str) -> bool:
 # check, since the sender still yielded a nonzero (wrong) count. Accept
 # either apostrophe character, and keep both optional so "In Todays Issue"
 # still matches.
-NUMBERED_DIGEST_MARKER = re.compile(r"in today[’']?s issue", re.I)
-NUMBERED_ITEM = re.compile(r"^#(\d+):\s*(.+)$", re.M)
+# Prefer the digest heading itself. A looser "in today's … issue" also
+# matches beehiiv chrome like "in today's Off The Grid issue" that appears
+# BEFORE the real list in forwarded mail — those false hits used to make us
+# think we had a digest, then search the wrong window and fall through.
+NUMBERED_DIGEST_MARKER = re.compile(
+    r"(?:👇\s*)?\*?in today[’']?s issue\b", re.I
+)
+NUMBERED_ITEM_START = re.compile(r"^#(\d+):\s*(.*)$")
 
 def _numbered_digest_items(body: str) -> List[str]:
-    if not NUMBERED_DIGEST_MARKER.search(body):
+    """Pull only the #1/#2/… teaser list under 'In Today's Issue'.
+
+    Bug found against Gmail Fwds of SMB Deal Hunter (2026-07-30): the digest
+    heading sat past character 3000 because the forward wrapper + beehiiv
+    chrome prepend a long header. The old code required the marker somewhere
+    in the body, then searched ONLY body[:3000] for #N items — marker hit,
+    items missed, empty list, fallthrough to paragraph junk. Fix: find the
+    marker, then parse #N items in a window AFTER it. Titles often wrap onto
+    the next line(s) before the listing URL ('#2: … $910K' / 'EBITDA'), so
+    continuation lines are folded into the same block.
+    """
+    m = NUMBERED_DIGEST_MARKER.search(body)
+    if not m:
         return []
-    head = body[:3000]  # the intro list; the repeated detail cards live later
-    return [f"#{n}: {t}" for n, t in NUMBERED_ITEM.findall(head)]
+    # Intro list is short; detail cards / "My 2 Cents" live further down.
+    window = body[m.end(): m.end() + 3500]
+    items: List[str] = []
+    cur_n: Optional[str] = None
+    cur_lines: List[str] = []
+
+    def flush():
+        nonlocal cur_n, cur_lines
+        if cur_n is None:
+            return
+        text = " ".join(s.strip() for s in cur_lines if s.strip())
+        # Drop bare URL continuation lines / trailing <https://...> crumbs.
+        text = re.sub(r"<?https?://[^\s>]+>?", " ", text)
+        text = re.sub(r"\s+", " ", text).strip(" -|")
+        if text:
+            items.append(f"#{cur_n}: {text}")
+        cur_n, cur_lines = None, []
+
+    for line in window.splitlines():
+        s = line.strip()
+        start = NUMBERED_ITEM_START.match(s)
+        if start:
+            flush()
+            cur_n = start.group(1)
+            cur_lines = [start.group(2)]
+            continue
+        if cur_n is None:
+            continue
+        # End of the intro list.
+        if re.search(r"looking for deals in your area|proudly sponsored|my 2 cents", s, re.I):
+            flush()
+            break
+        if not s:
+            continue
+        # Keep URL / title wrap lines; stop if a new section heading appears.
+        if s.startswith("📍") or s.lower().startswith("location:"):
+            flush()
+            break
+        cur_lines.append(s)
+    flush()
+    return items
+
+def _is_smb_deal_hunter(body: str) -> bool:
+    return bool(re.search(r"smbdealhunter\.xyz|smb deal hunter", body, re.I))
 
 def split_newsletter(body: str) -> List[str]:
     """Newsletters are the wild west. Blank-line blocks, keeping only those
@@ -362,6 +454,13 @@ def split_newsletter(body: str) -> List[str]:
     digest_items = _numbered_digest_items(body)
     if digest_items:
         return digest_items
+
+    # SMB Deal Hunter promo / alumni / LOI-brag issues have $ amounts everywhere
+    # but no 'In Today's Issue' listing list. Paragraph-splitting those produced
+    # dozens of phantom deals (forward headers, My 2 Cents, Location chips).
+    # If this is that sender and there's no digest list, yield nothing.
+    if _is_smb_deal_hunter(body):
+        return []
 
     parts = [p for p in re.split(r"\n\s*\n", body)]
     out, consumed = [], set()
