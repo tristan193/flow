@@ -92,22 +92,35 @@ jobs:
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh
 
-      # Separate step so a missing secret fails the job visibly instead of
-      # hiding under a green "SUCCESS" after ingest.
+      # Separate step so a missing/malformed secret fails the job visibly.
       - name: Push snapshot to Flow App
         env:
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
           FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
-          if [ -z "$FLOW_APP_URL" ] || [ -z "$FLOW_IMPORT_TOKEN" ]; then
+          set -euo pipefail
+          URL="$(printf '%s' "$FLOW_APP_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          TOKEN="$(printf '%s' "$FLOW_IMPORT_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
             echo "::error::FLOW_APP_URL and FLOW_IMPORT_TOKEN must be set as repo Actions secrets."
-            echo "Add them under Settings → Secrets and variables → Actions."
-            echo "FLOW_APP_URL example: https://web-tau-seven-77.vercel.app"
-            echo "FLOW_IMPORT_TOKEN must match the Vercel env of the same name."
             exit 1
           fi
-          python export_snapshot.py --db "$NM_LOCAL_DB" --post "$FLOW_APP_URL" --token "$FLOW_IMPORT_TOKEN"
+
+          case "$URL" in
+            https://*) ;;
+            *)
+              echo "::error::FLOW_APP_URL must start with https://"
+              echo "Correct value (copy exactly, no quotes): https://web-tau-seven-77.vercel.app"
+              echo "Got length ${#URL}, first chars: ${URL:0:16}"
+              echo "Do not put the import token in FLOW_APP_URL."
+              exit 1
+              ;;
+          esac
+
+          echo "Pushing to ${URL}/api/import (token length ${#TOKEN})"
+          python export_snapshot.py --db "$NM_LOCAL_DB" --post "$URL" --token "$TOKEN"
 
       - name: Upload SQLite db
         uses: actions/upload-artifact@v4

@@ -99,11 +99,18 @@ def main() -> int:
         if not a.token:
             print("error: --post needs --token or FLOW_IMPORT_TOKEN", file=sys.stderr)
             return 1
+        base = a.post.strip().rstrip("/")
+        if not base.startswith("https://") and not base.startswith("http://"):
+            print(
+                f"error: --post must be a full URL starting with https:// (got {base[:40]!r})",
+                file=sys.stderr,
+            )
+            return 1
         req = urllib.request.Request(
-            a.post.rstrip("/") + "/api/import",
+            base + "/api/import",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {a.token}"},
+                     "Authorization": f"Bearer {a.token.strip()}"},
             method="POST",
         )
         try:
