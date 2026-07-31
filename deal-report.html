@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nails &amp; Mercy — Daily Deal Report</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f6f6f4; --card:#fff; --ink:#1a1a18; --mute:#6b6b66; --line:#e3e3df;
+  --a:#0d7a4f; --a-bg:#e8f5ee;
+  --b:#1f5fa8; --b-bg:#e8f0fa;
+  --c:#8a6d1f; --c-bg:#faf4e2;
+  --d:#6b6b66; --d-bg:#efefec;
+  --strat:#7b2d8e; --strat-bg:#f6eaf8;
+  --pass:#a3352b; --pass-bg:#fbecea;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding-bottom:40px}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px}
+
+header{padding:18px 0 12px}
+h1{font-size:19px;margin:0 0 2px;letter-spacing:-.2px}
+.sub{font-size:12.5px;color:var(--mute)}
+
+/* member switch */
+.who{display:flex;gap:6px;margin:14px 0 10px;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;padding:4px}
+.who button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:7px;
+  font:600 13.5px/1 inherit;color:var(--mute);cursor:pointer}
+.who button[aria-pressed=true]{background:var(--ink);color:#fff}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:9px 6px;text-align:center}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px}
+
+/* filters */
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:4px;
+  scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);
+  padding:7px 12px;border-radius:999px;font:500 13px/1 inherit;color:var(--mute);cursor:pointer}
+.filters button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* card */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:13px;margin-bottom:9px;transition:opacity .18s}
+.card.done{opacity:.42}
+.card.hide{display:none}
+.top{display:flex;gap:9px;align-items:flex-start;margin-bottom:7px}
+.bucket{flex:0 0 auto;font:700 11px/1 inherit;padding:5px 7px;border-radius:6px;
+  letter-spacing:.3px;white-space:nowrap}
+.A{background:var(--a-bg);color:var(--a)} .B{background:var(--b-bg);color:var(--b)}
+.C{background:var(--c-bg);color:var(--c)} .D{background:var(--d-bg);color:var(--d)}
+.title{font-weight:650;font-size:15px;letter-spacing:-.1px;flex:1;min-width:0}
+.score{flex:0 0 auto;font:700 15px/1 inherit;color:var(--mute)}
+
+.meta{font-size:12.5px;color:var(--mute);margin-bottom:7px}
+.meta b{color:var(--ink);font-weight:600}
+.blurb{font-size:13.5px;color:#40403c;margin-bottom:9px}
+
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.tag{font:600 11px/1 inherit;padding:4px 7px;border-radius:5px;background:#f0f0ed;color:var(--mute)}
+.tag.s{background:var(--strat-bg);color:var(--strat)}
+.tag.f{background:#fdf3e3;color:#8a5a1f}
+
+details{margin-bottom:10px}
+summary{font-size:12px;color:var(--mute);cursor:pointer;list-style:none;
+  padding:5px 0;user-select:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ ";font-size:10px}
+details[open] summary::before{content:"▾ "}
+.trace{font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:#fafaf8;border:1px solid var(--line);border-radius:7px;padding:9px;
+  color:#4a4a45;white-space:pre-wrap}
+
+/* actions */
+.acts{display:flex;gap:6px}
+.acts button{flex:1;border:1px solid var(--line);background:var(--card);
+  padding:11px 4px;border-radius:8px;font:600 13px/1 inherit;color:var(--ink);cursor:pointer}
+.acts button:active{transform:scale(.97)}
+.acts button.on-s{background:var(--a);border-color:var(--a);color:#fff}
+.acts button.on-d{background:#4a5a7a;border-color:#4a5a7a;color:#fff}
+.acts button.on-p{background:var(--pass);border-color:var(--pass);color:#fff}
+
+.verdicts{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px;font-size:11.5px;color:var(--mute)}
+.v{padding:3px 7px;border-radius:5px;background:#f0f0ed;font-weight:600}
+.v.conflict{background:#fdeee0;color:#8a4a1f}
+
+/* pass reasons */
+.reasons{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.reasons p{margin:0 0 7px;font-size:12px;color:var(--mute);font-weight:600}
+.rgrid{display:flex;flex-wrap:wrap;gap:5px}
+.rgrid button{border:1px solid var(--line);background:var(--card);padding:7px 9px;
+  border-radius:7px;font:500 12.5px/1 inherit;color:var(--ink);cursor:pointer}
+.rgrid button[aria-pressed=true]{background:var(--pass);border-color:var(--pass);color:#fff}
+
+.empty{text-align:center;color:var(--mute);font-size:13.5px;padding:34px 0}
+footer{margin-top:20px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--mute);line-height:1.7}
+.reset{background:none;border:0;color:var(--mute);text-decoration:underline;
+  font-size:11.5px;cursor:pointer;padding:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Daily Deal Report</h1>
+  <div class="sub">Nails &amp; Mercy · <span id="date"></span> · <span id="srcline"></span></div>
+</header>
+
+<div class="who" role="group" aria-label="Who is reviewing">
+  <button data-member="tristan" aria-pressed="true">Tristan</button>
+  <button data-member="partner" aria-pressed="false">Partner</button>
+</div>
+
+<div class="stats">
+  <div class="stat"><b id="s-new">0</b><span>New</span></div>
+  <div class="stat"><b id="s-short">0</b><span>Short</span></div>
+  <div class="stat"><b id="s-pass">0</b><span>Passed</span></div>
+  <div class="stat"><b id="s-strat">0</b><span>Strategic</span></div>
+</div>
+
+<div class="filters" role="group" aria-label="Filter">
+  <button data-f="todo" aria-pressed="true">To review</button>
+  <button data-f="all" aria-pressed="false">All</button>
+  <button data-f="A" aria-pressed="false">Priority</button>
+  <button data-f="strategic" aria-pressed="false">Strategic</button>
+  <button data-f="ctx" aria-pressed="false">Central TX</button>
+  <button data-f="short" aria-pressed="false">Shortlisted</button>
+</div>
+
+<div id="list"></div>
+
+<footer>
+  Scored by <code>buybox.yaml</code> v1.0 · rules are deterministic, every score shows its work.<br>
+  Sample data — 12 regression cases, not live deal flow. Wire up <code>label:deals</code> to go live.<br>
+  <button class="reset" id="reset">Reset all verdicts</button>
+</footer>
+
+</div>
+
+<script>
+const DEALS = [
+ {id:"t5",score:93,bucket:"A",strategic:true,ctx:false,title:"Industrial Filter Media Manufacturer",
+  loc:"Tulsa, OK",src:"Axial",rev:8500000,ebitda:1400000,tier:"T1",geo:"TOLA",model:"Location-agnostic",
+  blurb:"Manufacturer of filter media and cartridge filters. Multi-year contract backlog with municipal water treatment plants.",
+  tags:[["Strategic: filtration","s"],["T1 · 16.5% margin",""],["Recurring",""]],
+  trace:["Geography TOLA — TX / OK / LA / AR: +22","Financials T1: +30","STRATEGIC (filtration_general, water_safety): +25","+ recurring revenue: +6","+ institutional customers: +6","+ contracted backlog: +4"]},
+
+ {id:"t7",score:66,bucket:"B",strategic:true,ctx:true,title:"Backflow Prevention Testing Route",
+  loc:"San Antonio, TX",src:"Newsletter",rev:900000,ebitda:280000,tier:"T4",geo:"Central TX",model:"Local service",
+  blurb:"Route-based backflow prevention testing and water quality compliance for municipalities.",
+  tags:[["Strategic: water safety","s"],["Below buy box — floor waived","f"],["Recurring",""]],
+  trace:["Geography Central Texas — 1st priority: +35","Financials T4: +0","STRATEGIC (water_safety): +25","Financial floor bypassed by strategic vertical","+ recurring revenue: +6"]},
+
+ {id:"t10",score:59,bucket:"B",strategic:true,ctx:false,title:"Senior Living Facility Management Co",
+  loc:"Little Rock, AR",src:"Axial",rev:6000000,ebitda:520000,tier:"T3",geo:"TOLA",model:"Location-agnostic",
+  blurb:"Manages skilled nursing facility operations and long-term care facility services across three states.",
+  tags:[["Strategic: institutional facilities","s"],["T3 · 8.7% margin",""]],
+  trace:["Geography TOLA — TX / OK / LA / AR: +22","Financials T3: +12","STRATEGIC (institutional_facilities): +25","Financial floor bypassed by strategic vertical"]},
+
+ {id:"t1",score:56,bucket:"B",strategic:false,ctx:true,title:"HVAC &amp; Plumbing Company",
+  loc:"Austin, TX",src:"BizBuySell",rev:4200000,ebitda:620000,tier:"T3",geo:"Central TX",model:"Local service",
+  blurb:"Established home services company, recurring maintenance contracts, owner will train. 20 techs.",
+  tags:[["T3 · 14.8% margin",""],["Recurring",""],["Owner transitions",""]],
+  trace:["Geography Central Texas — 1st priority: +35","Financials T3: +12","+ recurring revenue: +6","+ owner will transition: +3"]},
+
+ {id:"t8",score:49,bucket:"C",strategic:false,ctx:false,title:"Precision Machining Company",
+  loc:"Phoenix, AZ",src:"Axial",rev:9000000,ebitda:1600000,tier:"T1",geo:"National",model:"Location-agnostic",
+  blurb:"Contract manufacturer, ships nationally, long-term agreement with aerospace primes. Largest customer 40% of revenue.",
+  tags:[["T1 · 17.8% margin",""],["Customer concentration","f"]],
+  trace:["Geography National: +15","Financials T1: +30","+ recurring revenue: +6","+ contracted backlog: +4","- customer concentration: -6"]},
+
+ {id:"t2",score:46,bucket:"C",strategic:true,ctx:false,title:"Commercial Water Filtration Systems",
+  loc:"Cleveland, OH",src:"Axial",rev:2100000,ebitda:410000,tier:"T4",geo:"National",model:"Location-agnostic",
+  blurb:"Manufactures and services water filtration systems sold to hospitals and health systems nationally. Recurring filter replacement contracts.",
+  tags:[["Strategic: water safety","s"],["Below buy box — floor waived","f"],["Direct adjacency",""]],
+  trace:["Geography National: +15","Financials T4: +0","STRATEGIC (water_safety): +25","Financial floor bypassed by strategic vertical","+ recurring revenue: +6"]},
+
+ {id:"t12",score:44,bucket:"C",strategic:false,ctx:false,title:"Specialty Distribution Business",
+  loc:"Fort Worth, TX",src:"BizBuySell",rev:5000000,ebitda:950000,tier:"T2",geo:"TOLA",model:"Location-agnostic",
+  blurb:"Wholesale distributor of industrial consumables. Cash Flow reported.",
+  tags:[["T2 (after SDE haircut)",""],["SDE-derived — verify","f"]],
+  trace:["Geography TOLA — TX / OK / LA / AR: +22","Financials T2: +22","⚑ SDE-derived — verify"]},
+
+ {id:"t6",score:38,bucket:"C",strategic:false,ctx:false,title:"Janitorial &amp; Facilities Services",
+  loc:"Shreveport, LA",src:"BizBuySell",rev:3000000,ebitda:800000,tier:"T2",geo:"TOLA",model:"Local service",
+  blurb:"Commercial janitorial serving office parks. Owner operated, one person operation handles sales.",
+  tags:[["T2 · 26.7% margin",""],["Owner is the business","f"]],
+  trace:["Geography TOLA — TX / OK / LA / AR: +22","Financials T2: +22","- owner is the business: -6"]},
+
+ {id:"t11",score:33,bucket:"D",strategic:false,ctx:true,title:"Landscaping Company",
+  loc:"Waco, TX",src:"BizBuySell",rev:2800000,ebitda:null,tier:"—",geo:"Central TX",model:"Local service",
+  blurb:"Commercial landscaping, recurring monthly service contracts.",
+  tags:[["No financials disclosed","f"],["Central TX — call the broker","f"],["Recurring",""]],
+  trace:["Geography Central Texas — 1st priority: +35","Financials T4: -8","Floor waived: G1 geography with undisclosed financials","+ recurring revenue: +6"]},
+];
+
+const REJECTED = [
+ {title:"Regional Home Services Platform", loc:"Columbus, OH", why:"Local-service business in OH — outside TOLA service radius"},
+ {title:"Vertical SaaS for Contractors", loc:"Dallas, TX", why:"Excluded category: software"},
+ {title:"Iconic Mexican Restaurant", loc:"San Antonio, TX", why:"Excluded category: restaurant"},
+];
+
+const REASONS=["Too small","Too expensive","Wrong geography","Owner-dependent","Customer concentration","Wrong industry","Licensure","Declining","Already seen"];
+const KEY="nm_deal_verdicts_v1";
+let state = {}; try{ state = JSON.parse(localStorage.getItem(KEY)||"{}") }catch(e){ state={} }
+let member="tristan", filter="todo";
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}};
+const vOf=(id,m)=>(state[id]&&state[id][m])||null;
+
+const money=n=>n==null?"—":"$"+(n>=1e6?(n/1e6).toFixed(n>=1e7?0:1)+"M":Math.round(n/1e3)+"K");
+const marginOf=d=>(d.ebitda&&d.rev)?Math.round(d.ebitda/d.rev*1000)/10+"%":"—";
+
+function setVerdict(id,act){
+  state[id]=state[id]||{};
+  const cur=state[id][member];
+  if(cur&&cur.act===act){ delete state[id][member]; }
+  else{ state[id][member]={act,reason:cur&&cur.reason?cur.reason:null}; }
+  save(); render();
+}
+function setReason(id,r){
+  const v=state[id]&&state[id][member]; if(!v)return;
+  v.reason = v.reason===r ? null : r; save(); render();
+}
+
+function render(){
+  document.getElementById("date").textContent =
+    new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  document.getElementById("srcline").textContent =
+    DEALS.length+" surfaced · "+REJECTED.length+" auto-rejected";
+
+  let nNew=0,nS=0,nP=0,nStrat=0;
+  DEALS.forEach(d=>{ const v=vOf(d.id,member);
+    if(!v)nNew++; else if(v.act==="short")nS++; else if(v.act==="pass")nP++;
+    if(d.strategic)nStrat++; });
+  s_new.textContent=nNew; s_short.textContent=nS; s_pass.textContent=nP; s_strat.textContent=nStrat;
+
+  const list=document.getElementById("list");
+  list.innerHTML="";
+  let shown=0;
+
+  DEALS.forEach(d=>{
+    const v=vOf(d.id,member), other=vOf(d.id, member==="tristan"?"partner":"tristan");
+    let ok=true;
+    if(filter==="todo") ok=!v;
+    else if(filter==="A") ok=d.bucket==="A";
+    else if(filter==="strategic") ok=d.strategic;
+    else if(filter==="ctx") ok=d.ctx;
+    else if(filter==="short") ok=v&&v.act==="short";
+    if(!ok) return;
+    shown++;
+
+    const el=document.createElement("div");
+    el.className="card"+(v&&v.act==="pass"?" done":"");
+    el.innerHTML=`
+      <div class="top">
+        <span class="bucket ${d.bucket}">${d.bucket}</span>
+        <span class="title">${d.title}</span>
+        <span class="score">${d.score}</span>
+      </div>
+      <div class="meta"><b>${d.loc}</b> · ${d.src} · ${d.model}<br>
+        Rev <b>${money(d.rev)}</b> · EBITDA <b>${money(d.ebitda)}</b> · Margin <b>${marginOf(d)}</b> · ${d.tier}</div>
+      <div class="blurb">${d.blurb}</div>
+      <div class="tags">${d.tags.map(t=>`<span class="tag ${t[1]}">${t[0]}</span>`).join("")}</div>
+      <details><summary>Why this scored ${d.score}</summary>
+        <div class="trace">${d.trace.join("\n")}</div></details>
+      <div class="acts">
+        <button data-a="short" class="${v&&v.act==="short"?"on-s":""}">Shortlist</button>
+        <button data-a="discuss" class="${v&&v.act==="discuss"?"on-d":""}">Discuss</button>
+        <button data-a="pass" class="${v&&v.act==="pass"?"on-p":""}">Pass</button>
+      </div>
+      ${v&&v.act==="pass"?`<div class="reasons"><p>Why pass? This is what trains the filter.</p>
+        <div class="rgrid">${REASONS.map(r=>
+          `<button data-r="${r}" aria-pressed="${v.reason===r}">${r}</button>`).join("")}</div></div>`:""}
+      ${(v||other)?`<div class="verdicts">
+        ${v?`<span class="v">You: ${v.act}${v.reason?" · "+v.reason:""}</span>`:""}
+        ${other?`<span class="v ${v&&v.act!==other.act?"conflict":""}">${member==="tristan"?"Partner":"Tristan"}: ${other.act}</span>`:""}
+      </div>`:""}`;
+
+    el.querySelectorAll(".acts button").forEach(b=>
+      b.onclick=()=>setVerdict(d.id,b.dataset.a));
+    el.querySelectorAll(".rgrid button").forEach(b=>
+      b.onclick=()=>setReason(d.id,b.dataset.r));
+    list.appendChild(el);
+  });
+
+  if(filter==="all"||filter==="todo"){
+    const r=document.createElement("details");
+    r.innerHTML=`<summary style="padding:12px 2px">${REJECTED.length} auto-rejected — see what the filter caught</summary>
+      <div class="trace">${REJECTED.map(x=>`${x.title} (${x.loc})\n  └─ ${x.why}`).join("\n\n")}</div>`;
+    list.appendChild(r);
+  }
+  if(!shown){
+    const e=document.createElement("div");
+    e.className="empty";
+    e.textContent = filter==="todo" ? "All caught up. Nothing left to review." : "Nothing matches this filter.";
+    list.insertBefore(e,list.firstChild);
+  }
+}
+
+document.querySelectorAll(".who button").forEach(b=>b.onclick=()=>{
+  member=b.dataset.member;
+  document.querySelectorAll(".who button").forEach(x=>
+    x.setAttribute("aria-pressed", x===b));
+  render();
+});
+document.querySelectorAll(".filters button").forEach(b=>b.onclick=()=>{
+  filter=b.dataset.f;
+  document.querySelectorAll(".filters button").forEach(x=>
+    x.setAttribute("aria-pressed", x===b));
+  render();
+});
+document.getElementById("reset").onclick=()=>{ state={}; save(); render(); };
+render();
+</script>
+</body>
+</html>

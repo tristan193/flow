@@ -1,0 +1,274 @@
+---
+# ============================================================
+#  NAILS & MERCY — BUY BOX CONFIG  v1.0
+#  Single source of truth for filtering + scoring.
+#  Edit this file; the pipeline reads it every run.
+# ============================================================
+
+meta:
+  version: "1.0"
+  updated: "2026-07-30"
+  members: [tristan, partner]
+
+# ------------------------------------------------------------
+# 1. BUSINESS MODEL TYPE
+#    Determines which geography rules apply. The classifier
+#    assigns exactly one of these to every deal.
+# ------------------------------------------------------------
+business_model_types:
+  LOCAL_SERVICE:
+    description: >
+      Revenue is bound to a physical service radius. Customers must be
+      near the crew. "Men in a truck." Cannot be operated from afar.
+    signals:
+      - home services, HVAC, plumbing, electrical, roofing, landscaping
+      - commercial services, janitorial, facilities, pest, security
+      - specialty trades, install/repair, route-based service
+      - medical/dental practices, clinics, local care delivery
+    geo_rule: must_be_in_TOLA
+
+  LOCATION_AGNOSTIC:
+    description: >
+      Customers are national/dispersed. Product ships, or service is
+      delivered remotely/contractually. Plant location is incidental.
+    signals:
+      - manufacturing, fabrication, assembly
+      - distribution, wholesale, B2B product supply
+      - national contract service, licensing, IP-based
+      - equipment/consumable supply to institutional buyers
+    geo_rule: anywhere_in_US
+
+  AMBIGUOUS:
+    description: Classifier not confident. Route to human triage, do not auto-reject.
+    geo_rule: manual_review
+
+# ------------------------------------------------------------
+# 2. GEOGRAPHY TIERS
+# ------------------------------------------------------------
+geography:
+  G1_CENTRAL_TX:
+    label: "Central Texas — 1st priority"
+    score: 35
+    financial_floor: T3        # will accept weaker financials to buy local
+    counties_or_metros:
+      - Austin
+      - San Antonio
+      - Waco
+      - Temple
+      - Killeen
+      - Harker Heights
+      - Belton
+      - Georgetown
+      - Round Rock
+      - Cedar Park
+      - Pflugerville
+      - Leander
+      - Kyle
+      - Buda
+      - San Marcos
+      - New Braunfels
+      - Seguin
+      - Bastrop
+      - Lockhart
+      - Marble Falls
+      - Fredericksburg
+      - Bryan
+      - College Station
+      - Brenham
+      - Boerne
+      - Kerrville
+    counties:
+      - Travis
+      - Williamson
+      - Hays
+      - Bexar
+      - Comal
+      - Guadalupe
+      - Bell
+      - McLennan
+      - Burnet
+      - Llano
+      - Blanco
+      - Caldwell
+      - Bastrop
+      - Brazos
+      - Gillespie
+      - Kendall
+
+  G2_TOLA:
+    label: "TOLA — TX / OK / LA / AR"
+    score: 22
+    financial_floor: T2
+    states: [TX, OK, LA, AR]
+    note: >
+      Applies to LOCAL_SERVICE businesses outside Central TX, and to any
+      LOCATION_AGNOSTIC business that happens to sit here.
+
+  G3_NATIONAL:
+    label: "National"
+    score: 15
+    financial_floor: T2
+    states: [ALL_US]
+    requires_business_model: [LOCATION_AGNOSTIC, AMBIGUOUS]
+    note: >
+      HARD RULE: a LOCAL_SERVICE business outside TOLA is rejected on
+      geography regardless of how good the financials look.
+
+  G4_OUT:
+    label: "Outside US"
+    score: 0
+    hard_reject: true
+
+# ------------------------------------------------------------
+# 3. FINANCIAL TIERS
+#    Evaluated top-down; first match wins.
+# ------------------------------------------------------------
+financial_tiers:
+  T1:
+    label: "Tier 1 — $1M+ EBITDA with 15%+ margins"
+    score: 30
+    ebitda_min: 1000000
+    ebitda_margin_min: 0.15
+  T2:
+    label: "Tier 2 — $750K+ EBITDA"
+    score: 22
+    ebitda_min: 750000
+    ebitda_margin_min: null
+  T3:
+    label: "Tier 3 — $500K+ EBITDA"
+    score: 12
+    ebitda_min: 500000
+    ebitda_margin_min: null
+  T4:
+    label: "Below buy box"
+    score: 0
+    ebitda_min: 0
+    hard_reject_unless_strategic: true
+
+  # EBITDA and SDE are stored in SEPARATE database columns and never merged.
+  # Reports show EBITDA when present, otherwise SDE annotated with "*".
+  # Ambiguous labels ("Cash Flow" on BizBuySell) are filed as SDE.
+  #
+  # OPEN QUESTION — the tiers above are stated in EBITDA. When a listing only
+  # discloses SDE, what do we compare against the floor?
+  #   proxy_haircut : multiply SDE by the factor below, score the result
+  #   score_raw     : score SDE at face value (more permissive, more noise)
+  #   triage        : never auto-reject on SDE alone; route to manual review
+  sde_scoring_mode: proxy_haircut
+  sde_to_ebitda_haircut: 0.85     # rough owner-comp normalization
+  annotate: "*"
+
+  unknown_financials:
+    action: surface_if_strategic_or_G1
+    score_penalty: -8
+    flag_in_ui: "No financials disclosed"
+
+# ------------------------------------------------------------
+# 4. INDUSTRY
+# ------------------------------------------------------------
+industry:
+
+  # --- STRATEGIC LANE -------------------------------------
+  # Adjacent to the water filtration platform under LOI.
+  # These bypass the financial floor entirely.
+  strategic_verticals:
+    score_bonus: 25
+    bypass_financial_floor: true
+    absolute_ebitda_floor: 250000     # below this, still show but tag "tuck-in / sub-scale"
+    keywords:
+      water_safety:
+        - water filtration, water filter, filtration system
+        - water treatment, water purification, reverse osmosis
+        - legionella, waterborne pathogen, water testing
+        - water quality, potable water, water hygiene
+        - backflow prevention, water management plan
+      filtration_general:
+        - industrial filtration, air filtration, membrane
+        - filter media, cartridge filter, filter service
+      institutional_facilities:
+        - hospital facility management, medical facility services
+        - healthcare facilities management, clinical environmental services
+        - correctional facility services, prison services, detention facility
+        - senior living management, skilled nursing facility management
+        - assisted living operations, long-term care facility services
+      institutional_channel:
+        - sells to hospitals, sells to health systems
+        - sells to correctional, sells to municipalities
+        - GPO contract, institutional contract, government contract
+
+  # --- HARD EXCLUSIONS ------------------------------------
+  # Rejected UNLESS the deal also trips a strategic keyword.
+  excluded:
+    hard_reject: true
+    strategic_override: true
+    categories:
+      restaurant:
+        - restaurant, cafe, pizzeria, bakery, coffee shop, taqueria
+        - food truck, catering, brewery taproom, sports bar, bar & grill, diner, steakhouse
+      retail:
+        - retail store, storefront, boutique, gift shop, convenience store
+        - gas station, c-store, liquor store, smoke shop, apparel store
+      franchise:
+        - franchise resale, franchise opportunity, franchisee
+        - territory available, franchise fee, royalty fee
+      dtc_ecommerce:
+        - DTC, direct to consumer, Shopify store, Amazon FBA
+        - dropship, ecommerce brand, online store
+      software:
+        - SaaS, software as a service, mobile app, web app
+        - software company, software platform, ARR, MRR
+        # NOTE: bare "platform" deliberately excluded — it false-positives on
+        # every services roll-up marketed as a "platform company".
+
+  # --- OPEN LANE ------------------------------------------
+  # Everything else. Requires T2+ per the geography floor.
+  open_lane:
+    description: "Broad. Anything not excluded above."
+    default_financial_floor: T2
+
+# ------------------------------------------------------------
+# 5. QUALITATIVE MODIFIERS (scored, never hard filters)
+# ------------------------------------------------------------
+modifiers:
+  positive:
+    recurring_revenue:        {score: 6,  keywords: [recurring, contract, subscription, retainer, monthly service, MSA, route]}
+    institutional_customers:  {score: 6,  keywords: [hospital, health system, university, municipal, school district, government, correctional]}
+    contracted_backlog:       {score: 4,  keywords: [backlog, multi-year contract, long-term agreement]}
+    owner_will_transition:    {score: 3,  keywords: [owner will train, transition period, will stay on, retiring]}
+    fragmented_industry:      {score: 3,  keywords: [fragmented, roll-up, add-on, consolidation]}
+    real_estate_available:    {score: 2,  keywords: [real estate available, property included, owns building]}
+    management_in_place:      {score: 4,  keywords: [general manager, management team in place, absentee, semi-absentee]}
+  negative:
+    customer_concentration:   {score: -6, keywords: [one customer, largest customer, concentration, single client]}
+    owner_is_the_business:    {score: -6, keywords: [owner operator, owner operated, one person operation, no employees, sole proprietor]}
+    licensure_required:       {score: -3, keywords: [license required, must be licensed, medical director required]}
+    asset_sale_only:          {score: -2, keywords: [asset sale, below asset value, liquidation]}
+    declining:                {score: -8, keywords: [declining, down year, distressed, must sell, health reasons, urgent]}
+    broker_hype:              {score: -3, keywords: [gold mine, wont last, hurry, cash cow, turnkey, runs itself, act now]}
+
+# ------------------------------------------------------------
+# 6. ROUTING THRESHOLDS
+# ------------------------------------------------------------
+routing:
+  A_priority:  {min_score: 70, label: "Priority — review today"}
+  B_review:    {min_score: 50, label: "Worth a look"}
+  C_watch:     {min_score: 35, label: "Watchlist"}
+  D_suppress:  {min_score: 0,  label: "Suppressed — visible under 'show all'"}
+
+  daily_report_cap: 25          # never send more than this; overflow to watchlist page
+  always_include_strategic: true
+
+# ------------------------------------------------------------
+# 7. LEARNED PREFERENCES (written by the feedback loop)
+#    Starts empty. Every pass reason with a structured tag
+#    accretes weight here. Human-readable on purpose.
+# ------------------------------------------------------------
+learned:
+  penalties: []
+  # example of what this will look like after ~3 weeks:
+  #  - {pattern: "dental practice", weight: -15, evidence: 4, note: "both members passed, licensure + owner-dependent"}
+  #  - {pattern: "trucking / owner-operator fleet", weight: -12, evidence: 3}
+  boosts: []
+  #  - {pattern: "backflow prevention", weight: +18, evidence: 2, note: "Tristan shortlisted both"}
+  min_evidence_to_apply: 3      # need 3 concordant signals before auto-applying
+  max_learned_weight: 25        # learned weights can never fully override the buy box

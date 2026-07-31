@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Nails Mercy Deal Report",
+  "schemaVersion": 1,
+  "description": "Nails & Mercy deal report. Deal data is read-only, baked in at build time from nm_deals.db. Verdicts (pass/discuss/shortlist) are the only writes and go to the shared Drive folder as an append-only log, so each partner reviews in their own instance and the nightly harvest reconciles both."
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nails &amp; Mercy -- Daily Deal Report</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f6f6f4; --card:#fff; --ink:#1a1a18; --mute:#6b6b66; --line:#e3e3df;
+  --a:#0d7a4f; --a-bg:#e8f5ee;
+  --b:#1f5fa8; --b-bg:#e8f0fa;
+  --c:#8a6d1f; --c-bg:#faf4e2;
+  --d:#6b6b66; --d-bg:#efefec;
+  --needs:#a3352b; --needs-bg:#fbecea;
+  --pass:#a3352b; --pass-bg:#fbecea;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding-bottom:40px}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px}
+
+header{padding:18px 0 12px}
+h1{font-size:19px;margin:0 0 2px;letter-spacing:-.2px}
+.sub{font-size:12.5px;color:var(--mute)}
+
+.mode{display:flex;gap:6px;margin-bottom:14px;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;padding:4px}
+.mode button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:7px;
+  font:600 13.5px/1 inherit;color:var(--mute);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;gap:6px}
+.mode button[aria-pressed=true]{background:var(--b);color:#fff}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:9px 6px;text-align:center}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px}
+
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:4px;
+  scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);
+  padding:7px 12px;border-radius:999px;font:500 13px/1 inherit;color:var(--mute);cursor:pointer}
+.filters button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:13px;margin-bottom:9px;transition:opacity .18s}
+.card.done{opacity:.42}
+.top{display:flex;gap:9px;align-items:flex-start;margin-bottom:7px}
+.srcpill{flex:0 0 auto;font:700 10.5px/1 inherit;padding:5px 7px;border-radius:6px;
+  letter-spacing:.2px;white-space:nowrap;background:var(--b-bg);color:var(--b)}
+.srcpill.businessexits{background:var(--a-bg);color:var(--a)}
+.srcpill.benchmark{background:#f6eaf8;color:#7b2d8e}
+.srcpill.newsletter{background:var(--c-bg);color:var(--c)}
+.title{font-weight:650;font-size:15px;letter-spacing:-.1px;flex:1;min-width:0}
+.earn{flex:0 0 auto;font:700 14px/1 inherit;color:var(--ink);text-align:right}
+.earn small{display:block;font:600 9.5px/1 inherit;color:var(--mute);margin-top:2px}
+
+.meta{font-size:12.5px;color:var(--mute);margin-bottom:7px}
+.meta b{color:var(--ink);font-weight:600}
+.blurb{font-size:13.5px;color:#40403c;margin-bottom:9px}
+
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.tag{font:600 11px/1 inherit;padding:4px 7px;border-radius:5px;background:#f0f0ed;color:var(--mute)}
+.tag.needs{background:var(--needs-bg);color:var(--needs)}
+
+.link{font-size:12px;margin-bottom:9px}
+.link a{color:var(--b)}
+
+.acts{display:flex;gap:6px}
+.acts button{flex:1;border:1px solid var(--line);background:var(--card);
+  padding:11px 4px;border-radius:8px;font:600 13px/1 inherit;color:var(--ink);cursor:pointer}
+.acts button:active{transform:scale(.97)}
+.acts button.on-s{background:var(--a);border-color:var(--a);color:#fff}
+.acts button.on-d{background:#4a5a7a;border-color:#4a5a7a;color:#fff}
+.acts button.on-p{background:var(--pass);border-color:var(--pass);color:#fff}
+
+.verdicts{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px;font-size:11.5px;color:var(--mute)}
+.v{padding:3px 7px;border-radius:5px;background:#f0f0ed;font-weight:600}
+.v.conflict{background:#fdeee0;color:#8a4a1f}
+
+.reasons{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.reasons p{margin:0 0 7px;font-size:12px;color:var(--mute);font-weight:600}
+.rgrid{display:flex;flex-wrap:wrap;gap:5px}
+.rgrid button{border:1px solid var(--line);background:var(--card);padding:7px 9px;
+  border-radius:7px;font:500 12.5px/1 inherit;color:var(--ink);cursor:pointer}
+.rgrid button[aria-pressed=true]{background:var(--pass);border-color:var(--pass);color:#fff}
+
+.empty{text-align:center;color:var(--mute);font-size:13.5px;padding:34px 0}
+footer{margin-top:20px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--mute);line-height:1.7}
+.reset{background:none;border:0;color:var(--mute);text-decoration:underline;
+  font-size:11.5px;cursor:pointer;padding:0}
+
+#syncbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 11px;
+  background:var(--card);border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--mute)}
+#syncdot{width:8px;height:8px;border-radius:50%;background:var(--mute);flex:0 0 auto}
+#syncdot.pending{background:#c98a1f}
+#syncdot.ok{background:var(--a)}
+#syncdot.err{background:var(--pass)}
+#synctext{flex:1;min-width:0}
+#syncnow{border:1px solid var(--line);background:var(--bg);padding:5px 10px;border-radius:6px;
+  font:600 11.5px/1 inherit;color:var(--ink);cursor:pointer}
+#syncnow:disabled{opacity:.45;cursor:default}
+
+/* ---- swipe mode ---- */
+.deck{position:relative;height:520px;margin-bottom:16px;touch-action:none}
+.sc{position:absolute;inset:0;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:18px;display:flex;flex-direction:column;
+  box-shadow:0 6px 20px rgba(0,0,0,.07);user-select:none;overflow:hidden}
+.sc .top{margin-bottom:10px}
+.sc .title{font-size:19px}
+.sc .earn{font-size:19px}
+.sc .blurb{font-size:14.5px;flex:1;overflow:auto}
+.sc .meta{font-size:13px}
+.stamp{position:absolute;top:26px;font:800 26px/1 inherit;padding:8px 14px;
+  border:4px solid;border-radius:10px;letter-spacing:1.5px;opacity:0;
+  transform:rotate(-18deg);pointer-events:none}
+.stamp.pass{left:20px;color:var(--pass);border-color:var(--pass)}
+.stamp.save{right:20px;color:var(--a);border-color:var(--a);transform:rotate(18deg)}
+
+.swipe-acts{display:flex;gap:10px;justify-content:center;margin-bottom:10px}
+.swipe-acts button{width:58px;height:58px;border-radius:50%;border:1px solid var(--line);
+  background:var(--card);font-size:24px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.swipe-acts button:active{transform:scale(.94)}
+.swipe-acts button.pass{color:var(--pass)}
+.swipe-acts button.discuss{color:#4a5a7a;width:46px;height:46px;font-size:19px;align-self:center}
+.swipe-acts button.save{color:var(--a)}
+
+.progress{text-align:center;font-size:12px;color:var(--mute);margin-bottom:10px}
+.undo{display:block;margin:0 auto 14px;background:none;border:0;color:var(--mute);
+  text-decoration:underline;font-size:12.5px;cursor:pointer}
+.swipe-done{text-align:center;padding:60px 0}
+.swipe-done .big{font-size:17px;font-weight:650;margin-bottom:6px}
+.swipe-done button{margin-top:14px;border:1px solid var(--line);background:var(--card);
+  padding:10px 18px;border-radius:9px;font:600 13.5px/1 inherit;color:var(--ink);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Daily Deal Report <span style="font-weight:400;color:var(--mute);font-size:14px">v1</span></h1>
+  <div class="sub">Nails &amp; Mercy &middot; <span id="date"></span> &middot; <span id="srcline"></span></div>
+</header>
+
+<div class="mode" role="group" aria-label="View mode">
+  <button data-mode="swipe" aria-pressed="true">&#128257; Swipe</button>
+  <button data-mode="list" aria-pressed="false">&#9776; List</button>
+</div>
+
+<div id="statsWrap" class="stats">
+  <div class="stat"><b id="s-new">0</b><span>New</span></div>
+  <div class="stat"><b id="s-short">0</b><span>Short</span></div>
+  <div class="stat"><b id="s-pass">0</b><span>Passed</span></div>
+  <div class="stat"><b id="s-needs">0</b><span>Needs info</span></div>
+</div>
+
+<div id="filtersWrap" class="filters" role="group" aria-label="Filter" style="display:none">
+  <button data-f="todo" aria-pressed="true">To review</button>
+  <button data-f="all" aria-pressed="false">All</button>
+  <button data-f="hasfin" aria-pressed="false">Has earnings</button>
+  <button data-f="needs" aria-pressed="false">Needs info</button>
+  <button data-f="short" aria-pressed="false">Shortlisted</button>
+</div>
+
+<div id="syncbar"><span id="syncdot"></span><span id="synctext">Verdicts stored locally</span>
+  <button id="syncnow">Sync now</button></div>
+
+<div id="swipeWrap"></div>
+<div id="list"></div>
+
+<footer>
+  __N_DEALS__ real listings ingested from <code>deals@tullyinvesting.com</code> / <code>tw@tullyinvesting.com</code> (__PER_SOURCE__).<br>
+  No buy-box scoring yet -- <code>buybox.yaml</code> tuning is Phase 3, pending agreement between Tristan and partner on real flow.<br>
+  __N_NEEDS__ listings flagged needs-info (earnings, location, or business model undetermined by regex) -- these are honest gaps, not guesses.<br>
+  Built __BUILD_TS__ &middot; reviewing as <b>__MEMBER__</b>. Deal data is read-only; verdicts sync to the shared Drive folder.<br>
+  <button class="reset" id="reset">Clear my verdicts in this browser</button>
+</footer>
+
+</div>
+
+<script>
+const DEALS = __DEALS__;
+
+const REASONS=["Too small","Too expensive","Wrong geography","Owner-dependent","Customer concentration","Wrong industry","Licensure","Declining","Already seen"];
+const KEY="nm_deal_verdicts_v1";
+let local = {};   // THIS member's verdicts made in this browser: id -> {act,reason,at}
+let dirty = new Set();   // ids not yet flushed to Drive
+try{ const s=JSON.parse(localStorage.getItem(KEY)||"{}"); local=s.local||{}; dirty=new Set(s.dirty||[]); }catch(e){}
+// ---- build-time config (see build_artifact.py) ----
+const MEMBER="__MEMBER__";                 // this instance's reviewer; partner runs their own build
+const OTHER = MEMBER==="tristan" ? "partner" : "tristan";
+const BUILD_TS="__BUILD_TS__";
+const DRIVE_FOLDER="__DRIVE_FOLDER__";
+const DRIVE_CREATE_TOOL="__DRIVE_CREATE_TOOL__";
+const BAKED = __BAKED__;                   // verdicts already folded into the db, both members, read-only
+let mode="swipe", filter="todo";
+let swipeHistory = [];
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({local,dirty:[...dirty]}))}catch(e){}};
+// Verdict resolution: local (this member, this browser) wins over baked.
+// Another member's verdict is only ever read from BAKED — never editable here.
+const vOf=(id,m)=>{
+  if(m===MEMBER && local[id]) return local[id];
+  return (BAKED[id]&&BAKED[id][m])||null;
+};
+function setLocal(id,act,reason){
+  local[id]={act,reason:reason||null,at:new Date().toISOString()};
+  dirty.add(id); save(); scheduleFlush();
+}
+function clearLocal(id){ delete local[id]; dirty.add(id); save(); scheduleFlush(); }
+
+const money=n=>n==null?null:"$"+(n>=1e6?(n/1e6).toFixed(n>=1e7?0:1)+"M":Math.round(n/1e3)+"K");
+
+function cardBody(d, big){
+  const earn = d.ebitda!=null ? money(d.ebitda) : (d.sde!=null ? money(d.sde)+"*" : "—");
+  return `
+    <div class="top">
+      <span class="srcpill ${d.srcbucket}">${d.src}</span>
+      <span class="title">${d.title}</span>
+      <span class="earn">${earn}<small>${d.basis||"no data"}</small></span>
+    </div>
+    <div class="meta"><b>${d.loc||"Location not disclosed"}</b> &middot; ${d.model}<br>
+      Rev ${money(d.rev)||"—"} &middot; Asking ${money(d.asking)||"—"}</div>
+    <div class="blurb">${d.blurb}</div>
+    <div class="tags">${d.needs.map(n=>`<span class="tag needs">Needs: ${n}</span>`).join("")}</div>
+    ${d.url?`<div class="link"><a href="${d.url}" target="_blank" rel="noopener">View original listing &rarr;</a></div>`:""}
+  `;
+}
+
+function setVerdictToggle(id,act){
+  const cur=vOf(id,MEMBER);
+  if(cur&&cur.act===act) clearLocal(id);
+  else setLocal(id,act,cur&&cur.reason?cur.reason:null);
+}
+function setReason(id,r){
+  const v=vOf(id,MEMBER); if(!v)return;
+  setLocal(id, v.act, v.reason===r ? null : r); renderAll();
+}
+
+// ---------------- SWIPE MODE ----------------
+function swipeQueue(){ return DEALS.filter(d=>!vOf(d.id,MEMBER)); }
+
+function commitSwipe(id, act, cardEl, dx){
+  swipeHistory.push({id});
+  setLocal(id, act, null);
+  if(cardEl){
+    const fly = dx!=null ? dx : (act==="pass"?-600:600);
+    cardEl.style.transition="transform .35s ease, opacity .35s ease";
+    cardEl.style.transform=`translate(${fly}px,-10px) rotate(${fly/14}deg)`;
+    cardEl.style.opacity="0";
+    setTimeout(renderSwipe, 220);
+  } else {
+    renderSwipe();
+  }
+  updateStats();
+}
+
+function undoSwipe(){
+  const last = swipeHistory.pop();
+  if(!last) return;
+  clearLocal(last.id);
+  renderSwipe(); updateStats();
+}
+
+function renderSwipe(){
+  const wrap = document.getElementById("swipeWrap");
+  wrap.innerHTML="";
+  const q = swipeQueue();
+  if(!q.length){
+    const d=document.createElement("div");
+    d.className="swipe-done";
+    d.innerHTML=`<div class="big">All caught up.</div>
+      <div style="color:var(--mute);font-size:13.5px">Nothing left in today's deck.</div>
+      <button id="toListBtn">Browse everything in List view</button>`;
+    wrap.appendChild(d);
+    document.getElementById("toListBtn").onclick=()=>setMode("list");
+    return;
+  }
+  const prog=document.createElement("div");
+  prog.className="progress";
+  prog.textContent = `${DEALS.length - q.length + 1} of ${DEALS.length}`;
+  wrap.appendChild(prog);
+
+  const deck=document.createElement("div");
+  deck.className="deck";
+  // stack up to 3, back-to-front, top card interactive
+  const stackN = Math.min(3, q.length);
+  for(let i=stackN-1;i>=0;i--){
+    const d=q[i];
+    const sc=document.createElement("div");
+    sc.className="sc";
+    sc.style.zIndex=String(10-i);
+    sc.style.transform=`translateY(${i*8}px) scale(${1-i*0.03})`;
+    sc.innerHTML = cardBody(d, true) +
+      `<span class="stamp pass">PASS</span><span class="stamp save">SAVE</span>`;
+    deck.appendChild(sc);
+    if(i===0) attachDrag(sc, d);
+  }
+  wrap.appendChild(deck);
+
+  const acts=document.createElement("div");
+  acts.className="swipe-acts";
+  acts.innerHTML = `
+    <button class="pass" title="Pass" id="btnPass">&#10005;</button>
+    <button class="discuss" title="Discuss" id="btnDiscuss">?</button>
+    <button class="save" title="Save" id="btnSave">&#9829;</button>`;
+  wrap.appendChild(acts);
+
+  const undo=document.createElement("button");
+  undo.className="undo";
+  undo.textContent="Undo last";
+  undo.disabled = swipeHistory.length===0;
+  undo.style.opacity = swipeHistory.length===0 ? ".4":"1";
+  undo.onclick=undoSwipe;
+  wrap.appendChild(undo);
+
+  const topCard = deck.querySelector(".sc:last-child") || deck.firstElementChild;
+  const d0 = q[0];
+  document.getElementById("btnPass").onclick=()=>commitSwipe(d0.id,"pass", deck.firstElementChild, -600);
+  document.getElementById("btnDiscuss").onclick=()=>commitSwipe(d0.id,"discuss", deck.firstElementChild, 0);
+  document.getElementById("btnSave").onclick=()=>commitSwipe(d0.id,"short", deck.firstElementChild, 600);
+}
+
+function attachDrag(el, d){
+  let sx=0, sy=0, dx=0, dragging=false;
+  const passStamp=()=>el.querySelector(".stamp.pass");
+  const saveStamp=()=>el.querySelector(".stamp.save");
+  function down(e){
+    dragging=true;
+    const p = e.touches ? e.touches[0] : e;
+    sx=p.clientX; sy=p.clientY;
+    el.style.transition="none";
+  }
+  function move(e){
+    if(!dragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    dx = p.clientX - sx;
+    const dy = (p.clientY - sy) * 0.15;
+    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx/16}deg)`;
+    const t = Math.min(Math.abs(dx)/90, 1);
+    if(dx<0){ passStamp().style.opacity=t; saveStamp().style.opacity=0; }
+    else{ saveStamp().style.opacity=t; passStamp().style.opacity=0; }
+  }
+  function up(){
+    if(!dragging) return;
+    dragging=false;
+    if(Math.abs(dx) > 90){
+      commitSwipe(d.id, dx<0?"pass":"short", el, dx<0?-600:600);
+    } else {
+      el.style.transition="transform .25s ease";
+      el.style.transform="translate(0,0) rotate(0)";
+      if(passStamp()) passStamp().style.opacity=0;
+      if(saveStamp()) saveStamp().style.opacity=0;
+    }
+    dx=0;
+  }
+  el.addEventListener("mousedown", down);
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+  el.addEventListener("touchstart", down, {passive:true});
+  el.addEventListener("touchmove", move, {passive:true});
+  el.addEventListener("touchend", up);
+}
+
+// ---------------- LIST MODE ----------------
+function renderList(){
+  const list=document.getElementById("list");
+  list.innerHTML="";
+  let shown=0;
+
+  DEALS.forEach(d=>{
+    const v=vOf(d.id,MEMBER), other=vOf(d.id,OTHER);
+    let ok=true;
+    if(filter==="todo") ok=!v;
+    else if(filter==="hasfin") ok=(d.ebitda!=null||d.sde!=null);
+    else if(filter==="needs") ok=d.needs.length>0;
+    else if(filter==="short") ok=v&&v.act==="short";
+    if(!ok) return;
+    shown++;
+
+    const el=document.createElement("div");
+    el.className="card"+(v&&v.act==="pass"?" done":"");
+    el.innerHTML = cardBody(d,false) + `
+      <div class="acts">
+        <button data-a="short" class="${v&&v.act==="short"?"on-s":""}">Shortlist</button>
+        <button data-a="discuss" class="${v&&v.act==="discuss"?"on-d":""}">Discuss</button>
+        <button data-a="pass" class="${v&&v.act==="pass"?"on-p":""}">Pass</button>
+      </div>
+      ${v&&v.act==="pass"?`<div class="reasons"><p>Why pass? This is what trains the filter.</p>
+        <div class="rgrid">${REASONS.map(r=>
+          `<button data-r="${r}" aria-pressed="${v.reason===r}">${r}</button>`).join("")}</div></div>`:""}
+      ${(v||other)?`<div class="verdicts">
+        ${v?`<span class="v">You: ${v.act}${v.reason?" &middot; "+v.reason:""}</span>`:""}
+        ${other?`<span class="v ${v&&v.act!==other.act?"conflict":""}">${OTHER==="tristan"?"Tristan":"Partner"}: ${other.act}</span>`:""}
+      </div>`:""}`;
+
+    el.querySelectorAll(".acts button").forEach(b=>
+      b.onclick=()=>{ setVerdictToggle(d.id,b.dataset.a); renderAll(); });
+    el.querySelectorAll(".rgrid button").forEach(b=>
+      b.onclick=()=>setReason(d.id,b.dataset.r));
+    list.appendChild(el);
+  });
+
+  if(!shown){
+    const e=document.createElement("div");
+    e.className="empty";
+    e.textContent = filter==="todo" ? "All caught up. Nothing left to review." : "Nothing matches this filter.";
+    list.insertBefore(e,list.firstChild);
+  }
+}
+
+function updateStats(){
+  let nNew=0,nS=0,nP=0,nNeeds=0;
+  DEALS.forEach(d=>{ const v=vOf(d.id,MEMBER);
+    if(!v)nNew++; else if(v.act==="short")nS++; else if(v.act==="pass")nP++;
+    if(d.needs.length)nNeeds++; });
+  document.getElementById("s-new").textContent=nNew;
+  document.getElementById("s-short").textContent=nS;
+  document.getElementById("s-pass").textContent=nP;
+  document.getElementById("s-needs").textContent=nNeeds;
+}
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll(".mode button").forEach(x=>
+    x.setAttribute("aria-pressed", x.dataset.mode===m));
+  document.getElementById("filtersWrap").style.display = m==="list" ? "flex":"none";
+  document.getElementById("swipeWrap").style.display = m==="swipe" ? "block":"none";
+  document.getElementById("list").style.display = m==="list" ? "block":"none";
+  renderAll();
+}
+
+function renderAll(){
+  document.getElementById("date").textContent =
+    new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  document.getElementById("srcline").textContent = DEALS.length+" real listings, unscored";
+  updateStats();
+  if(mode==="swipe") renderSwipe(); else renderList();
+}
+
+document.querySelectorAll(".mode button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+document.querySelectorAll(".filters button").forEach(b=>b.onclick=()=>{
+  filter=b.dataset.f;
+  document.querySelectorAll(".filters button").forEach(x=>
+    x.setAttribute("aria-pressed", x===b));
+  renderList();
+});
+document.getElementById("reset").onclick=()=>{
+  if(!confirm("Clear your verdicts in this browser? Anything already synced to Drive stays there."))return;
+  for(const id of Object.keys(local)) dirty.add(id);
+  local={}; swipeHistory=[]; save(); renderAll();
+};
+
+// ---------------- VERDICT SYNC (write-only, append-only) ----------------
+// The page never edits or deletes anything in Drive — it appends one JSON log
+// per flush. The nightly harvest reads every log, folds them into
+// nm_deals.db's verdicts table, and the next build bakes them back in as
+// BAKED. That's why cross-partner visibility is next-harvest, not live.
+let flushTimer=null, flushing=false;
+
+function syncStatus(cls, text, busy){
+  document.getElementById("syncdot").className = cls;
+  document.getElementById("synctext").textContent = text;
+  document.getElementById("syncnow").disabled = !!busy || dirty.size===0;
+}
+function refreshSyncUI(){
+  if(flushing) return;
+  if(dirty.size) syncStatus("pending", dirty.size+" verdict"+(dirty.size===1?"":"s")+" not yet synced");
+  else syncStatus("ok","All verdicts synced");
+}
+function scheduleFlush(){
+  refreshSyncUI();
+  clearTimeout(flushTimer);
+  flushTimer=setTimeout(flush, 45000);   // debounce a swipe run into one file — long enough to read a listing page without triggering a sync mid-read
+}
+
+async function flush(){
+  if(flushing || !dirty.size) return;
+  if(!(window.cowork && window.cowork.callMcpTool)){
+    syncStatus("pending","Offline — verdicts held in this browser"); return;
+  }
+  flushing=true;
+  const ids=[...dirty];
+  syncStatus("pending","Syncing "+ids.length+"…", true);
+  const payload={
+    schema:"nm_verdict_log_v1", member:MEMBER,
+    written_at:new Date().toISOString(), built_from:BUILD_TS,
+    verdicts: ids.map(id=>{
+      const v=local[id];
+      return v ? {deal_id:id, action:v.act, reason:v.reason||null, at:v.at}
+               : {deal_id:id, action:null, reason:null, at:new Date().toISOString()}; // cleared
+    })
+  };
+  const stamp=new Date().toISOString().replace(/[:.]/g,"").replace("Z","Z");
+  try{
+    const r=await window.cowork.callMcpTool(DRIVE_CREATE_TOOL,{
+      title:`verdicts-${MEMBER}-${stamp}.json`,
+      parentId:DRIVE_FOLDER,
+      textContent:JSON.stringify(payload),
+      contentMimeType:"application/json",
+      disableConversionToGoogleType:true
+    });
+    if(r && r.isError) throw new Error((r.content&&r.content[0]&&r.content[0].text)||"upload failed");
+    ids.forEach(id=>dirty.delete(id));
+    save(); flushing=false;
+    syncStatus("ok","Synced "+ids.length+" at "+new Date().toLocaleTimeString());
+  }catch(e){
+    flushing=false;
+    syncStatus("err","Sync failed — verdicts kept locally, will retry");
+    clearTimeout(flushTimer); flushTimer=setTimeout(flush, 60000);
+  }
+}
+
+document.getElementById("syncnow").onclick=()=>{ clearTimeout(flushTimer); flush(); };
+// Safety net for the 45s window: fire immediately the moment the tab is
+// hidden or closed, rather than waiting out the debounce. visibilitychange
+// catches tab-switch/close/laptop-lid on both desktop and mobile more
+// reliably than beforeunload alone.
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden && dirty.size) flush(); });
+window.addEventListener("pagehide", ()=>{ if(dirty.size) flush(); });
+window.addEventListener("beforeunload", ()=>{ if(dirty.size) flush(); });
+
+document.getElementById("list").style.display="none";
+renderAll();
+refreshSyncUI();
+if(dirty.size) scheduleFlush();
+</script>
+</body>
+</html>
