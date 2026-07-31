@@ -6,6 +6,8 @@ import {
   type NoteRow,
   type StageEventRow,
   type StageId,
+  type TrainFlagRow,
+  type TrainReason,
   type VerdictAction,
   type VerdictRow,
 } from "./model";
@@ -53,26 +55,53 @@ function normalizeVerdict(row: Record<string, unknown>): VerdictRow {
   };
 }
 
-async function attachVerdicts(rows: DealRow[]): Promise<Deal[]> {
+function normalizeTrainFlag(row: Record<string, unknown>): TrainFlagRow {
+  return {
+    ...(row as unknown as TrainFlagRow),
+    created_at: isoString(row.created_at),
+    updated_at: isoString(row.updated_at),
+  };
+}
+
+async function attachExtras(rows: DealRow[]): Promise<Deal[]> {
   if (rows.length === 0) return [];
   // Expanded placeholders rather than an array parameter: array binding differs
   // between the two drivers, while numbered placeholders behave identically.
   const ids = rows.map((r) => r.id);
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-  const verdicts = await query<Record<string, unknown>>(
-    `SELECT * FROM verdicts WHERE deal_id IN (${placeholders})`,
-    ids,
-  );
 
-  const byDeal = new Map<number, Deal["verdicts"]>();
+  const [verdicts, flags] = await Promise.all([
+    query<Record<string, unknown>>(
+      `SELECT * FROM verdicts WHERE deal_id IN (${placeholders})`,
+      ids,
+    ),
+    query<Record<string, unknown>>(
+      `SELECT * FROM train_flags WHERE deal_id IN (${placeholders})`,
+      ids,
+    ),
+  ]);
+
+  const verdictsByDeal = new Map<number, Deal["verdicts"]>();
   for (const raw of verdicts) {
     const verdict = normalizeVerdict(raw);
-    const bucket = byDeal.get(verdict.deal_id) ?? {};
+    const bucket = verdictsByDeal.get(verdict.deal_id) ?? {};
     bucket[verdict.member] = verdict;
-    byDeal.set(verdict.deal_id, bucket);
+    verdictsByDeal.set(verdict.deal_id, bucket);
   }
 
-  return rows.map((row) => ({ ...row, verdicts: byDeal.get(row.id) ?? {} }));
+  const flagsByDeal = new Map<number, Deal["trainFlags"]>();
+  for (const raw of flags) {
+    const flag = normalizeTrainFlag(raw);
+    const bucket = flagsByDeal.get(flag.deal_id) ?? {};
+    bucket[flag.member] = flag;
+    flagsByDeal.set(flag.deal_id, bucket);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    verdicts: verdictsByDeal.get(row.id) ?? {},
+    trainFlags: flagsByDeal.get(row.id) ?? {},
+  }));
 }
 
 /**
@@ -84,7 +113,7 @@ export async function listDeals(): Promise<Deal[]> {
     `SELECT * FROM v_deals
      ORDER BY earnings DESC NULLS LAST, last_seen DESC, id DESC`,
   );
-  return attachVerdicts(rows.map(normalizeDeal));
+  return attachExtras(rows.map(normalizeDeal));
 }
 
 export async function listBoardDeals(): Promise<Deal[]> {
@@ -93,13 +122,13 @@ export async function listBoardDeals(): Promise<Deal[]> {
      WHERE stage <> 'inbox'
      ORDER BY earnings DESC NULLS LAST, id DESC`,
   );
-  return attachVerdicts(rows.map(normalizeDeal));
+  return attachExtras(rows.map(normalizeDeal));
 }
 
 export async function getDeal(id: number): Promise<Deal | null> {
   const row = await queryOne<Record<string, unknown>>("SELECT * FROM v_deals WHERE id = $1", [id]);
   if (!row) return null;
-  const [deal] = await attachVerdicts([normalizeDeal(row)]);
+  const [deal] = await attachExtras([normalizeDeal(row)]);
   return deal ?? null;
 }
 
@@ -131,6 +160,28 @@ export async function setVerdict(
 
 export async function clearVerdict(dealId: number, member: MemberId): Promise<void> {
   await query("DELETE FROM verdicts WHERE deal_id = $1 AND member = $2", [dealId, member]);
+}
+
+/** Flag a listing as wrong for later ingest training. Does not touch triage. */
+export async function setTrainFlag(
+  dealId: number,
+  member: MemberId,
+  reason: TrainReason,
+  detail: string | null = null,
+): Promise<void> {
+  await query(
+    `INSERT INTO train_flags (deal_id, member, reason, detail)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (deal_id, member) DO UPDATE
+       SET reason = excluded.reason,
+           detail = excluded.detail,
+           updated_at = now()`,
+    [dealId, member, reason, detail],
+  );
+}
+
+export async function clearTrainFlag(dealId: number, member: MemberId): Promise<void> {
+  await query("DELETE FROM train_flags WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
 /**

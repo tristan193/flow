@@ -58,6 +58,36 @@ export const PASS_REASONS = [
 ] as const;
 
 /**
+ * Why a listing looks wrong to a human. Fixed list so we can count modes of
+ * failure in the harvest later — free text lives in train_flags.detail.
+ */
+export const TRAIN_REASONS = [
+  "Wrong earnings",
+  "Wrong asking / revenue",
+  "Wrong location",
+  "Wrong title / blurb",
+  "Duplicate listing",
+  "Not a real deal",
+  "Garbled / bad parse",
+  "Other",
+] as const;
+
+export type TrainReason = (typeof TRAIN_REASONS)[number];
+
+export function isTrainReason(value: unknown): value is TrainReason {
+  return (TRAIN_REASONS as readonly string[]).includes(value as string);
+}
+
+export interface TrainFlagRow {
+  deal_id: number;
+  member: MemberId;
+  reason: string;
+  detail: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
  * The deal pipeline. `inbox` is pre-triage and is not shown on the board;
  * everything from `shortlist` onward is live work.
  */
@@ -140,9 +170,10 @@ export interface StageEventRow {
   created_at: string;
 }
 
-/** A deal plus both partners' verdicts, which is what every screen renders. */
+/** A deal plus both partners' verdicts and any train-AI flags. */
 export interface Deal extends DealRow {
   verdicts: Partial<Record<MemberId, VerdictRow>>;
+  trainFlags: Partial<Record<MemberId, TrainFlagRow>>;
 }
 
 /**

@@ -66,6 +66,21 @@ CREATE TABLE IF NOT EXISTS verdicts (
 
 CREATE INDEX IF NOT EXISTS ix_verdicts_member ON verdicts (member);
 
+-- Extraction / parsing feedback. Separate from triage verdicts so flagging a
+-- bad listing never overwrites shortlist/pass/discuss. These rows are the
+-- training signal for improving ingest later.
+CREATE TABLE IF NOT EXISTS train_flags (
+  deal_id     INTEGER NOT NULL REFERENCES deals (id) ON DELETE CASCADE,
+  member      TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  detail      TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (deal_id, member)
+);
+
+CREATE INDEX IF NOT EXISTS ix_train_flags_reason ON train_flags (reason);
+
 -- Stage history. The board shows where a deal is now; this is how it got
 -- there, which matters when a deal has been sitting at NDA for two months.
 CREATE TABLE IF NOT EXISTS stage_events (

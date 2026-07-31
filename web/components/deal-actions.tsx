@@ -11,6 +11,7 @@ import {
   type StageId,
   type VerdictAction,
 } from "@/lib/model";
+import { TrainAiButton } from "./train-ai-button";
 
 export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) {
   const router = useRouter();
@@ -130,6 +131,8 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
           ))}
         </select>
       </label>
+
+      <TrainAiButton deal={deal} member={member} />
     </div>
   );
 }

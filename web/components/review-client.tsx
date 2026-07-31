@@ -14,6 +14,7 @@ import {
   money,
 } from "@/lib/model";
 import { DealListCard, NeedsTags, SourcePill, VerdictChips } from "./deal-card";
+import { TrainAiButton } from "./train-ai-button";
 
 type Override = { action: VerdictAction | null; reason: string | null };
 
@@ -24,6 +25,7 @@ const FILTERS = [
   { id: "needs", label: "Needs info" },
   { id: "short", label: "Shortlisted" },
   { id: "discuss", label: "To discuss" },
+  { id: "train", label: "Train AI" },
 ] as const;
 
 type FilterId = (typeof FILTERS)[number]["id"];
@@ -151,7 +153,13 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
         case "short":
           return verdict?.action === "short";
         case "discuss":
-          return verdict?.action === "discuss" || deal.verdicts.tristan?.action === "discuss" || deal.verdicts.partner?.action === "discuss";
+          return (
+            verdict?.action === "discuss" ||
+            deal.verdicts.tristan?.action === "discuss" ||
+            deal.verdicts.partner?.action === "discuss"
+          );
+        case "train":
+          return Boolean(deal.trainFlags[member] || deal.trainFlags.tristan || deal.trainFlags.partner);
         default:
           return true;
       }
@@ -276,6 +284,8 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                         </div>
                       </div>
                     )}
+
+                    <TrainAiButton deal={deal} member={member} />
                   </DealListCard>
                 );
               })}
@@ -499,7 +509,7 @@ function SwipeDeck({
                 <div className="mt-3 space-y-2">
                   <NeedsTags deal={deal} />
                   <VerdictChips deal={deal} member={member} />
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     {deal.url ? (
                       <a
                         href={deal.url}
@@ -512,9 +522,12 @@ function SwipeDeck({
                     ) : (
                       <span />
                     )}
-                    <Link href={`/deals/${deal.id}`} className="text-ink-faint text-xs">
-                      Details
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <TrainAiButton deal={deal} member={member} compact />
+                      <Link href={`/deals/${deal.id}`} className="text-ink-faint text-xs">
+                        Details
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>

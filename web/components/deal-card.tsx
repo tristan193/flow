@@ -75,7 +75,8 @@ export function NeedsTags({ deal }: { deal: Deal }) {
 export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId }) {
   const mine = deal.verdicts[member];
   const theirs = deal.verdicts[otherMember(member)];
-  if (!mine && !theirs) return null;
+  const myTrain = deal.trainFlags[member];
+  if (!mine && !theirs && !myTrain) return null;
 
   const conflict = mine && theirs && mine.action !== theirs.action;
 
@@ -94,6 +95,11 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
           }`}
         >
           {memberLabel(otherMember(member))}: {theirs.action}
+        </span>
+      )}
+      {myTrain && (
+        <span className="bg-flag-bg text-flag rounded px-2 py-1 font-semibold">
+          Train · {myTrain.reason}
         </span>
       )}
     </div>
