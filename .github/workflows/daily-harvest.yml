@@ -75,16 +75,31 @@ jobs:
           printf '%s' "$CLIENT" > credentials/client_secret.json
           printf '%s' "$TOKEN" > credentials/token.json
 
-      - name: Harvest + ingest + push to Flow App (with retries)
+      - name: Harvest + ingest (with retries)
         env:
           DAYS: "2"
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
-          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
-          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh
+
+      # Separate step so a missing secret fails the job visibly instead of
+      # hiding under a green "SUCCESS" after ingest.
+      - name: Push snapshot to Flow App
+        env:
+          NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
+          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
+        run: |
+          if [ -z "$FLOW_APP_URL" ] || [ -z "$FLOW_IMPORT_TOKEN" ]; then
+            echo "::error::FLOW_APP_URL and FLOW_IMPORT_TOKEN must be set as repo Actions secrets."
+            echo "Add them under Settings → Secrets and variables → Actions."
+            echo "FLOW_APP_URL example: https://web-tau-seven-77.vercel.app"
+            echo "FLOW_IMPORT_TOKEN must match the Vercel env of the same name."
+            exit 1
+          fi
+          python export_snapshot.py --db "$NM_LOCAL_DB" --post "$FLOW_APP_URL" --token "$FLOW_IMPORT_TOKEN"
 
       - name: Upload SQLite db
         uses: actions/upload-artifact@v4

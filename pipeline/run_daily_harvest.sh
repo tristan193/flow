@@ -66,13 +66,5 @@ print(f"CSV export: {out} rows={len(rows)}")
 con.close()
 PY
 
-# Push into Flow App. This is the live path — no Drive involved.
-# Requires FLOW_APP_URL + FLOW_IMPORT_TOKEN (set as GitHub Actions secrets).
-if [[ -n "${FLOW_APP_URL:-}" && -n "${FLOW_IMPORT_TOKEN:-}" ]]; then
-  echo "Pushing snapshot to Flow App at $FLOW_APP_URL"
-  python export_snapshot.py --db "$NM_LOCAL_DB" --post "$FLOW_APP_URL" --token "$FLOW_IMPORT_TOKEN"
-else
-  echo "WARN: FLOW_APP_URL / FLOW_IMPORT_TOKEN not set — skipping Flow App push"
-fi
-
+echo "CSV export done. Flow App push is a separate Actions step (fails if secrets missing)."
 echo "SUCCESS"

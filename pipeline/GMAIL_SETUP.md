@@ -39,7 +39,7 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 | `FLOW_APP_URL` | `https://web-tau-seven-77.vercel.app` |
 | `FLOW_IMPORT_TOKEN` | Same value as Vercel project env `FLOW_IMPORT_TOKEN` |
 
-Without `FLOW_APP_URL` / `FLOW_IMPORT_TOKEN`, the harvest still builds `nm_deals.db` and CSV artifacts, but Flow App will not get new deals.
+**Required.** If either is missing, the “Push snapshot to Flow App” step fails the workflow. Harvest artifacts are still uploaded, but Flow App will not update.
 
 ## 3. Daily workflow
 
