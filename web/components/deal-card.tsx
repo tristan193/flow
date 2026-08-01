@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   type Deal,
   type MemberId,
+  businessModelLabel,
   earningsLabel,
   locationLabel,
   memberLabel,
@@ -107,11 +108,12 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
 }
 
 export function DealSummary({ deal }: { deal: Deal }) {
+  const model = businessModelLabel(deal);
   return (
     <>
       <div className="text-ink-dim text-[12.5px]">
-        <span className="text-ink font-semibold">{locationLabel(deal)}</span> ·{" "}
-        {deal.business_model_type.toLowerCase().replace(/_/g, " ")}
+        <span className="text-ink font-semibold">{locationLabel(deal)}</span>
+        {model ? <> · {model}</> : null}
       </div>
       <div className="text-ink-dim text-[12.5px]">
         Rev {money(deal.revenue) ?? "—"} · Asking {money(deal.asking) ?? "—"}

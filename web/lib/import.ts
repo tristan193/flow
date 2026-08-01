@@ -39,6 +39,13 @@ export interface IncomingVerdict {
   createdAt?: string | null;
 }
 
+/** Blank / legacy AMBIGUOUS → null so the UI stays dormant on that field. */
+function normalizeBusinessModel(value: string | null | undefined): string | null {
+  const t = (value || "").trim();
+  if (!t || t === "AMBIGUOUS") return null;
+  return t;
+}
+
 export interface ImportResult {
   dealsNew: number;
   dealsUpdated: number;
@@ -113,7 +120,9 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
          sde                 = COALESCE(deals.sde, excluded.sde),
          asking              = COALESCE(deals.asking, excluded.asking),
          business_model_type = CASE
-                                 WHEN deals.business_model_type = 'AMBIGUOUS'
+                                 WHEN deals.business_model_type IS NULL
+                                   OR deals.business_model_type = ''
+                                   OR deals.business_model_type = 'AMBIGUOUS'
                                    THEN excluded.business_model_type
                                  ELSE deals.business_model_type
                                END,
@@ -135,7 +144,7 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
         toNumber(deal.ebitda),
         toNumber(deal.sde),
         toNumber(deal.asking),
-        deal.businessModelType || "AMBIGUOUS",
+        normalizeBusinessModel(deal.businessModelType),
         JSON.stringify(deal.needsLlm ?? []),
         deal.url ?? null,
         toTimestamp(deal.firstSeen),
@@ -275,7 +284,7 @@ export async function importCsv(
       ebitda: toNumber(row.ebitda),
       sde: toNumber(row.sde),
       asking: toNumber(row.asking),
-      businessModelType: row.business_model_type || "AMBIGUOUS",
+      businessModelType: normalizeBusinessModel(row.business_model_type),
       needsLlm,
       url: row.url_norm || row.url || null,
       timesSeen: toNumber(row.times_seen) ?? 1,

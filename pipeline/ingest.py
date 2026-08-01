@@ -121,7 +121,7 @@ class Listing:
     ebitda: Optional[float] = None
     sde: Optional[float] = None
     asking: Optional[float] = None
-    business_model_type: str = "AMBIGUOUS"
+    business_model_type: str = ""
     needs_llm: List[str] = field(default_factory=list)
     seen_in: List[str] = field(default_factory=list)
     # (source, msg_id, url) for EVERY email that mentioned this deal, so a
@@ -923,9 +923,12 @@ AGNOSTIC_SIGNALS = [r"manufactur", r"distribut", r"wholesal", r"ships? nationall
                     r"supplier", r"produces?\b", r"\bplant\b", r"export"]
 
 def classify_model(text: str) -> Tuple[str, bool]:
-    """Returns (type, confident). Ambiguity is reported, not guessed away —
-    an AMBIGUOUS deal goes to human triage; a wrongly-confident LOCAL_SERVICE
-    label silently hard-rejects every national deal."""
+    """Returns (type, confident).
+
+    When local vs national is unclear, return an empty type — do not invent
+    AMBIGUOUS as a label. Empty stays dormant in the UI until a later signal
+    (or a human) can set LOCAL_SERVICE / LOCATION_AGNOSTIC with intent.
+    """
     t = text.lower()
     loc = sum(bool(re.search(p, t)) for p in LOCAL_SIGNALS)
     agn = sum(bool(re.search(p, t)) for p in AGNOSTIC_SIGNALS)
@@ -933,7 +936,7 @@ def classify_model(text: str) -> Tuple[str, bool]:
     if agn and not loc:  return "LOCATION_AGNOSTIC", True
     if agn > loc + 1:    return "LOCATION_AGNOSTIC", False
     if loc > agn + 1:    return "LOCAL_SERVICE", False
-    return "AMBIGUOUS", False
+    return "", False
 
 
 # Verified against real beehiiv-platform mail (SMB Deal Hunter, Vanla

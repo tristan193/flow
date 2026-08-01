@@ -43,7 +43,11 @@ def export(db_path: str) -> dict:
             "ebitda": r["ebitda"],
             "sde": r["sde"],
             "asking": r["asking"],
-            "businessModelType": r["business_model_type"] or "AMBIGUOUS",
+            "businessModelType": (
+                None
+                if not r["business_model_type"] or r["business_model_type"] == "AMBIGUOUS"
+                else r["business_model_type"]
+            ),
             "needsLlm": json.loads(r["needs_llm"] or "[]"),
             "url": r["url_norm"] or None,
             "firstSeen": r["first_seen"],

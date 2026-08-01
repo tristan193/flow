@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS deals (
   sde             REAL,      -- SDE / DE / "Cash Flow" / owner benefit
   asking          REAL,
 
-  business_model_type TEXT DEFAULT 'AMBIGUOUS',
+  business_model_type TEXT DEFAULT '',
   needs_llm       TEXT DEFAULT '[]',
 
   score           INTEGER,

@@ -10,6 +10,7 @@ import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { getDeal, listNotes, listStageEvents } from "@/lib/deals";
 import {
+  businessModelLabel,
   earningsLabel,
   locationLabel,
   memberLabel,
@@ -32,13 +33,14 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
 
   const [notes, events] = await Promise.all([listNotes(dealId), listStageEvents(dealId)]);
 
+  const model = businessModelLabel(deal);
   const facts: [string, string][] = [
     ["Earnings", `${earningsLabel(deal)} ${deal.earnings_basis ? `(${deal.earnings_basis})` : ""}`],
     ["Revenue", money(deal.revenue) ?? "Not disclosed"],
     ["Asking", money(deal.asking) ?? "Not disclosed"],
     ["Margin", deal.margin != null ? `${(deal.margin * 100).toFixed(1)}%` : "—"],
     ["Location", locationLabel(deal)],
-    ["Business model", deal.business_model_type.toLowerCase().replace(/_/g, " ")],
+    ...(model ? [["Business model", model] as [string, string]] : []),
     ["Source", deal.sub_source || deal.sources || "Unknown"],
     ["Times seen", String(deal.times_seen)],
     ["First seen", new Date(deal.first_seen).toLocaleDateString()],

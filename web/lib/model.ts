@@ -128,7 +128,7 @@ export interface DealRow {
   ebitda: number | null;
   sde: number | null;
   asking: number | null;
-  business_model_type: string;
+  business_model_type: string | null;
   needs_llm: string[];
   url: string | null;
   first_seen: string;
@@ -210,4 +210,13 @@ export function earningsLabel(deal: Pick<DealRow, "ebitda" | "sde">): string {
 
 export function locationLabel(deal: Pick<DealRow, "city" | "state">): string {
   return [deal.city, deal.state].filter(Boolean).join(", ") || "Location not disclosed";
+}
+
+/** Local / national when known; null when unset or legacy AMBIGUOUS. */
+export function businessModelLabel(
+  deal: Pick<DealRow, "business_model_type">,
+): string | null {
+  const t = (deal.business_model_type || "").trim();
+  if (!t || t === "AMBIGUOUS") return null;
+  return t.toLowerCase().replace(/_/g, " ");
 }

@@ -9,6 +9,7 @@ import {
   type MemberId,
   PASS_REASONS,
   type VerdictAction,
+  businessModelLabel,
   earningsLabel,
   locationLabel,
   money,
@@ -465,6 +466,7 @@ function SwipeDeck({
           .map((deal, index, arr) => {
             const depth = arr.length - 1 - index;
             const isTop = depth === 0;
+            const model = businessModelLabel(deal);
             return (
               <div
                 key={deal.id}
@@ -495,8 +497,8 @@ function SwipeDeck({
 
                 <div className="text-ink-dim space-y-1 text-[13px]">
                   <div>
-                    <span className="text-ink font-semibold">{locationLabel(deal)}</span> ·{" "}
-                    {deal.business_model_type.toLowerCase().replace(/_/g, " ")}
+                    <span className="text-ink font-semibold">{locationLabel(deal)}</span>
+                    {model ? <> · {model}</> : null}
                   </div>
                   <div>
                     Rev {money(deal.revenue) ?? "—"} · Asking {money(deal.asking) ?? "—"}
