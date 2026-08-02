@@ -22,6 +22,10 @@ pipeline/.venv/
 
 # Local harvest logs live under %LOCALAPPDATA%\nm-deal-flow\ (not in repo)
 
+# Inbox survey bodies (deal content; keep JSON/CSV summaries if desired)
+pipeline/formats/survey/bodies/
+pipeline/formats/survey/structure_notes.txt
+
 # Node / Next.js
 web/node_modules/
 web/.next/

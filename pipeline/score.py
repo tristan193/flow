@@ -26,7 +26,7 @@ class Deal:
     id: str
     title: str
     blurb: str
-    source: str
+    source: str  # sender domain (attribution triad); see ingest.Listing
     city: Optional[str] = None
     state: Optional[str] = None
     county: Optional[str] = None

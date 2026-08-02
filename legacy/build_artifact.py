@@ -33,7 +33,7 @@ def load_deals(con):
         "SELECT * FROM v_deals ORDER BY earnings DESC NULLS LAST").fetchall()
     out = []
     for r in rows:
-        src = r["sub_source"] or (r["sources"] or "?")
+        src = r["nickname"] or r["sub_source"] or (r["sources"] or "?")
         loc = ", ".join(x for x in [r["city"], r["state"]] if x) or None
         out.append({
             "id": r["ext_id"] or f"deal-{r['id']}",

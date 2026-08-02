@@ -33,7 +33,13 @@ CREATE TABLE IF NOT EXISTS deals (
 
   title           TEXT NOT NULL,
   blurb           TEXT,
-  sub_source      TEXT,   -- e.g. "SMB Deal Hunter" within the "newsletter" bucket
+  -- Attribution triad:
+  --   source     = sender domain        (bizbuysell.com)
+  --   sub_source = sender email         (bizalert@bizbuysell.com)
+  --   nickname   = human-facing label   (BizBuySell)
+  source          TEXT,
+  sub_source      TEXT,
+  nickname        TEXT,
 
   city            TEXT,
   state           TEXT,
@@ -63,8 +69,9 @@ CREATE INDEX IF NOT EXISTS ix_deals_url    ON deals(url_norm);
 CREATE INDEX IF NOT EXISTS ix_deals_state  ON deals(state);
 CREATE INDEX IF NOT EXISTS ix_deals_bucket ON deals(bucket);
 
--- Every source that mentioned a given deal. Seeing the same deal in five
--- newsletters is signal: it has been shopped hard and may be stale.
+-- Every provider domain that mentioned a given deal. Seeing the same deal
+-- across five newsletters is signal: it has been shopped hard and may be stale.
+-- `source` here is the sender domain (same meaning as deals.source).
 CREATE TABLE IF NOT EXISTS deal_sources (
   deal_id    INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
   source     TEXT NOT NULL,
@@ -152,13 +159,26 @@ def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
         try: con.execute("PRAGMA journal_mode=WAL")
         except sqlite3.OperationalError: pass
     con.executescript(SCHEMA)
+    _ensure_attribution_columns(con)
     return con
+
+
+def _ensure_attribution_columns(con: sqlite3.Connection) -> None:
+    """Add source/nickname on DBs created before the attribution triad."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(deals)")}
+    if "source" not in cols:
+        con.execute("ALTER TABLE deals ADD COLUMN source TEXT")
+    if "nickname" not in cols:
+        con.execute("ALTER TABLE deals ADD COLUMN nickname TEXT")
 
 
 # ------------------------------------------------------------------
 # UPSERT — the persistent form of dedupe
 # ------------------------------------------------------------------
-BACKFILL = ("revenue", "ebitda", "sde", "asking", "city", "state", "county", "sub_source")
+BACKFILL = (
+    "revenue", "ebitda", "sde", "asking", "city", "state", "county",
+    "source", "sub_source", "nickname",
+)
 
 def _title_sim(a: str, b: str) -> float:
     clean = lambda s: re.sub(r"[^a-z ]", "", (s or "").lower())
@@ -232,11 +252,16 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     else:
         mode = "new"
         cur = con.execute("""
-          INSERT INTO deals (ext_id,fingerprint,url_norm,title,blurb,sub_source,city,state,county,
+          INSERT INTO deals (ext_id,fingerprint,url_norm,title,blurb,
+                             source,sub_source,nickname,
+                             city,state,county,
                              revenue,ebitda,sde,asking,business_model_type,needs_llm,
                              first_seen,last_seen)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-          (l.ext_id, fp, un, l.title, l.blurb, getattr(l, "sub_source", None) or None,
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+          (l.ext_id, fp, un, l.title, l.blurb,
+           getattr(l, "source", None) or None,
+           getattr(l, "sub_source", None) or None,
+           getattr(l, "nickname", None) or None,
            l.city, l.state, l.county,
            l.revenue, l.ebitda, l.sde, l.asking, l.business_model_type,
            json.dumps(l.needs_llm), ts, ts))

@@ -209,8 +209,10 @@ def main():
 
     print("=" * 82)
     print(f"REAL BATCH INGEST  raw={stats['raw']}  kept={stats['kept']}  merged={stats['merged']}")
-    print(f"per-source: {stats['per_source']}")
-    print(f"per-sub-source: {stats['per_sub_source']}")
+    print(f"per-source (domain): {stats['per_source']}")
+    print(f"per-sub-source (email): {stats['per_sub_source']}")
+    print(f"per-nickname: {stats.get('per_nickname')}")
+    print(f"per-family: {stats.get('per_family')}")
     for a in stats["alerts"]:
         print(f"  ! {a}")
     print("=" * 82)
@@ -250,19 +252,20 @@ def main():
     print("-" * 82)
 
     rows = con.execute("SELECT * FROM v_deals ORDER BY earnings DESC NULLS LAST").fetchall()
-    print(f"{'EARNINGS':>12} {'BASIS':<7}  {'SUB-SOURCE':<22}{'LOC':<10}{'MODEL':<17}TITLE")
+    print(f"{'EARNINGS':>12} {'BASIS':<7}  {'NICKNAME':<22}{'LOC':<10}{'MODEL':<17}TITLE")
     print("-" * 82)
     for r in rows:
         loc = ", ".join(x for x in [r["city"], r["state"]] if x) or "?"
         needs = ", ".join(json.loads(r["needs_llm"] or "[]"))
         print(f"{db.fmt_earnings(r):>12} {(r['earnings_basis'] or '—'):<7}  "
-              f"{(r['sub_source'] or '?'):<22}{loc:<10}{r['business_model_type']:<17}{r['title'][:40]}")
+              f"{(r['nickname'] or r['sub_source'] or '?'):<22}{loc:<10}{r['business_model_type']:<17}{r['title'][:40]}")
         if needs:
             print(f"             needs_llm: {needs}")
 
     # CSV export — a way to see the ingested records without SQL tooling.
     csv_path = os.path.join(os.path.dirname(__file__), "deals_export.csv")
-    cols = ["title", "sub_source", "city", "state", "county", "business_model_type",
+    cols = ["title", "source", "sub_source", "nickname", "city", "state", "county",
+            "business_model_type",
             "revenue", "ebitda", "sde", "asking", "earnings_basis",
             "sources", "url_norm", "needs_llm", "times_seen"]
     with open(csv_path, "w", newline="") as f:

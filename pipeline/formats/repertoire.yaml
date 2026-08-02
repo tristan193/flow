@@ -1,0 +1,531 @@
+# Nails & Mercy — Deal Format Repertoire (machine-readable)
+# Attribution triad (stored on every listing / Flow App):
+#   source     = sender domain          e.g. bizbuysell.com
+#   sub_source = sender email address   e.g. bizalert@bizbuysell.com
+#   nickname   = human-facing label     e.g. BizBuySell
+# format_family = internal splitter key (NOT stored as source)
+#
+# Human/agent contract: docs/deal-format-repertoire.md
+#
+version: 2
+updated: 2026-08-01
+survey:
+  path: pipeline/formats/survey/inbox_5d.json
+  days: 5
+  message_count: 61
+  with_yield: 19
+  zero_yield: 42
+  note: >
+    Zero-yield is dominated by bizbuysell.newbizopps_single (35) which the
+    live splitter does not handle yet — repertoire entry is verified for
+    detection; status needs_parser.
+
+email_types:
+  - daily_digest
+  - single_listing
+  - newsletter_marketing
+  - follow_up
+  - account_notice
+
+formats:
+
+  # =========================================================================
+  # BizBuySell — two live products, different senders
+  # Survey: 35 newbizopps + 9 bizalert = 44 of 61 messages
+  # =========================================================================
+
+  - id: bizbuysell.bizalert_digest
+    format_family: bizbuysell
+    source: bizbuysell.com
+    sub_source: bizalert@bizbuysell.com
+    nickname: BizBuySell
+    email_type: daily_digest
+    confidence: verified
+    status: active
+    survey_count_5d: 9
+    description: >
+      Saved-search multi-listing digest. Asking + location only.
+      Franchise section often appended — drop it.
+    detect:
+      sender_addresses: ["bizalert@bizbuysell.com"]
+      sender_domains: ["bizbuysell.com"]
+      # Legacy fixture used alerts@ — not observed in 5d survey
+      subject_patterns:
+        - '(?i)\b\d+\s+new business matches?\b'
+        - '(?i)\b\d+\s+new business match\b'
+      body_open_patterns:
+        - '(?i)bizbuysell businesses recently posted'
+        - '(?i)see what.?s just been listed for sale on bizbuysell'
+        - '(?i)the following businesses match your search criteria'
+    layouts:
+      - id: A_multiline
+        note: "Asking Price: / value and Location: / value on separate lines"
+      - id: B_inline
+        note: "Asking Price: $X and Location: ST on one line; URL near title"
+    expected_fields:
+      present: [title, asking, location, url]
+      absent: [revenue, ebitda, sde]
+      needs_llm_ok: [earnings]
+    split: bizbuysell
+    gotchas:
+      - HTML-only body common — must strip_html
+      - Live From is bizalert@bizbuysell.com (not alerts@)
+      - Subject singular form exists: "1 New Business Match: San Antonio"
+    fixtures:
+      - pipeline/ingest.py::EMAILS[m1]
+      - pipeline/formats/survey/bodies (bizalert samples)
+
+  - id: bizbuysell.newbizopps_single
+    format_family: bizbuysell
+    source: bizbuysell.com
+    sub_source: newbizopps@bizbuysell.com
+    nickname: BizBuySell
+    email_type: single_listing
+    confidence: verified
+    status: needs_parser
+    survey_count_5d: 35
+    description: >
+      ONE listing per email from newbizopps@. Subject encodes category + geo.
+      Location is NOT "Location:" — it is a linked line "City, ST (Relocatable):"
+      above the headline. Asking Price always present. Earnings almost never
+      labeled (blurb may say "cash flow" in prose — ignore unlabeled).
+    detect:
+      sender_addresses: ["newbizopps@bizbuysell.com"]
+      sender_domains: ["bizbuysell.com"]
+      subject_patterns:
+        - '(?i)^business for sale:'
+      body_open_patterns:
+        - '(?i)bizbuysell - businesses recently posted'
+        - '(?i)the following business matches your specified saved search'
+    body_shape: |
+      BizBuySell - Businesses Recently Posted for Sale
+      Tristan, the following business matches your specified Saved Search criteria:
+      {City, ST (Relocatable)}: (listing URL)
+      {Headline} (listing URL utm_content=headline)
+      {short blurb}
+      Asking Price: $X
+      View details (URL)
+      Business Summary
+      {prose…}
+      Please Contact / broker chrome
+    expected_fields:
+      present: [title, asking, location, url, blurb]
+      absent: [revenue, ebitda, sde]
+      needs_llm_ok: [earnings]
+    split: needs_new_splitter  # current split_bizbuysell requires Location: label → 0 yield
+    parser_notes:
+      - "35/35 survey hits: loc line + headline URL + Asking Price"
+      - "Cash Flow labeled field: rare; word 'cash flow' in blurb is not a field"
+      - "Do not run digest BIZALERT_LISTING regex on these"
+    survey_evidence:
+      subject_example: "Business For Sale: Architecture and Engineering Firm in New York, NY"
+      asking_hit_rate: "35/35"
+      location_label_Location_colon: "0/35"
+      location_city_st_link_line: "35/35"
+
+  - id: bizbuysell.unknown
+    format_family: bizbuysell
+    source: bizbuysell.com
+    sub_source: "*@bizbuysell.com"
+    nickname: BizBuySell
+    email_type: daily_digest
+    confidence: stub
+    status: needs_samples
+    description: bizbuysell.com sender that matches neither bizalert nor newbizopps shapes.
+    detect:
+      sender_domains: ["bizbuysell.com"]
+    split: log_only
+
+  # =========================================================================
+  # Axial — single-deal teaser is the live product; digests not seen in 5d
+  # =========================================================================
+
+  - id: axial.single_deal
+    format_family: axial
+    source: axial.net
+    sub_source: newdeal@axial.net
+    nickname: Axial
+    email_type: single_listing
+    confidence: provisional
+    status: active
+    survey_count_5d: 4
+    description: >
+      One opportunity per email from newdeal@axial.net. Subject = deal title.
+      Opens with title + "Based on your criteria…". LTM Revenue/EBITDA rendered
+      as broken lines (Revenue / $7.6 / M) — money extract often misreads prose
+      ranges instead of the LTM table. Geography as region prose, not City, ST.
+    detect:
+      sender_addresses: ["newdeal@axial.net"]
+      sender_domains: ["axial.net"]
+      body_open_patterns:
+        - '(?i)based on your criteria, you might be interested'
+      body_markers:
+        - '(?i)\bLTM\b'
+        - '(?i)NDA Available to eSign'
+        - '(?i)CIM Available Upon Member Release'
+    expected_fields:
+      present: [title, revenue, ebitda]
+      optional: [location_region, url]
+      absent: []
+    split: whole_body  # split_axial may return 1 block; treat as single
+    gotchas:
+      - "Money on separate lines: label, amount, M/K unit — needs Axial-aware money parse"
+      - "Geography: 'Western Midwest (IA, KS, …)' — multi-state, not City/ST"
+    subject_examples:
+      - "Regional Restoration And Environmental Services Contractor"
+      - "Asset-Light Environmental Services Platform Providing Recurring…"
+
+  - id: axial.action_summary
+    format_family: axial
+    source: axial.net
+    sub_source: notifications@axial.net
+    nickname: Axial
+    email_type: account_notice
+    confidence: verified
+    status: control
+    survey_count_5d: 2
+    description: Daily action digest — NDAs/CIMs counts, not listing content. Yield 0.
+    detect:
+      sender_addresses: ["notifications@axial.net"]
+      subject_patterns:
+        - '(?i)^action summary for'
+      body_open_patterns:
+        - '(?i)action items'
+        - '(?i)action summary'
+        - '(?i)no new deals since your last action summary'
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: axial.deal_alert_digest
+    format_family: axial
+    source: axial.net
+    sub_source: alerts@axial.net
+    nickname: Axial
+    email_type: daily_digest
+    confidence: stub
+    status: needs_samples
+    description: >
+      Numbered multi-deal alert (fixture shape from alerts@axial.net).
+      NOT observed in 5d survey — only newdeal@ singles + action summaries.
+    detect:
+      sender_addresses: ["alerts@axial.net"]
+      subject_patterns:
+        - '(?i)\bnew opportunit'
+        - '(?i)match your profile'
+    split: axial
+    fixtures:
+      - pipeline/ingest.py::EMAILS[m2]
+
+  - id: axial.account_notice
+    format_family: axial
+    source: axial.net
+    sub_source: notifications@axial.net
+    nickname: Axial
+    email_type: account_notice
+    confidence: verified
+    status: control
+    description: Transactional (email change etc.). Yield 0.
+    detect:
+      sender_addresses: ["notifications@axial.net"]
+      subject_patterns:
+        - '(?i)updated email address'
+        - '(?i)email address has changed'
+    split: drop
+    fixtures:
+      - pipeline/daily_run.py::axial-email-change
+
+  # =========================================================================
+  # Benchmark International
+  # =========================================================================
+
+  - id: benchmark.broker_followup
+    format_family: benchmark
+    source: benchmarkintl.com
+    sub_source: "*@benchmarkintl.com"
+    nickname: Benchmark International
+    email_type: follow_up
+    confidence: verified
+    status: active
+    survey_count_5d: 1
+    description: >
+      Buyer-profile / NDA / CIM thread from *@benchmarkintl.com (or regional
+      affiliates). Not a fresh listing teaser — do not invent financials from
+      thread chrome. Live survey yielded a junk listing (false positive).
+    detect:
+      sender_domains: ["benchmarkintl.com", "benchmarktennessee.com"]
+      subject_patterns:
+        - '(?i)^re:'
+        - '(?i)buyer profile'
+        - '(?i)nda request'
+      body_open_patterns:
+        - '(?i)^(hello|hi)\s+\w+'
+        - '(?i)buyer profile request'
+        - '(?i)fill out the buyer profile'
+    expected_fields:
+      present: [title]
+      absent_ok: [revenue, ebitda, sde, asking, location]
+      needs_llm_ok: [earnings, location]
+    split: prefer_drop_or_follow_up
+    gotchas:
+      - "SOURCE_RULES must include benchmarkintl.com (today only benchmark[a-z]*.com — intl matches)"
+      - "Quoted earlier listing in thread can leak money/location — attribute carefully"
+
+  - id: benchmark.broker_prose
+    format_family: benchmark
+    source: benchmarkintl.com
+    sub_source: "*@benchmarktennessee.com"
+    nickname: Benchmark International
+    email_type: single_listing
+    confidence: verified
+    status: active
+    survey_count_5d: 0
+    description: Fresh acquisition email with Financial Summary (fixture-backed).
+    detect:
+      sender_domains: ["benchmarktennessee.com", "benchmarkintl.com"]
+      subject_patterns:
+        - '(?i)acquisition opportunity'
+        - '(?i)\bBN\d{6,}\b'
+      body_open_patterns:
+        - '(?i)we are representing'
+        - "(?i)here's a summary of the opportunity"
+    expected_fields:
+      present: [title, revenue, ebitda, location]
+    split: newsletter
+    fixtures:
+      - pipeline/populate_real.py::benchmark-glass-glazing
+
+  # =========================================================================
+  # SMB Deal Hunter (beehiiv)
+  # =========================================================================
+
+  - id: smb_deal_hunter.daily_digest
+    format_family: newsletter
+    source: smbdealhunter.xyz
+    sub_source: helen@mail.smbdealhunter.xyz
+    nickname: SMB Deal Hunter
+    email_type: daily_digest
+    confidence: verified
+    status: active
+    survey_count_5d: 1
+    description: >
+      Off-market digest with "In Today's Issue" + #N: list (and/or detail cards).
+      Subject may be "New Off-Market Businesses For Sale" or "New Deals: …".
+    detect:
+      sender_addresses: ["helen@mail.smbdealhunter.xyz"]
+      sender_domains: ["smbdealhunter.xyz", "mail.smbdealhunter.xyz"]
+      subject_patterns:
+        - '(?i)^new deals:'
+        - '(?i)off-market businesses for sale'
+      body_open_patterns:
+        - "(?i)in today[’']?s issue"
+    expected_fields:
+      present: [title, revenue_or_earnings, location]
+    split: newsletter
+    gotchas:
+      - "U+2019 apostrophe in Today's"
+      - "Forward chrome from tristan@ still matches via body + sub_source rules"
+
+  - id: smb_deal_hunter.editorial
+    format_family: newsletter
+    source: mail.smbdealhunter.xyz
+    sub_source: helen@mail.smbdealhunter.xyz
+    nickname: SMB Deal Hunter
+    email_type: newsletter_marketing
+    confidence: verified
+    status: control
+    survey_count_5d: 1
+    description: >
+      Podcast / founder-story / program marketing. Has dollar figures in prose
+      but is NOT a listing digest. Yield must be 0.
+    detect:
+      sender_addresses: ["helen@mail.smbdealhunter.xyz"]
+      sender_domains: ["mail.smbdealhunter.xyz"]
+      subject_patterns:
+        - '(?i)pinterest'
+        - '(?i)\\$.*exit'
+        - '(?i)under contract'
+        - '(?i)day job'
+      body_open_patterns:
+        - "(?i)this week.?s breakdown"
+        - '(?i)everyone told him he was crazy'
+      negative_body:
+        - "(?i)in today[’']?s issue"
+    expected_fields:
+      present: []
+    split: drop
+    subject_examples_5d:
+      - "Pinterest UX → $360K/yr business"
+      - "Fwd: $60K investment → $80M exit"
+      - "Fwd: $34.5M under contract, 5 days left"
+      - "Fwd: $3.1M Business (while keeping her day job)"
+
+  # =========================================================================
+  # Gateway M&A
+  # =========================================================================
+
+  - id: gateway.subscription_confirm
+    format_family: newsletter
+    source: gatewayma.com
+    sub_source: inquiries@gatewayma.com
+    nickname: Gateway M&A
+    email_type: account_notice
+    confidence: verified
+    status: control
+    survey_count_5d: 1
+    description: List-confirm email. Yield 0.
+    detect:
+      sender_addresses: ["inquiries@gatewayma.com"]
+      sender_domains: ["gatewayma.com"]
+      subject_patterns:
+        - '(?i)confirm your subscription'
+      body_open_patterns:
+        - "(?i)you've subscribed"
+        - '(?i)activate your subscription'
+    split: drop
+
+  - id: gateway.single_listing
+    format_family: newsletter
+    source: gatewayma.com
+    sub_source: "inquiries@gatewayma.com"
+    nickname: Gateway M&A
+    email_type: single_listing
+    confidence: stub
+    status: needs_samples
+    detect:
+      sender_domains: ["gatewayma.com"]
+    split: newsletter
+
+  # =========================================================================
+  # Previously catalogued (not in this 5d window) — keep for continuity
+  # =========================================================================
+
+  - id: businessexits.single_listing
+    format_family: businessexits
+    source: businessexits.com
+    sub_source: inquiries@businessexits.com
+    nickname: BusinessExits
+    email_type: single_listing
+    confidence: verified
+    status: active
+    survey_count_5d: 0
+    detect:
+      sender_addresses: ["inquiries@businessexits.com"]
+      sender_domains: ["businessexits.com"]
+      subject_patterns:
+        - '(?i)\[for sale\]'
+      body_open_patterns:
+        - '(?i)^new listing\b'
+    expected_fields:
+      present: [title, revenue, sde, asking, location, url]
+      label_rules: {Profit: sde}
+    split: newsletter
+    fixtures:
+      - pipeline/populate_real.py::bizexits-*
+
+  - id: vanla.single_teaser
+    format_family: newsletter
+    source: vanlagroup.com
+    sub_source: "*@vanlagroup.com"
+    nickname: Vanla Group
+    email_type: single_listing
+    confidence: provisional
+    status: active
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["vanlagroup.com"]
+      body_markers:
+        - '(?i)sign\s+(?:the\s+)?nda'
+        - '(?i)\bcim\b'
+    split: newsletter
+
+  - id: vanla.follow_up
+    format_family: newsletter
+    source: vanlagroup.com
+    sub_source: "*@vanlagroup.com"
+    nickname: Vanla Group
+    email_type: follow_up
+    confidence: verified
+    status: active
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["vanlagroup.com"]
+      body_open_patterns:
+        - '(?i)signed an nda'
+        - '(?i)resend the cim'
+    split: newsletter
+    fixtures:
+      - pipeline/populate_real.py::vanla-direct-followup
+
+  - id: gulf_coast.single_listing
+    format_family: newsletter
+    source: gulfcoastma.com
+    sub_source: "*@gulfcoastma.com"
+    nickname: Gulf Coast M&A
+    email_type: single_listing
+    confidence: provisional
+    status: active
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["gulfcoastma.com"]
+      subject_patterns:
+        - '(?i)confidential opportunity'
+    split: newsletter
+    fixtures:
+      - pipeline/ingest.py::EMAILS[m4]
+
+  - id: bizquest.alert
+    format_family: bizquest
+    source: bizquest.com
+    sub_source: "*@bizquest.com"
+    nickname: BizQuest
+    email_type: daily_digest
+    confidence: stub
+    status: needs_samples
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["bizquest.com"]
+    split: bizbuysell
+
+  - id: dealstream.alert
+    format_family: dealstream
+    source: dealstream.com
+    sub_source: "*@dealstream.com"
+    nickname: DealStream
+    email_type: daily_digest
+    confidence: stub
+    status: needs_samples
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["dealstream.com"]
+    split: newsletter
+
+  - id: doeren.marketing
+    format_family: newsletter
+    source: doeren.com
+    sub_source: "*@doeren.com"
+    nickname: Doeren Mayhew (non-deal)
+    email_type: newsletter_marketing
+    confidence: verified
+    status: control
+    survey_count_5d: 0
+    detect:
+      sender_domains: ["doeren.com"]
+    split: drop
+
+shared_markers:
+  broker_teaser:
+    email_type: single_listing
+    patterns:
+      - '(?i)sign\s+(?:the\s+)?nda'
+      - '(?i)confidential\s+information\s+memorandum'
+      - '(?i)\bcim\b'
+  numbered_digest:
+    email_type: daily_digest
+    patterns:
+      - "(?i)(?:👇\\s*)?\\*?in today[’']?s issue\\b"
+
+# Priority within BizBuySell family (first match wins):
+#   1. newbizopps_single (address)
+#   2. bizalert_digest (address + subject)
+#   3. unknown

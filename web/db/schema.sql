@@ -14,7 +14,14 @@ CREATE TABLE IF NOT EXISTS deals (
 
   title               TEXT NOT NULL,
   blurb               TEXT,
+  -- Attribution triad (aligned with pipeline Listing):
+  --   source     = sender domain        (bizbuysell.com)
+  --   sub_source = sender email         (bizalert@bizbuysell.com)
+  --   nickname   = human-facing label   (BizBuySell)
+  -- sources (plural) = GROUP_CONCAT of provider domains seen for this deal
+  source              TEXT,
   sub_source          TEXT,
+  nickname            TEXT,
   sources             TEXT,
 
   city                TEXT,
@@ -49,6 +56,10 @@ CREATE TABLE IF NOT EXISTS deals (
 CREATE INDEX IF NOT EXISTS ix_deals_state ON deals (state);
 CREATE INDEX IF NOT EXISTS ix_deals_stage ON deals (stage);
 CREATE INDEX IF NOT EXISTS ix_deals_last_seen ON deals (last_seen DESC);
+
+-- Existing hosted DBs were created before the attribution triad — add columns.
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS nickname TEXT;
 
 -- Per-member triage. Disagreement is preserved rather than averaged into a
 -- consensus neither partner holds, so the primary key is (deal, member) and

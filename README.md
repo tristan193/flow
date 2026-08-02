@@ -17,6 +17,19 @@ dirk@tullyinvesting.com
 
 **Google Drive is not part of the live path.** CSV artifacts from the harvest are kept on Actions for backup only.
 
+### Deal attribution (organizational contract)
+
+Every listing carries three fields — same names in pipeline, DB, and Flow App:
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| `source` | Sender domain | `bizbuysell.com` |
+| `sub_source` | Sender email address | `bizalert@bizbuysell.com` |
+| `nickname` | Human-facing label (UI pill) | `BizBuySell` |
+
+UI may truncate for display; storage keeps full values. Format catalog:
+[`docs/deal-format-repertoire.md`](docs/deal-format-repertoire.md).
+
 ## What Flow App does
 
 - **Review** — swipe or list; shortlist / discuss / pass with live shared verdicts

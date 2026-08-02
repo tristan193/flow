@@ -99,14 +99,16 @@ def main():
     emails = load_disk_emails() + CONTROLS
     print(f"emails fetched: {len(emails)}")
     for e in emails:
-        print(f"   {e.msg_id:<24} {ing.route(e):<14} {ing.sub_source(e):<28} "
+        print(f"   {e.msg_id:<24} {ing.format_family(e):<14} {ing.attribution(e)[1][:28]:<28} "
               f"body={len(e.body)}")
 
     kept, stats = ing.ingest(emails)
     print("=" * 82)
     print(f"INGEST  raw={stats['raw']}  kept={stats['kept']}  merged={stats['merged']}")
-    print(f"per-source:     {stats['per_source']}")
-    print(f"per-sub-source: {stats['per_sub_source']}")
+    print(f"per-source (domain): {stats['per_source']}")
+    print(f"per-sub-source (email): {stats['per_sub_source']}")
+    print(f"per-nickname: {stats.get('per_nickname')}")
+    print(f"per-family: {stats.get('per_family')}")
     for a in stats["alerts"]:
         print(f"  ! {a}")
     print("=" * 82)
@@ -125,7 +127,7 @@ def main():
     con = sqlite3.connect(LOCAL_DB)
     con.row_factory = sqlite3.Row
     rows = con.execute("SELECT * FROM v_deals ORDER BY earnings DESC NULLS LAST").fetchall()
-    cols = ["title", "sub_source", "city", "state", "county", "business_model_type",
+    cols = ["title", "source", "sub_source", "nickname", "city", "state", "county", "business_model_type",
             "revenue", "ebitda", "sde", "asking", "earnings_basis",
             "sources", "url_norm", "needs_llm", "times_seen"]
     csv_path = os.path.join(HERE, "deals_export.csv")

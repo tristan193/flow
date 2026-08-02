@@ -21,13 +21,14 @@ const BUCKET_STYLES: Record<string, string> = {
 };
 
 export function SourcePill({ deal }: { deal: Deal }) {
-  const label = deal.sub_source || deal.sources || "Unknown";
-  const bucket = sourceBucket(deal.sub_source || deal.sources);
+  const label = deal.nickname || deal.source || deal.sub_source || "Unknown";
+  const bucket = sourceBucket(deal);
   return (
     <span
       className={`shrink-0 rounded-md px-2 py-1 text-[10.5px] font-bold tracking-wide ${
         BUCKET_STYLES[bucket] ?? BUCKET_STYLES.newsletter
       }`}
+      title={[deal.sub_source, deal.source].filter(Boolean).join(" · ") || undefined}
     >
       {label}
     </span>

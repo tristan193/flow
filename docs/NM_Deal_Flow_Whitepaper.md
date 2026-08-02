@@ -301,15 +301,27 @@ an ambiguous number as EBITDA overstates the business; filing it as SDE is
 the conservative error. Reports read a view that prefers EBITDA and
 annotates SDE with `*`.
 
-`source` vs `sub_source`: `source` is the routing bucket that decides which
-splitter function runs (`bizbuysell`, `axial`, `businessexits`, `benchmark`,
-`newsletter`, etc.). `sub_source` is the actual sender's human-readable
-identity within that bucket — critical because `newsletter` alone is a
-catch-all covering SMB Deal Hunter, Gulf Coast M&A, and any other one-off
-deal newsletter; without `sub_source` there's no way to tell them apart in
-the report or health log. `sub_source` (or the bare `source` bucket as
-fallback) is what actually renders as the colored source pill in the report
-UI.
+`source` / `sub_source` / `nickname` (attribution triad):
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| **`source`** | Sender **domain** | `bizbuysell.com` |
+| **`sub_source`** | Sender **email address** | `bizalert@bizbuysell.com` |
+| **`nickname`** | Human-facing label (UI pill) | `BizBuySell` |
+
+UI may truncate these for display; storage and the repertoire always keep the
+full values. Automated deal mail comes from fixed inboxes — `sub_source` is
+one of the strongest format signals (e.g. `bizalert@` digest vs
+`newbizopps@` single listing).
+
+`format_family` (`bizbuysell`, `axial`, `newsletter`, …) is an **internal**
+splitter / health / `ext_id` prefix key. It is **not** stored as `source`.
+
+**Email type and expected layouts** are catalogued in
+[`deal-format-repertoire.md`](./deal-format-repertoire.md) and
+`pipeline/formats/repertoire.yaml`. Classify type (sender → subject → open)
+before splitting. Do not change extraction without updating that repertoire.
+
 
 Dedupe is 3-pass, in order: (1) exact normalized URL match, (2) economic
 fingerprint (state + banded revenue + banded earnings), (3) fuzzy title

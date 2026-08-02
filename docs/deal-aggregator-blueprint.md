@@ -87,8 +87,8 @@ tristan@tullyinvesting.com  →  label:deals
    │  (fed by the deals@ alias)
    │  daily, 6:00am CT
    ├─ 1. HARVEST    last 24h of mail
-   ├─ 2. ROUTE      identify source from sender
-   ├─ 3. SPLIT      digest email → N listing blocks
+   ├─ 2. ATTRIBUTION  source=domain, sub_source=email, nickname=label
+   ├─ 3. SPLIT        digest email → N listing blocks   [format_family]
    ├─ 4. EXTRACT    block → structured fields
    ├─ 5. DEDUPE     same deal across sources → one record
    ├─ 6. PERSIST    upsert into deals.db
