@@ -117,18 +117,20 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
        )
        ON CONFLICT (ext_id) DO UPDATE SET
          title               = excluded.title,
-         blurb               = COALESCE(deals.blurb, excluded.blurb),
+         -- Prefer the latest harvest parse for text + money so parser fixes
+         -- (e.g. Axial LTM) show up on re-import instead of freezing bad values.
+         blurb               = COALESCE(excluded.blurb, deals.blurb),
          source              = COALESCE(excluded.source, deals.source),
          sub_source          = COALESCE(excluded.sub_source, deals.sub_source),
          nickname            = COALESCE(excluded.nickname, deals.nickname),
          sources             = COALESCE(excluded.sources, deals.sources),
-         city                = COALESCE(deals.city, excluded.city),
-         state               = COALESCE(deals.state, excluded.state),
-         county              = COALESCE(deals.county, excluded.county),
-         revenue             = COALESCE(deals.revenue, excluded.revenue),
-         ebitda              = COALESCE(deals.ebitda, excluded.ebitda),
-         sde                 = COALESCE(deals.sde, excluded.sde),
-         asking              = COALESCE(deals.asking, excluded.asking),
+         city                = COALESCE(excluded.city, deals.city),
+         state               = COALESCE(excluded.state, deals.state),
+         county              = COALESCE(excluded.county, deals.county),
+         revenue             = COALESCE(excluded.revenue, deals.revenue),
+         ebitda              = COALESCE(excluded.ebitda, deals.ebitda),
+         sde                 = COALESCE(excluded.sde, deals.sde),
+         asking              = COALESCE(excluded.asking, deals.asking),
          business_model_type = CASE
                                  WHEN deals.business_model_type IS NULL
                                    OR deals.business_model_type = ''
@@ -138,7 +140,7 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
                                  ELSE deals.business_model_type
                                END,
          needs_llm           = excluded.needs_llm,
-         url                 = COALESCE(deals.url, excluded.url),
+         url                 = COALESCE(excluded.url, deals.url),
          last_seen           = GREATEST(deals.last_seen, excluded.last_seen),
          times_seen          = GREATEST(deals.times_seen, excluded.times_seen),
          updated_at          = now()`,
