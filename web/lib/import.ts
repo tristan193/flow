@@ -13,7 +13,13 @@ export interface IncomingDeal {
   extId: string;
   title: string;
   blurb?: string | null;
+  /** Sender domain, e.g. bizbuysell.com */
+  source?: string | null;
+  /** Sender email address, e.g. bizalert@bizbuysell.com */
   subSource?: string | null;
+  /** Human-facing label, e.g. BizBuySell */
+  nickname?: string | null;
+  /** Concat of provider domains seen for this deal */
   sources?: string | null;
   city?: string | null;
   state?: string | null;
@@ -39,10 +45,10 @@ export interface IncomingVerdict {
   createdAt?: string | null;
 }
 
-/** Blank / legacy AMBIGUOUS → null so the UI stays dormant on that field. */
+/** Blank / legacy labels → null so the UI stays dormant on that field. */
 function normalizeBusinessModel(value: string | null | undefined): string | null {
   const t = (value || "").trim();
-  if (!t || t === "AMBIGUOUS") return null;
+  if (!t || t === "AMBIGUOUS" || t === "LOCATION_AGNOSTIC") return null;
   return t;
 }
 
@@ -99,18 +105,22 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
 
     await query(
       `INSERT INTO deals (
-         ext_id, title, blurb, sub_source, sources, city, state, county,
+         ext_id, title, blurb, source, sub_source, nickname, sources,
+         city, state, county,
          revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
          first_seen, last_seen, times_seen
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8,
-         $9, $10, $11, $12, $13, $14::jsonb, $15,
-         COALESCE($16::timestamptz, now()), COALESCE($17::timestamptz, now()), $18
+         $1, $2, $3, $4, $5, $6, $7,
+         $8, $9, $10,
+         $11, $12, $13, $14, $15, $16::jsonb, $17,
+         COALESCE($18::timestamptz, now()), COALESCE($19::timestamptz, now()), $20
        )
        ON CONFLICT (ext_id) DO UPDATE SET
          title               = excluded.title,
          blurb               = COALESCE(deals.blurb, excluded.blurb),
-         sub_source          = COALESCE(deals.sub_source, excluded.sub_source),
+         source              = COALESCE(excluded.source, deals.source),
+         sub_source          = COALESCE(excluded.sub_source, deals.sub_source),
+         nickname            = COALESCE(excluded.nickname, deals.nickname),
          sources             = COALESCE(excluded.sources, deals.sources),
          city                = COALESCE(deals.city, excluded.city),
          state               = COALESCE(deals.state, excluded.state),
@@ -123,6 +133,7 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
                                  WHEN deals.business_model_type IS NULL
                                    OR deals.business_model_type = ''
                                    OR deals.business_model_type = 'AMBIGUOUS'
+                                   OR deals.business_model_type = 'LOCATION_AGNOSTIC'
                                    THEN excluded.business_model_type
                                  ELSE deals.business_model_type
                                END,
@@ -135,7 +146,9 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
         extId,
         title,
         deal.blurb ?? null,
+        deal.source ?? null,
         deal.subSource ?? null,
+        deal.nickname ?? null,
         deal.sources ?? null,
         deal.city ?? null,
         deal.state ?? null,
@@ -275,7 +288,9 @@ export async function importCsv(
       extId: (row.ext_id || "").trim() || csvExtId(row),
       title: row.title,
       blurb: row.blurb || null,
+      source: row.source || null,
       subSource: row.sub_source || null,
+      nickname: row.nickname || null,
       sources: row.sources || null,
       city: row.city || null,
       state: row.state || null,

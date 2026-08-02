@@ -119,7 +119,13 @@ export interface DealRow {
   ext_id: string;
   title: string;
   blurb: string | null;
+  /** Sender domain, e.g. bizbuysell.com */
+  source: string | null;
+  /** Sender email address, e.g. bizalert@bizbuysell.com */
   sub_source: string | null;
+  /** Human-facing label, e.g. BizBuySell */
+  nickname: string | null;
+  /** Concat of provider domains seen for this deal */
   sources: string | null;
   city: string | null;
   state: string | null;
@@ -177,14 +183,29 @@ export interface Deal extends DealRow {
 }
 
 /**
- * Source buckets get a colour in the UI. `sub_source` is the human-readable
- * sender ("SMB Deal Hunter") while the bucket is the routing family, and the
- * bucket is what decides the pill colour.
+ * Attribution triad (organizational contract):
+ *   source     = sender domain
+ *   sub_source = sender email address
+ *   nickname   = human-facing label (pill text)
+ *
+ * Pill colour keys off domain / nickname heuristics — not the old routing
+ * "bucket" string that used to live in `source`.
  */
-export function sourceBucket(source: string | null): string {
-  const s = (source || "").toLowerCase().replace(/\s+/g, "");
-  for (const key of ["bizbuysell", "businessexits", "benchmark", "axial"]) {
-    if (s.includes(key)) return key;
+export function sourceBucket(deal: {
+  source?: string | null;
+  sub_source?: string | null;
+  nickname?: string | null;
+  sources?: string | null;
+} | string | null): string {
+  const blob =
+    typeof deal === "string" || deal == null
+      ? String(deal || "")
+      : [deal.source, deal.sub_source, deal.nickname, deal.sources]
+          .filter(Boolean)
+          .join(" ");
+  const s = blob.toLowerCase().replace(/\s+/g, "");
+  for (const key of ["bizbuysell", "businessexits", "benchmark", "axial", "bizquest", "dealstream"]) {
+    if (s.includes(key)) return key === "bizquest" || key === "dealstream" ? "newsletter" : key;
   }
   return "newsletter";
 }
@@ -212,11 +233,14 @@ export function locationLabel(deal: Pick<DealRow, "city" | "state">): string {
   return [deal.city, deal.state].filter(Boolean).join(", ") || "Location not disclosed";
 }
 
-/** Local / national when known; null when unset or legacy AMBIGUOUS. */
+/** Local / regional / national when known; null when unset or legacy labels. */
 export function businessModelLabel(
   deal: Pick<DealRow, "business_model_type">,
 ): string | null {
   const t = (deal.business_model_type || "").trim();
-  if (!t || t === "AMBIGUOUS") return null;
+  if (!t || t === "AMBIGUOUS" || t === "LOCATION_AGNOSTIC") return null;
+  if (t === "LOCAL_SERVICE") return "local service";
+  if (t === "REGIONAL") return "regional";
+  if (t === "NATIONAL") return "national";
   return t.toLowerCase().replace(/_/g, " ");
 }

@@ -34,7 +34,9 @@ def export(db_path: str) -> dict:
             "extId": r["ext_id"] or f"deal-{r['id']}",
             "title": r["title"],
             "blurb": r["blurb"] or None,
+            "source": r["source"] if "source" in r.keys() else None,
             "subSource": r["sub_source"] or None,
+            "nickname": r["nickname"] if "nickname" in r.keys() else None,
             "sources": r["sources"] or None,
             "city": r["city"] or None,
             "state": r["state"] or None,
@@ -45,7 +47,8 @@ def export(db_path: str) -> dict:
             "asking": r["asking"],
             "businessModelType": (
                 None
-                if not r["business_model_type"] or r["business_model_type"] == "AMBIGUOUS"
+                if not r["business_model_type"]
+                or r["business_model_type"] in ("AMBIGUOUS", "LOCATION_AGNOSTIC")
                 else r["business_model_type"]
             ),
             "needsLlm": json.loads(r["needs_llm"] or "[]"),

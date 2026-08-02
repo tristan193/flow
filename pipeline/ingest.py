@@ -7,6 +7,17 @@ tristan@tullyinvesting.com and is filtered to label:deals. The harvester queries
 that label ONLY — personal mail is never in scope. This module turns
 that mail into normalized, deduped Listing records.
 
+FORMAT REPERTOIRE (read before changing route/split/extract):
+    docs/deal-format-repertoire.md
+    pipeline/formats/repertoire.yaml
+Attribution triad (stored on every listing):
+    source     = sender domain          (bizbuysell.com)
+    sub_source = sender email address   (bizalert@bizbuysell.com)
+    nickname   = human-facing label     (BizBuySell)
+format_family is internal only (splitter / ext_id prefix) — not a stored "source".
+Email type (digest vs single vs follow-up vs account notice) is the crucial
+first classification step after attribution.
+
 Pipeline stages:
     1. HARVEST    pull last-24h messages          [Gmail connector]
     2. ROUTE      identify source from sender      [deterministic]
@@ -100,14 +111,18 @@ class Listing:
     ext_id: str
     title: str
     blurb: str
+    # Attribution triad (organizational contract — keep these three aligned
+    # everywhere: pipeline, DB, Flow App, docs):
+    #   source     = sender domain          e.g. bizbuysell.com
+    #   sub_source = sender email address   e.g. bizalert@bizbuysell.com
+    #   nickname   = human-facing label     e.g. BizBuySell
+    # UI may truncate/display these; storage always keeps the full values.
+    # format_family is INTERNAL only — picks the splitter / ext_id prefix;
+    # it is not a substitute for source.
     source: str
-    # Human-readable sender identity within a source bucket — "newsletter"
-    # covers SMB Deal Hunter, Gulf Coast M&A, and anyone else routed there
-    # by default, and even "benchmark" covers multiple regional Benchmark
-    # International affiliates (benchmarktennessee.com and others). Without
-    # this, the report can say "newsletter" three times and Tristan can't
-    # tell which actual sender to go tune a subscription for.
     sub_source: str = ""
+    nickname: str = ""
+    format_family: str = ""
     source_msg: str = ""
     url: str = ""
     city: Optional[str] = None
@@ -123,9 +138,8 @@ class Listing:
     asking: Optional[float] = None
     business_model_type: str = ""
     needs_llm: List[str] = field(default_factory=list)
-    seen_in: List[str] = field(default_factory=list)
-    # (source, msg_id, url) for EVERY email that mentioned this deal, so a
-    # within-run merge doesn't lose the second source's attribution.
+    seen_in: List[str] = field(default_factory=list)  # domains
+    # (source_domain, msg_id, url) for EVERY email that mentioned this deal.
     refs: List[tuple] = field(default_factory=list)
     dupe_of: Optional[str] = None
 
@@ -155,39 +169,34 @@ class Listing:
 
 
 # =====================================================================
-# 2. ROUTE — identify source
+# 2. ATTRIBUTION + FORMAT FAMILY
 # =====================================================================
+#
+# Stored on every listing (and Flow App):
+#   source     = sender domain
+#   sub_source = sender email address
+#   nickname   = human-facing label for the source
+#
+# format_family is NOT stored as "source". It only selects the splitter /
+# health baseline / ext_id prefix. See docs/deal-format-repertoire.md.
 
-SOURCE_RULES = [
+FORMAT_FAMILY_RULES = [
     ("bizbuysell", [r"bizbuysell\.com", r"bizalert",
-                    r"\bnew business matches?\b"]),  # BizAlert subject; covers Tristan Fwds
+                    r"\bnew business matches?\b",
+                    r"(?i)^business for sale:"]),
     ("axial",      [r"axial\.(net|com)", r"axialmarket"]),
     ("bizquest",   [r"bizquest\.com"]),
     ("dealstream", [r"dealstream\.com"]),
     ("businessexits", [r"businessexits\.com"]),
-    ("benchmark",  [r"benchmark[a-z]*\.com"]),  # benchmarktennessee.com etc — regional Benchmark Intl affiliates
+    # benchmarkintl.com + regional affiliates (benchmarktennessee.com, …)
+    ("benchmark",  [r"benchmark[a-z0-9]*\.com"]),
 ]
 
-def route(em: RawEmail) -> str:
-    # Include body so Gmail "Fwd:" / auto-forward still matches original
-    # sender domains and platform URLs even when From: is Tristan.
-    hay = f"{em.sender} {em.subject} {em.body[:8000]}".lower()
-    for src, pats in SOURCE_RULES:
-        if any(re.search(p, hay) for p in pats):
-            return src
-    return "newsletter"
+# SOURCE_RULES kept as an alias so older call sites / docs snippets still grep.
+SOURCE_RULES = FORMAT_FAMILY_RULES
 
-
-# Named senders within a source bucket. Distinct from SOURCE_RULES, which
-# only decides which SPLITTER function to run — "newsletter" is a single
-# splitter shared by every deal newsletter we don't have a dedicated parser
-# for, so without this every one of them reported back as the bare string
-# "newsletter" and Tristan couldn't tell SMB Deal Hunter from Gulf Coast
-# M&A from a one-off broker blast in the health log or the report. Matched
-# against the sender address's domain; falls back to a cleaned-up version
-# of the domain itself so a brand-new source still gets a readable label
-# instead of just "newsletter" again.
-SUB_SOURCE_RULES = [
+NICKNAME_RULES = [
+    (r"smbdealdigest\.co", "SMB Deal Digest"),
     (r"smbdealhunter\.xyz", "SMB Deal Hunter"),
     (r"smbdealexchange\.com", "SMB Deal Exchange"),
     (r"gulfcoastma\.com", "Gulf Coast M&A"),
@@ -195,7 +204,10 @@ SUB_SOURCE_RULES = [
     (r"vanlagroup\.com", "Vanla Group"),
     (r"businessexits\.com", "BusinessExits"),
     (r"benchmarktennessee\.com", "Benchmark International (TN)"),
+    (r"benchmarkintl\.com", "Benchmark International"),
+    (r"benchmark[a-z0-9]*\.com", "Benchmark International"),
     (r"doeren\.com", "Doeren Mayhew (non-deal)"),
+    (r"agencyequity\.com", "AgencyEquity"),
     (r"bizbuysell\.com", "BizBuySell"),
     (r"axial\.(net|com)", "Axial"),
     (r"bizquest\.com", "BizQuest"),
@@ -218,6 +230,7 @@ TRACKING_DOMAIN_CORES = {
 }
 
 _DOMAIN = re.compile(r"@([\w.-]+\.[a-z]{2,})", re.I)
+_EMAIL_ADDR = re.compile(r"[\w.+-]+@[\w.-]+\.[a-z]{2,}", re.I)
 _FORWARD_FROM = re.compile(
     r"^-+\s*Forwarded message\s*-+\s*^From:\s*(.+)$",
     re.I | re.M,
@@ -233,6 +246,17 @@ def _email_domain(sender: str) -> Optional[str]:
     return m.group(1).lower() if m else None
 
 
+def _parse_email_addr(sender: str) -> str:
+    """Bare address from a From: header / Forwarded-From line."""
+    from email.utils import parseaddr
+    _, addr = parseaddr(sender or "")
+    addr = (addr or "").strip().lower()
+    if addr and "@" in addr:
+        return addr
+    m = _EMAIL_ADDR.search(sender or "")
+    return m.group(0).lower() if m else ""
+
+
 def _domain_core(domain: str) -> str:
     parts = domain.lower().split(".")
     return parts[-2] if len(parts) >= 2 else domain
@@ -244,44 +268,85 @@ def _forwarded_original_from(body: str) -> str:
     return m.group(1).strip() if m else ""
 
 
-def _label_from_domain(domain: str) -> Optional[str]:
+def _is_provider_domain(domain: str) -> bool:
     if not domain:
-        return None
+        return False
     d = domain.lower()
     if d in FORWARDER_DOMAINS:
-        return None
+        return False
     core = _domain_core(d)
     if core in TRACKING_DOMAIN_CORES or core in {"tullyinvesting"}:
-        return None
-    for pat, name in SUB_SOURCE_RULES:
-        if re.search(pat, d):
+        return False
+    return True
+
+
+def nickname_for(domain: str, email: str = "", hay: str = "") -> str:
+    """Human-facing label for a provider domain / address."""
+    blob = f"{email} {domain} {hay}".lower()
+    for pat, name in NICKNAME_RULES:
+        if re.search(pat, blob):
             return name
-    return core.capitalize()
+    if domain and _is_provider_domain(domain):
+        return _domain_core(domain).capitalize()
+    return "Unknown"
+
+
+def format_family(em: RawEmail) -> str:
+    """Internal splitter key — NOT the stored `source` field."""
+    hay = f"{em.sender} {em.subject} {em.body[:8000]}".lower()
+    for fam, pats in FORMAT_FAMILY_RULES:
+        if any(re.search(p, hay) for p in pats):
+            return fam
+    return "newsletter"
+
+
+def route(em: RawEmail) -> str:
+    """Alias for format_family() — kept for older scripts."""
+    return format_family(em)
+
+
+def attribution(em: RawEmail) -> Tuple[str, str, str]:
+    """Return (source_domain, sub_source_email, nickname).
+
+    Never attribute a forwarder's personal mailbox when the original provider
+    is recoverable from a Forwarded message block or body domains.
+    """
+    original = _forwarded_original_from(em.body)
+    hay = f"{original} {em.sender} {em.subject} {em.body[:8000]}"
+
+    email, domain = "", ""
+    for candidate in (original, em.sender):
+        if not candidate:
+            continue
+        e = _parse_email_addr(candidate)
+        d = _email_domain(e) or _email_domain(candidate) or ""
+        if _is_provider_domain(d):
+            email, domain = e, d
+            break
+
+    if not domain:
+        for d in _BODY_DOMAIN.findall(em.body or ""):
+            if _is_provider_domain(d):
+                domain = d.lower()
+                break
+
+    if not domain:
+        # Last resort: whatever is on the envelope (even a forwarder).
+        email = _parse_email_addr(em.sender)
+        domain = _email_domain(email) or _email_domain(em.sender) or "unknown"
+
+    if not email and original:
+        email = _parse_email_addr(original)
+    if not email:
+        email = _parse_email_addr(em.sender)
+
+    nick = nickname_for(domain, email, hay)
+    return domain, email, nick
 
 
 def sub_source(em: RawEmail) -> str:
-    """Human-facing provider label.
-
-    Never attribute a forwarder's personal domain (Tullyinvesting, Gmail, …).
-    Prefer: known provider rules → original Forwarded-From → other body domains.
-    """
-    original = _forwarded_original_from(em.body)
-    hay = f"{original} {em.sender} {em.subject} {em.body[:8000]}".lower()
-    for pat, name in SUB_SOURCE_RULES:
-        if re.search(pat, hay):
-            return name
-
-    for candidate in (original, em.sender):
-        label = _label_from_domain(_email_domain(candidate) or "")
-        if label:
-            return label
-
-    # Last resort: any non-forwarder / non-tracking domain in the body.
-    for d in _BODY_DOMAIN.findall(em.body or ""):
-        label = _label_from_domain(d)
-        if label:
-            return label
-    return "Unknown"
+    """Sender email address (sub_source). Prefer attribution()[1]."""
+    return attribution(em)[1]
 
 
 # =====================================================================
@@ -394,7 +459,7 @@ def split_axial(body: str) -> List[str]:
     The MONEY_SIGNAL requirement is not cosmetic. Axial also sends ordinary
     transactional mail from the same domain — confirmed against a real
     "Updated Email Address" notice from notifications@axial.net, which
-    routes to this splitter because SOURCE_RULES matches the sender domain,
+    routes to this splitter because FORMAT_FAMILY_RULES matches the sender domain,
     not the message type. It contains no separators, so the entire notice
     came through as one >80-char part and became a phantom listing titled
     "Your Email Address Has Changed" with no money and no location. Every
@@ -918,24 +983,47 @@ LOCAL_SIGNALS = [r"\bhvac\b", r"plumbing", r"electrical", r"roofing", r"landscap
                  r"janitorial", r"pest control", r"home service", r"residential",
                  r"route[- ]based", r"service area", r"crews?\b", r"technicians?\b",
                  r"\bclinic\b", r"\bpractice\b", r"local customers"]
-AGNOSTIC_SIGNALS = [r"manufactur", r"distribut", r"wholesal", r"ships? nationally",
-                    r"nationwide", r"national customer", r"fabricat", r"assembl",
-                    r"supplier", r"produces?\b", r"\bplant\b", r"export"]
+# Entire state / a handful of states — not one metro, not coast-to-coast.
+REGIONAL_SIGNALS = [
+    r"\bregional\b",
+    r"multi[- ]state",
+    r"\bstates?wide\b",
+    r"\btri[- ]state\b",
+    r"(?:across|throughout|serving|in)\s+(?:the\s+)?(?:entire\s+)?state\b",
+    r"(?:two|three|four|five|several|few|[2-9]|1\d)\s+states?\b",
+    r"across\s+(?:multiple\s+)?states?\b",
+    r"states?\s+of\s+(?:texas|oklahoma|louisiana|arkansas|tennessee|florida|california)",
+]
+# Truly national footprint — not "regional" and not a single market.
+NATIONAL_SIGNALS = [
+    r"\bnationwide\b",
+    r"\bnationally\b",
+    r"ships?\s+nationally",
+    r"national\s+customer",
+    r"national\s+(?:footprint|platform|presence|scale|network)",
+    r"all\s+50\s+states",
+    r"coast[- ]to[- ]coast",
+    r"across\s+the\s+(?:country|nation|u\.?\s?s\.?a?\.?|united\s+states)",
+    r"throughout\s+the\s+(?:country|nation|u\.?\s?s\.?a?\.?|united\s+states)",
+]
 
 def classify_model(text: str) -> Tuple[str, bool]:
     """Returns (type, confident).
 
-    When local vs national is unclear, return an empty type — do not invent
-    AMBIGUOUS as a label. Empty stays dormant in the UI until a later signal
-    (or a human) can set LOCAL_SERVICE / LOCATION_AGNOSTIC with intent.
+    Labels: LOCAL_SERVICE | REGIONAL | NATIONAL | "" (blank when unclear).
+    Do not invent a fourth 'ambiguous' label — leave the field empty instead.
     """
     t = text.lower()
     loc = sum(bool(re.search(p, t)) for p in LOCAL_SIGNALS)
-    agn = sum(bool(re.search(p, t)) for p in AGNOSTIC_SIGNALS)
-    if loc and not agn:  return "LOCAL_SERVICE", True
-    if agn and not loc:  return "LOCATION_AGNOSTIC", True
-    if agn > loc + 1:    return "LOCATION_AGNOSTIC", False
-    if loc > agn + 1:    return "LOCAL_SERVICE", False
+    reg = sum(bool(re.search(p, t)) for p in REGIONAL_SIGNALS)
+    nat = sum(bool(re.search(p, t)) for p in NATIONAL_SIGNALS)
+
+    if nat and nat >= reg:
+        return "NATIONAL", nat >= 1 and (reg == 0 or nat > reg)
+    if reg:
+        return "REGIONAL", True
+    if loc:
+        return "LOCAL_SERVICE", True
     return "", False
 
 
@@ -1058,8 +1146,9 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
     return text[:600]
 
 
-def extract(block: str, source: str, msg_id: str, idx: int,
-            sub_src: str = "", subject: str = "") -> Listing:
+def extract(block: str, format_family: str, msg_id: str, idx: int,
+            source: str = "", sub_source: str = "", nickname: str = "",
+            subject: str = "") -> Listing:
     money = extract_money_fields(block)
     city, state, county = extract_location(block)
     model, confident = classify_model(block)
@@ -1071,12 +1160,17 @@ def extract(block: str, source: str, msg_id: str, idx: int,
             url = candidate
             break
 
+    domain = source or format_family
     lst = Listing(
-        ext_id=f"{source}:{msg_id}:{idx}",
+        # ext_id keeps format_family prefix for stable upsert identity across
+        # remodel of source→domain.
+        ext_id=f"{format_family}:{msg_id}:{idx}",
         title=extract_title(block, subject=subject),
         blurb=clean_blurb(block, url),
-        source=source,
-        sub_source=sub_src,
+        source=domain,
+        sub_source=sub_source,
+        nickname=nickname,
+        format_family=format_family,
         source_msg=msg_id,
         url=url,
         city=city, state=state, county=county,
@@ -1085,8 +1179,8 @@ def extract(block: str, source: str, msg_id: str, idx: int,
         sde=money.get("sde"),
         asking=money.get("asking"),
         business_model_type=model,
-        seen_in=[source],
-        refs=[(source, msg_id, url)],
+        seen_in=[domain],
+        refs=[(domain, msg_id, url)],
     )
     if lst.earnings is None: lst.needs_llm.append("earnings")
     if lst.state is None:    lst.needs_llm.append("location")
@@ -1230,25 +1324,39 @@ def _is_junk_title(title: str) -> bool:
 
 
 def ingest(emails: List[RawEmail]):
-    raw, per_source, per_sub_source = [], {}, {}
+    raw = []
+    per_source, per_sub_source, per_nickname, per_family = {}, {}, {}, {}
     for em in emails:
-        src = route(em)
-        sub = sub_source(em)
-        if src in ("newsletter", "dealstream", "businessexits", "benchmark"):
+        family = format_family(em)
+        domain, email_addr, nick = attribution(em)
+        if family in ("newsletter", "dealstream", "businessexits", "benchmark"):
             blocks = split_newsletter(em.body, sender=em.sender)
         else:
-            blocks = SPLITTERS[src](em.body)
-        per_source[src] = per_source.get(src, 0) + len(blocks)
-        per_sub_source[sub] = per_sub_source.get(sub, 0) + len(blocks)
+            blocks = SPLITTERS[family](em.body)
+        per_family[family] = per_family.get(family, 0) + len(blocks)
+        per_source[domain] = per_source.get(domain, 0) + len(blocks)
+        per_sub_source[email_addr or "(none)"] = (
+            per_sub_source.get(email_addr or "(none)", 0) + len(blocks)
+        )
+        per_nickname[nick] = per_nickname.get(nick, 0) + len(blocks)
         for i, b in enumerate(blocks):
-            listing = extract(b, src, em.msg_id, i, sub_src=sub, subject=em.subject)
+            listing = extract(
+                b, family, em.msg_id, i,
+                source=domain, sub_source=email_addr, nickname=nick,
+                subject=em.subject,
+            )
             if _is_junk_title(listing.title):
                 continue
             raw.append(listing)
     kept, merged = dedupe(raw)
-    return kept, {"raw": len(raw), "kept": len(kept), "merged": merged,
-                  "per_source": per_source, "per_sub_source": per_sub_source,
-                  "alerts": health(per_source)}
+    return kept, {
+        "raw": len(raw), "kept": len(kept), "merged": merged,
+        "per_source": per_source,
+        "per_sub_source": per_sub_source,
+        "per_nickname": per_nickname,
+        "per_family": per_family,
+        "alerts": health(per_family),
+    }
 
 
 # =====================================================================
