@@ -118,11 +118,14 @@ class Listing:
     #   nickname   = human-facing label     e.g. BizBuySell
     # UI may truncate/display these; storage always keeps the full values.
     # format_family is INTERNAL only — picks the splitter / ext_id prefix;
-    # it is not a substitute for source.
+    # it is not a substitute for source. format_id / email_type come from
+    # the repertoire catalog when a shape is recognized.
     source: str
     sub_source: str = ""
     nickname: str = ""
     format_family: str = ""
+    format_id: str = ""
+    email_type: str = ""
     source_msg: str = ""
     url: str = ""
     city: Optional[str] = None
@@ -281,7 +284,18 @@ def _is_provider_domain(domain: str) -> bool:
 
 
 def nickname_for(domain: str, email: str = "", hay: str = "") -> str:
-    """Human-facing label for a provider domain / address."""
+    """Human-facing label for a provider domain / address.
+
+    Prefer the format repertoire (providers + formats); fall back to
+    hardcoded NICKNAME_RULES so offline/fixture runs still work.
+    """
+    try:
+        from formats.catalog import get_catalog
+        hit = get_catalog().nickname_for_domain(domain, email)
+        if hit:
+            return hit
+    except Exception:
+        pass
     blob = f"{email} {domain} {hay}".lower()
     for pat, name in NICKNAME_RULES:
         if re.search(pat, blob):
@@ -291,8 +305,27 @@ def nickname_for(domain: str, email: str = "", hay: str = "") -> str:
     return "Unknown"
 
 
+def classify_format(em: RawEmail, domain: str = "", email: str = ""):
+    """Match repertoire entry for this message. Returns FormatMatch | None."""
+    try:
+        from formats.catalog import get_catalog
+        return get_catalog().match(
+            sender=em.sender,
+            subject=em.subject,
+            body=em.body or "",
+            source_domain=domain,
+            sub_source_email=email,
+        )
+    except Exception:
+        return None
+
+
 def format_family(em: RawEmail) -> str:
     """Internal splitter key — NOT the stored `source` field."""
+    domain, email, _nick = attribution(em)
+    matched = classify_format(em, domain=domain, email=email)
+    if matched and matched.format_family:
+        return matched.format_family
     hay = f"{em.sender} {em.subject} {em.body[:8000]}".lower()
     for fam, pats in FORMAT_FAMILY_RULES:
         if any(re.search(p, hay) for p in pats):
@@ -1148,7 +1181,7 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
 
 def extract(block: str, format_family: str, msg_id: str, idx: int,
             source: str = "", sub_source: str = "", nickname: str = "",
-            subject: str = "") -> Listing:
+            subject: str = "", format_id: str = "", email_type: str = "") -> Listing:
     money = extract_money_fields(block)
     city, state, county = extract_location(block)
     model, confident = classify_model(block)
@@ -1171,6 +1204,8 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         sub_source=sub_source,
         nickname=nickname,
         format_family=format_family,
+        format_id=format_id,
+        email_type=email_type,
         source_msg=msg_id,
         url=url,
         city=city, state=state, county=county,
@@ -1326,24 +1361,45 @@ def _is_junk_title(title: str) -> bool:
 def ingest(emails: List[RawEmail]):
     raw = []
     per_source, per_sub_source, per_nickname, per_family = {}, {}, {}, {}
+    per_format, per_email_type = {}, {}
     for em in emails:
-        family = format_family(em)
         domain, email_addr, nick = attribution(em)
-        if family in ("newsletter", "dealstream", "businessexits", "benchmark"):
+        matched = classify_format(em, domain=domain, email=email_addr)
+        family = (
+            matched.format_family
+            if matched and matched.format_family
+            else format_family(em)
+        )
+        fmt_id = matched.format_id if matched else ""
+        em_type = matched.email_type if matched else ""
+
+        # Repertoire says this mailbox/shape must not produce listings.
+        if matched and (
+            matched.split == "drop"
+            or matched.status == "control"
+            or em_type in ("newsletter_marketing", "account_notice")
+        ):
+            blocks = []
+        elif family in ("newsletter", "dealstream", "businessexits", "benchmark"):
             blocks = split_newsletter(em.body, sender=em.sender)
         else:
             blocks = SPLITTERS[family](em.body)
+
         per_family[family] = per_family.get(family, 0) + len(blocks)
         per_source[domain] = per_source.get(domain, 0) + len(blocks)
         per_sub_source[email_addr or "(none)"] = (
             per_sub_source.get(email_addr or "(none)", 0) + len(blocks)
         )
         per_nickname[nick] = per_nickname.get(nick, 0) + len(blocks)
+        if fmt_id:
+            per_format[fmt_id] = per_format.get(fmt_id, 0) + len(blocks)
+        if em_type:
+            per_email_type[em_type] = per_email_type.get(em_type, 0) + len(blocks)
         for i, b in enumerate(blocks):
             listing = extract(
                 b, family, em.msg_id, i,
                 source=domain, sub_source=email_addr, nickname=nick,
-                subject=em.subject,
+                subject=em.subject, format_id=fmt_id, email_type=em_type,
             )
             if _is_junk_title(listing.title):
                 continue
@@ -1355,6 +1411,8 @@ def ingest(emails: List[RawEmail]):
         "per_sub_source": per_sub_source,
         "per_nickname": per_nickname,
         "per_family": per_family,
+        "per_format": per_format,
+        "per_email_type": per_email_type,
         "alerts": health(per_family),
     }
 

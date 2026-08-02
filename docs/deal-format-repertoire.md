@@ -1,111 +1,158 @@
-# Deal Format Repertoire
+# Deal Format Repertoire — Playbook
 
-**Contract for extraction consistency.** Built from a live `dirk@` harvest
-(5-day lookback, 61 messages, 2026-08-02), then merged with earlier fixture
-knowledge.
+**How we learn and store email formats** for Nails & Mercy extraction.
 
-| Artifact | Path |
-|----------|------|
-| Machine catalog | [`pipeline/formats/repertoire.yaml`](../pipeline/formats/repertoire.yaml) |
-| Survey inventory | [`pipeline/formats/survey/inbox_5d.json`](../pipeline/formats/survey/inbox_5d.json) |
-| Per-message bodies | `pipeline/formats/survey/bodies/` |
-| Re-run survey | `python pipeline/survey_inbox.py --days 5` |
+Machine catalog: [`pipeline/formats/repertoire.yaml`](../pipeline/formats/repertoire.yaml)  
+Loader / matcher: [`pipeline/formats/catalog.py`](../pipeline/formats/catalog.py)  
+CLI: `python pipeline/formats/learn.py …`  
+Handoff context: [`Deal_Extraction_Format_Repertoire_Whitepaper.md`](./Deal_Extraction_Format_Repertoire_Whitepaper.md)
 
 ---
 
-## Attribution triad (organizational contract)
+## 1. What we store (four layers)
 
-Every listing stores three fields — keep these names and meanings everywhere
-(pipeline, SQLite, Postgres, Flow App UI, this repertoire):
+| Layer | Lives in | Purpose |
+|-------|----------|---------|
+| **Providers** | `repertoire.yaml` → `providers:` | Domain + known mailboxes → nickname |
+| **Email types** | `email_types:` | digest / single / marketing / follow-up / notice |
+| **Signals** | `signals:` | Named regexes reusable across formats |
+| **Formats** | `formats:` | Full shape: detect rules, expected fields, gotchas, status |
+
+Every **format** also carries the attribution triad:
 
 | Field | Meaning | Example |
 |-------|---------|---------|
-| **`source`** | Sender **domain** | `bizbuysell.com` |
-| **`sub_source`** | Sender **email address** | `bizalert@bizbuysell.com` |
-| **`nickname`** | Human-facing label (pill text) | `BizBuySell` |
+| `source` | Sender **domain** | `bizbuysell.com` |
+| `sub_source` | Sender **email** (or `*@domain`) | `bizalert@bizbuysell.com` |
+| `nickname` | Human-facing pill | `BizBuySell` |
 
-UI may truncate for display; storage keeps full values. Automated deal mail
-comes from fixed inboxes — **`sub_source` is one of the strongest format
-signals** (e.g. `bizalert@` digest vs `newbizopps@` single).
-
-`format_family` (`bizbuysell`, `axial`, `newsletter`, …) is an **internal**
-splitter / health / `ext_id` prefix. It is **not** stored as `source`.
-
----
-
-## 1. What the inbox actually looks like (last 5 days)
-
-| Count | Shape | Yield today? |
-|------:|-------|--------------|
-| **35** | BizBuySell **`newbizopps@`** — `Business For Sale: …` single listing | **No** (parser gap) |
-| **9** | BizBuySell **`bizalert@`** — `N New Business Match(es): …` digest | Yes |
-| **4** | Axial **`newdeal@`** — one opportunity per email | Yes (money often wrong) |
-| **2** | Axial **`notifications@`** — Action Summary | 0 (correct) |
-| **1** | SMB Deal Hunter digest (`In Today's Issue`) | Yes |
-| **1+** | SMB Deal Hunter editorial / podcast marketing | 0 (correct when not a digest) |
-| **1** | Benchmark International broker follow-up | False-positive junk |
-| **1** | Gateway M&A subscription confirm | 0 (correct) |
-| **7** | Forwards from `tristan@` (mix of SMB digest + editorial) | Mixed |
-
-**42 of 61 messages yielded zero listings** under the current splitter. Most of
-that is **`bizbuysell.newbizopps_single`** — a real deal product we never taught
-the pipeline to read.
+`format_family` picks the splitter / `ext_id` prefix. It is **not** the stored
+`source` column.
 
 ---
 
 ## 2. Detection order (always)
 
-1. **`sub_source` (sender address) / `source` (domain)**
+1. **`sub_source` / `source`** (address, then domain)
 2. **Subject line shape**
-3. **How the email opens** (first meaningful lines after `strip_html`)
+3. **Body open** (first meaningful lines after `strip_html`)
 4. **Body markers** (confirmation / last resort)
+5. Optional **named signals** from `signals:`
 
-Forwarded mail: unwrap `Forwarded message`, prefer original `From:` over
-`tullyinvesting.com`.
+Forwards: unwrap `Forwarded message`, attribute the **original** mailbox — never
+`tullyinvesting.com` / Gmail as provider.
 
 ---
 
 ## 3. Email types
 
-| Type | Meaning |
-|------|---------|
-| `daily_digest` | Multi-listing alert / numbered issue |
-| `single_listing` | One deal per email |
-| `newsletter_marketing` | Editorial / program marketing — yield 0 |
-| `follow_up` | NDA / buyer-profile / CIM thread |
-| `account_notice` | Transactional / confirm / action summary — yield 0 |
+| Type | Meaning | Typical yield |
+|------|---------|---------------|
+| `daily_digest` | Multi-listing alert / numbered issue | N listings |
+| `single_listing` | One deal per email | 1 |
+| `newsletter_marketing` | Editorial / promo | **0** |
+| `follow_up` | NDA / CIM / buyer-profile thread | 0–1 (careful) |
+| `account_notice` | Confirm / action summary / account change | **0** |
+
+Control types (`newsletter_marketing`, `account_notice`) and formats with
+`status: control` or `split: drop` are forced to zero yield in ingest.
 
 ---
 
-## 4. Catalog — live sources first
+## 4. Format status lifecycle
 
-### BizBuySell
+| Status | Meaning |
+|--------|---------|
+| `needs_samples` | Seen or suspected; not enough bodies yet |
+| `stub` | Skeleton entry only |
+| `needs_parser` | Detection verified; splitter/extractor missing |
+| `provisional` | Parser exists; money/location still shaky |
+| `active` | Trusted in production |
+| `control` | Recognized non-deal mail — must stay at yield 0 |
 
-| Format id | sub_source | Type | Notes |
-|-----------|------------|------|-------|
-| `bizbuysell.bizalert_digest` | `bizalert@bizbuysell.com` | digest | Asking + Location. Splitter works. |
-| `bizbuysell.newbizopps_single` | `newbizopps@bizbuysell.com` | single | **needs_parser** — no `Location:` label. |
-
-### Axial
-
-| Format id | sub_source | Type |
-|-----------|------------|------|
-| `axial.single_deal` | `newdeal@axial.net` | single (provisional money) |
-| `axial.action_summary` | `notifications@axial.net` | account_notice → 0 |
-| `axial.deal_alert_digest` | `alerts@axial.net` | digest (fixture; not in 5d) |
-
-### SMB / Benchmark / Gateway
-
-See `repertoire.yaml`. Digest vs editorial for SMB is decided by body open
-(`In Today's Issue`) after the same `helen@…` address.
+**Rule:** do not add a new regex path in `ingest.py` without a repertoire `id`.
 
 ---
 
-## 5–8. Rules, extend, next step
+## 5. Workflow — learning a new source
 
-- Regex-first for money/location; bare `$` never assigned; Profit/Cash Flow → SDE.
-- New format → repertoire entry with triad fields → then `ingest.py`.
-- **Next:** implement `bizbuysell.newbizopps_single` splitter.
+```text
+Inbox mail
+   │
+   ▼
+survey_inbox.py --days 5     →  survey/inbox_5d.json + bodies/
+   │
+   ▼
+learn.py classify            →  matched / unmatched / needs_parser
+   │
+   ├─ unmatched ──► learn.py propose ──► stubs/*.yaml
+   │                      │
+   │                      ▼
+   │                 edit stub (detect, fields, gotchas)
+   │                      │
+   │                      ▼
+   │                 merge into repertoire.yaml (+ providers if new)
+   │
+   ├─ needs_parser ──► implement splitter in ingest.py
+   │                      promote status → provisional → active
+   │
+   └─ validate ──► learn.py validate && classify again
+```
 
-Related: [`NM_Deal_Flow_Whitepaper.md`](./NM_Deal_Flow_Whitepaper.md),
-[`pipeline/GMAIL_SETUP.md`](../pipeline/GMAIL_SETUP.md).
+Commands (from `pipeline/`):
+
+```bash
+pip install -r requirements.txt
+python formats/learn.py validate
+python formats/learn.py summary
+python survey_inbox.py --days 5
+python formats/learn.py classify
+python formats/learn.py propose
+python formats/learn.py show bizbuysell.newbizopps_single
+```
+
+Template: [`pipeline/formats/_FORMAT_TEMPLATE.yaml`](../pipeline/formats/_FORMAT_TEMPLATE.yaml)
+
+---
+
+## 6. What a good format entry includes
+
+- Triad fields + `format_family` + `email_type` + `status`
+- `detect` with at least address **or** (domain + subject/open markers)
+- `expected_fields.present` / `absent` (so missing BizAlert EBITDA is not an error)
+- `gotchas` (HTML-only, franchise footer, forward chrome, …)
+- `split` hint (`bizbuysell`, `newsletter`, `drop`, `needs_new_splitter`, …)
+- Survey evidence when available (`survey_count_5d`, subject examples)
+
+---
+
+## 7. Live catalog highlights (5-day survey)
+
+| Format id | sub_source | Type | Status |
+|-----------|------------|------|--------|
+| `bizbuysell.bizalert_digest` | `bizalert@` | digest | active |
+| `bizbuysell.newbizopps_single` | `newbizopps@` | single | **needs_parser** (largest gap) |
+| `axial.single_deal` | `newdeal@` | single | active (money provisional) |
+| `axial.action_summary` | `notifications@` | account_notice | control |
+| `smb_deal_hunter.daily_digest` | `helen@mail.smb…` | digest | active |
+| `smb_deal_hunter.editorial` | same mailbox | marketing | control |
+
+Same mailbox can host two formats (SMB digest vs editorial) — **body open**
+decides type after address match.
+
+---
+
+## 8. Extraction rules (do not regress)
+
+- Money / location: **regex-first**; bare `$` is never assigned to a field
+- Ambiguous profit labels → **SDE**, not EBITDA
+- BizAlert missing earnings is normal (`needs_llm_ok: [earnings]`)
+- Never attribute forwarder domains as provider
+
+---
+
+## 9. Next leverage
+
+1. Implement parser for `bizbuysell.newbizopps_single` → `active`
+2. Axial LTM money lines (`Revenue` / `$7.6` / `M`)
+3. Keep running `classify` after each survey so new mailboxes become stubs early

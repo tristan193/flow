@@ -1,14 +1,18 @@
 # Nails & Mercy — Deal Format Repertoire (machine-readable)
+#
+# This file is the system of record for learning new deal email shapes.
+# Load/match/validate:  python formats/learn.py validate|summary|classify|propose
+# Loader:               pipeline/formats/catalog.py
+# Human playbook:       docs/deal-format-repertoire.md
+#
 # Attribution triad (stored on every listing / Flow App):
 #   source     = sender domain          e.g. bizbuysell.com
 #   sub_source = sender email address   e.g. bizalert@bizbuysell.com
 #   nickname   = human-facing label     e.g. BizBuySell
 # format_family = internal splitter key (NOT stored as source)
 #
-# Human/agent contract: docs/deal-format-repertoire.md
-#
-version: 2
-updated: 2026-08-01
+version: 3
+updated: 2026-08-02
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -20,12 +24,101 @@ survey:
     live splitter does not handle yet — repertoire entry is verified for
     detection; status needs_parser.
 
+# ---------------------------------------------------------------------------
+# Email types — first classification after attribution
+# ---------------------------------------------------------------------------
 email_types:
-  - daily_digest
-  - single_listing
-  - newsletter_marketing
-  - follow_up
-  - account_notice
+  daily_digest:
+    description: Multi-listing alert or numbered issue; expect N>1 blocks when parsed.
+  single_listing:
+    description: One deal per email (broker teaser or marketplace single).
+  newsletter_marketing:
+    description: Editorial / podcast / promo — expected listing yield 0.
+  follow_up:
+    description: NDA / CIM / buyer-profile thread — not a fresh listing blast.
+  account_notice:
+    description: Transactional (confirm, action summary, address change) — yield 0.
+
+# ---------------------------------------------------------------------------
+# Named signals — reusable detect patterns (formats may reference by id)
+# ---------------------------------------------------------------------------
+signals:
+  asking_price_label:
+    where: body
+    pattern: '(?i)asking\s*price\s*:'
+    weight: 10
+  new_business_matches:
+    where: subject
+    pattern: '(?i)\b\d+\s+new business matches?\b'
+    weight: 40
+  business_for_sale_subject:
+    where: subject
+    pattern: '(?i)^business for sale:'
+    weight: 40
+  in_todays_issue:
+    where: body
+    pattern: "(?i)(?:👇\\s*)?\\*?in today[’']?s issue\\b"
+    weight: 40
+  nda_or_cim:
+    where: body
+    pattern: '(?i)sign\s+(?:the\s+)?nda|\bcim\b|confidential\s+information\s+memorandum'
+    weight: 15
+  action_summary_subject:
+    where: subject
+    pattern: '(?i)^action summary for'
+    weight: 40
+
+# ---------------------------------------------------------------------------
+# Providers — domain / mailbox → nickname (learning sheet for new senders)
+# ---------------------------------------------------------------------------
+providers:
+  - domain: bizbuysell.com
+    nickname: BizBuySell
+    addresses:
+      - email: bizalert@bizbuysell.com
+        role: saved_search_digest
+      - email: newbizopps@bizbuysell.com
+        role: single_listing_alert
+      - email: alerts@bizbuysell.com
+        role: legacy_fixture_alias
+        note: Not seen in 5d live survey; fixtures only.
+  - domain: axial.net
+    nickname: Axial
+    addresses:
+      - email: newdeal@axial.net
+        role: single_opportunity
+      - email: notifications@axial.net
+        role: account_notice
+      - email: alerts@axial.net
+        role: digest_fixture
+  - domain: smbdealhunter.xyz
+    nickname: SMB Deal Hunter
+    addresses:
+      - email: helen@mail.smbdealhunter.xyz
+        role: digest_and_editorial
+  - domain: mail.smbdealhunter.xyz
+    nickname: SMB Deal Hunter
+  - domain: benchmarkintl.com
+    nickname: Benchmark International
+  - domain: benchmarktennessee.com
+    nickname: Benchmark International (TN)
+  - domain: businessexits.com
+    nickname: BusinessExits
+    addresses:
+      - email: inquiries@businessexits.com
+        role: single_listing
+  - domain: vanlagroup.com
+    nickname: Vanla Group
+  - domain: gulfcoastma.com
+    nickname: Gulf Coast M&A
+  - domain: gatewayma.com
+    nickname: Gateway M&A
+  - domain: doeren.com
+    nickname: Doeren Mayhew (non-deal)
+  - domain: bizquest.com
+    nickname: BizQuest
+  - domain: dealstream.com
+    nickname: DealStream
 
 formats:
 

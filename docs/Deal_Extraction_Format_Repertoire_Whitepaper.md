@@ -94,26 +94,30 @@ Implementation: `attribution()` + `format_family()` in `pipeline/ingest.py`.
 
 ## 4. Format repertoire — what it is
 
-A living catalog of expected email shapes. Detection order (always):
+A living catalog of expected email shapes, plus the **system** to grow it:
+
+| Piece | Path |
+|-------|------|
+| Machine catalog | `pipeline/formats/repertoire.yaml` |
+| Loader / matcher | `pipeline/formats/catalog.py` |
+| Learn CLI | `python pipeline/formats/learn.py …` |
+| Playbook | `docs/deal-format-repertoire.md` |
+
+Detection order (always):
 
 1. **`sub_source` / `source`** (address, then domain)
 2. **Subject line shape**
 3. **How the email opens** (~first meaningful lines after `strip_html`)
 4. **Body markers** (confirmation / last resort)
+5. Optional named **`signals:`**
 
-**Email types:**
+**Email types:** `daily_digest` · `single_listing` · `newsletter_marketing` ·
+`follow_up` · `account_notice`
 
-| Type | Meaning |
-|------|---------|
-| `daily_digest` | Multi-listing alert / numbered issue |
-| `single_listing` | One deal per email |
-| `newsletter_marketing` | Editorial / marketing — expected yield 0 |
-| `follow_up` | NDA / buyer-profile / CIM thread |
-| `account_notice` | Transactional — expected yield 0 |
-
-**Machine catalog:** `pipeline/formats/repertoire.yaml`  
-**Human contract:** `docs/deal-format-repertoire.md`  
 **Rule:** do not add a new regex path in `ingest.py` without a repertoire `id`.
+
+Learn loop: `survey_inbox.py` → `learn.py classify` → `learn.py propose` (stubs)
+→ merge into YAML → implement parser → promote `status`.
 
 ---
 
