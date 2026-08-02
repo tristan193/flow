@@ -29,6 +29,8 @@ Every listing carries three fields — same names in pipeline, DB, and Flow App:
 
 UI may truncate for display; storage keeps full values. Format catalog:
 [`docs/deal-format-repertoire.md`](docs/deal-format-repertoire.md).
+Agent handoff (intent, findings, docs):
+[`docs/Deal_Extraction_Format_Repertoire_Whitepaper.md`](docs/Deal_Extraction_Format_Repertoire_Whitepaper.md).
 
 ## What Flow App does
 

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS deals (
   sde                 DOUBLE PRECISION,
   asking              DOUBLE PRECISION,
 
-  business_model_type TEXT NOT NULL DEFAULT 'AMBIGUOUS',
+  business_model_type TEXT NOT NULL DEFAULT '',
   needs_llm           JSONB NOT NULL DEFAULT '[]'::jsonb,
   url                 TEXT,
 
@@ -138,7 +138,13 @@ CREATE TABLE IF NOT EXISTS drive_files_seen (
 -- Reports read earnings through this view, which prefers EBITDA and flags when
 -- the figure is really SDE. Keeping the preference in one place stops each
 -- query from re-deciding it.
-CREATE OR REPLACE VIEW v_deals AS
+--
+-- DROP + CREATE (not CREATE OR REPLACE): adding deals.source / deals.nickname
+-- changes the column list behind d.*, and Postgres refuses OR REPLACE when that
+-- would rename view columns in place (42P16: cannot change name of view column
+-- "earnings" to "source").
+DROP VIEW IF EXISTS v_deals;
+CREATE VIEW v_deals AS
 SELECT
   d.*,
   COALESCE(d.ebitda, d.sde) AS earnings,

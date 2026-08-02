@@ -45,10 +45,10 @@ export interface IncomingVerdict {
   createdAt?: string | null;
 }
 
-/** Blank / legacy labels → null so the UI stays dormant on that field. */
-function normalizeBusinessModel(value: string | null | undefined): string | null {
+/** Blank / legacy labels → empty string so NOT NULL columns stay valid. */
+function normalizeBusinessModel(value: string | null | undefined): string {
   const t = (value || "").trim();
-  if (!t || t === "AMBIGUOUS" || t === "LOCATION_AGNOSTIC") return null;
+  if (!t || t === "AMBIGUOUS" || t === "LOCATION_AGNOSTIC") return "";
   return t;
 }
 
