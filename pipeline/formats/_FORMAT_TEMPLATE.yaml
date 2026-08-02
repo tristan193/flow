@@ -1,10 +1,10 @@
-# Copy this into repertoire.yaml under formats: (or start from learn.py propose).
 # Required: id, format_family, source, sub_source, nickname, email_type, status, detect
 #
 # id:             provider.product_shape   e.g. bizbuysell.newbizopps_single
 # format_family:  internal splitter key    e.g. bizbuysell | axial | newsletter
 # source:         sender domain            e.g. bizbuysell.com
 # sub_source:     sender email or *@domain e.g. newbizopps@bizbuysell.com
+# provider_subcategory: mailbox id under providers[].subcategories  e.g. newbizopps
 # nickname:       pill label               e.g. BizBuySell
 # email_type:     daily_digest | single_listing | newsletter_marketing | follow_up | account_notice
 # status:         active | needs_parser | provisional | control | stub | needs_samples
@@ -14,6 +14,7 @@
   format_family: newsletter
   source: example.com
   sub_source: deals@example.com
+  provider_subcategory: deals
   nickname: Example Broker
   email_type: single_listing
   confidence: stub
@@ -28,8 +29,6 @@
     body_open_patterns:
       - '(?i)we are pleased to present'
     body_markers: []
-    # Optional named signals from repertoire.yaml signals:
-    # signals: [asking_price_label]
   expected_fields:
     present: [title, asking, location]
     absent: [ebitda]
@@ -37,5 +36,10 @@
   split: newsletter
   gotchas:
     - "Note anything that fools a generic splitter"
-  survey_evidence:
-    subject_example: ""
+  # Also add under providers: → subcategories: for this mailbox
+  #   - id: deals
+  #     email: deals@example.com
+  #     label: Deals desk
+  #     purpose: …
+  #     typical_email_type: single_listing
+  #     default_format: provider.example_shape

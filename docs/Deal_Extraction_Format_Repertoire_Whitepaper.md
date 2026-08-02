@@ -74,10 +74,12 @@ SQLite, Neon, import JSON, Flow App UI, repertoire YAML:
 | **`source`** | Sender **domain** | `bizbuysell.com` |
 | **`sub_source`** | Sender **email address** | `bizalert@bizbuysell.com` |
 | **`nickname`** | Human-facing label (pill text) | `BizBuySell` |
+| **`provider_subcategory`** | Mailbox product under the provider | `bizalert` |
 
 UI may truncate for display; storage keeps full values. Automated deal mail
-comes from fixed inboxes — **`sub_source` is one of the strongest format
-signals** (same domain, different products).
+comes from fixed inboxes — **provider subcategory (= From: mailbox) is often
+enough alone to select the format**; subject/body still confirm and
+disambiguate when one mailbox serves two jobs.
 
 **Internal only — not a stored “source”:**
 
@@ -88,7 +90,8 @@ signals** (same domain, different products).
 Never put `format_family` back into the `source` column. That mix-up is what
 made `bizalert@` and `newbizopps@` look identical.
 
-Implementation: `attribution()` + `format_family()` in `pipeline/ingest.py`.
+Implementation: `attribution()` + `format_family()` in `pipeline/ingest.py`;
+subcategories live under `providers:` in `repertoire.yaml`.
 
 ---
 
@@ -105,11 +108,13 @@ A living catalog of expected email shapes, plus the **system** to grow it:
 
 Detection order (always):
 
-1. **`sub_source` / `source`** (address, then domain)
-2. **Subject line shape**
-3. **How the email opens** (~first meaningful lines after `strip_html`)
-4. **Body markers** (confirmation / last resort)
-5. Optional named **`signals:`**
+1. **Provider subcategory** (`From:` mailbox → `providers[].subcategories`)
+2. **`sub_source` / `source`** on the format (address, then domain)
+3. **Subject line shape**
+4. **How the email opens** (~first meaningful lines after `strip_html`)
+5. **Body markers** / named **`signals:`**
+
+If a subcategory lists `default_format`, that format is strongly preferred.
 
 **Email types:** `daily_digest` · `single_listing` · `newsletter_marketing` ·
 `follow_up` · `account_notice`
@@ -137,8 +142,9 @@ Artifacts: `pipeline/formats/survey/inbox_5d.json` (+ bodies locally, gitignored
 | **1** | Benchmark follow-up (`benchmarkintl.com`) | False-positive junk risk |
 | **1** | Gateway subscription confirm | 0 (correct) |
 
-**Headline finding:** ~35/42 zero-yield messages were **BizBuySell single-listing
-alerts from `newbizopps@`**, not unrecognized noise.
+**Headline finding (pre-parser):** ~35/42 zero-yield messages were **BizBuySell
+single-listing alerts from `newbizopps@`**. Parser now: `split_bizbuysell_newbizopps`
+(status `active`).
 
 ### BizBuySell — two products, two senders
 

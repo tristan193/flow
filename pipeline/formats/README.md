@@ -8,11 +8,23 @@ be the only place format knowledge lives.
 |----------|------|
 | [`repertoire.yaml`](./repertoire.yaml) | Providers, signals, email types, formats |
 | [`catalog.py`](./catalog.py) | Load / validate / match |
-| [`learn.py`](./learn.py) | CLI: summary, classify survey, propose stubs |
+| [`learn.py`](./learn.py) | CLI: summary, classify, propose, train-queue |
+| [`repertoire.meta.json`](./repertoire.meta.json) | Slim export for Flow App Train AI |
+| [`train/`](./train/) | Train-AI review notes → repertoire edits |
 | [`_FORMAT_TEMPLATE.yaml`](./_FORMAT_TEMPLATE.yaml) | Copy-paste for a new format |
 | [`stubs/`](./stubs/) | Auto-proposed drafts (not loaded until merged) |
 | [`survey/`](./survey/) | Live inbox inventories + bodies |
 | [`docs/deal-format-repertoire.md`](../../docs/deal-format-repertoire.md) | Playbook |
+
+### Train AI
+
+Flow App **Train AI** inspects the deal against this repertoire (via
+`repertoire.meta.json`) and stores a checklist on `train_flags.inspection`.
+Export with `GET /api/train`, then:
+
+```bash
+python formats/learn.py train-queue --input flags.json
+```
 
 ### Attribution triad (every format entry)
 
@@ -21,9 +33,14 @@ be the only place format knowledge lives.
 | `source` | Sender **domain** | `bizbuysell.com` |
 | `sub_source` | Sender **email** | `bizalert@bizbuysell.com` |
 | `nickname` | Human pill label | `BizBuySell` |
+| `provider_subcategory` | Mailbox subcategory id under the provider | `bizalert` |
 | `format_family` | Internal splitter key — **not** stored as `source` | `bizbuysell` |
 
-Detection order: **sub_source / source → subject → body open → body markers**.
+**Provider subcategory = From: address.** Automated mail almost always uses a
+fixed mailbox per product; that alone is often enough to pick the format.
+See `providers[].subcategories` in `repertoire.yaml`.
+
+Detection order: **mailbox subcategory → address/domain → subject → body open → markers**.
 
 ### Day-to-day commands
 
@@ -35,6 +52,7 @@ python formats/learn.py summary
 python survey_inbox.py --days 5          # refresh survey/
 python formats/learn.py classify
 python formats/learn.py propose          # unmatched → stubs/*.yaml
+python formats/learn.py train-queue --input flags.json
 ```
 
 ### Adding a new source / shape

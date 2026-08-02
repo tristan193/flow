@@ -85,12 +85,19 @@ CREATE TABLE IF NOT EXISTS train_flags (
   member      TEXT NOT NULL,
   reason      TEXT NOT NULL,
   detail      TEXT,
+  -- Repertoire inspection (Train AI → format learning). Populated on save.
+  format_id   TEXT,
+  inspection  JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (deal_id, member)
 );
 
 CREATE INDEX IF NOT EXISTS ix_train_flags_reason ON train_flags (reason);
+
+-- Existing hosted DBs created before repertoire inspection columns.
+ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS format_id TEXT;
+ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS inspection JSONB;
 
 -- Stage history. The board shows where a deal is now; this is how it got
 -- there, which matters when a deal has been sitting at NDA for two months.

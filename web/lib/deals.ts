@@ -56,8 +56,25 @@ function normalizeVerdict(row: Record<string, unknown>): VerdictRow {
 }
 
 function normalizeTrainFlag(row: Record<string, unknown>): TrainFlagRow {
+  let inspection: Record<string, unknown> | null = null;
+  const rawInspection = row.inspection;
+  if (rawInspection && typeof rawInspection === "object" && !Array.isArray(rawInspection)) {
+    inspection = rawInspection as Record<string, unknown>;
+  } else if (typeof rawInspection === "string") {
+    try {
+      const parsed = JSON.parse(rawInspection);
+      if (parsed && typeof parsed === "object") inspection = parsed as Record<string, unknown>;
+    } catch {
+      inspection = null;
+    }
+  }
   return {
-    ...(row as unknown as TrainFlagRow),
+    deal_id: Number(row.deal_id),
+    member: row.member as TrainFlagRow["member"],
+    reason: String(row.reason),
+    detail: (row.detail as string | null) ?? null,
+    format_id: (row.format_id as string | null) ?? null,
+    inspection,
     created_at: isoString(row.created_at),
     updated_at: isoString(row.updated_at),
   };
@@ -162,26 +179,67 @@ export async function clearVerdict(dealId: number, member: MemberId): Promise<vo
   await query("DELETE FROM verdicts WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
-/** Flag a listing as wrong for later ingest training. Does not touch triage. */
+/** Flag a listing as wrong for later ingest / repertoire training. Does not touch triage. */
 export async function setTrainFlag(
   dealId: number,
   member: MemberId,
   reason: TrainReason,
   detail: string | null = null,
+  options: {
+    formatId?: string | null;
+    inspection?: Record<string, unknown> | null;
+  } = {},
 ): Promise<void> {
   await query(
-    `INSERT INTO train_flags (deal_id, member, reason, detail)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO train_flags (deal_id, member, reason, detail, format_id, inspection)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      ON CONFLICT (deal_id, member) DO UPDATE
        SET reason = excluded.reason,
            detail = excluded.detail,
+           format_id = excluded.format_id,
+           inspection = excluded.inspection,
            updated_at = now()`,
-    [dealId, member, reason, detail],
+    [
+      dealId,
+      member,
+      reason,
+      detail,
+      options.formatId ?? null,
+      options.inspection ? JSON.stringify(options.inspection) : null,
+    ],
   );
 }
 
 export async function clearTrainFlag(dealId: number, member: MemberId): Promise<void> {
   await query("DELETE FROM train_flags WHERE deal_id = $1 AND member = $2", [dealId, member]);
+}
+
+/** Open Train-AI queue with deal attribution — for repertoire follow-up. */
+export async function listTrainFlags(): Promise<
+  Array<
+    TrainFlagRow & {
+      ext_id: string;
+      title: string;
+      source: string | null;
+      sub_source: string | null;
+      nickname: string | null;
+    }
+  >
+> {
+  const rows = await query<Record<string, unknown>>(
+    `SELECT f.*, d.ext_id, d.title, d.source, d.sub_source, d.nickname
+       FROM train_flags f
+       JOIN deals d ON d.id = f.deal_id
+      ORDER BY f.updated_at DESC`,
+  );
+  return rows.map((row) => ({
+    ...normalizeTrainFlag(row),
+    ext_id: String(row.ext_id ?? ""),
+    title: String(row.title ?? ""),
+    source: (row.source as string | null) ?? null,
+    sub_source: (row.sub_source as string | null) ?? null,
+    nickname: (row.nickname as string | null) ?? null,
+  }));
 }
 
 /**

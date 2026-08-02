@@ -1,0 +1,604 @@
+{
+  "version": 3,
+  "updated": "2026-08-02",
+  "repertoire_path": "pipeline/formats/repertoire.yaml",
+  "playbook_path": "docs/deal-format-repertoire.md",
+  "formats": [
+    {
+      "id": "bizbuysell.bizalert_digest",
+      "format_family": "bizbuysell",
+      "source": "bizbuysell.com",
+      "sub_source": "bizalert@bizbuysell.com",
+      "provider_subcategory": "bizalert",
+      "nickname": "BizBuySell",
+      "email_type": "daily_digest",
+      "status": "active",
+      "split": "bizbuysell",
+      "expected_fields": {
+        "present": [
+          "title",
+          "asking",
+          "location",
+          "url"
+        ],
+        "absent": [
+          "revenue",
+          "ebitda",
+          "sde"
+        ],
+        "needs_llm_ok": [
+          "earnings"
+        ]
+      },
+      "gotchas": [
+        "HTML-only body common \u2014 must strip_html",
+        "Live From is bizalert@bizbuysell.com (not alerts@)",
+        {
+          "Subject singular form exists": "1 New Business Match: San Antonio"
+        }
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "bizbuysell.newbizopps_single",
+      "format_family": "bizbuysell",
+      "source": "bizbuysell.com",
+      "sub_source": "newbizopps@bizbuysell.com",
+      "provider_subcategory": "newbizopps",
+      "nickname": "BizBuySell",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "bizbuysell_newbizopps",
+      "expected_fields": {
+        "present": [
+          "title",
+          "asking",
+          "location",
+          "url",
+          "blurb"
+        ],
+        "absent": [
+          "revenue",
+          "ebitda",
+          "sde"
+        ],
+        "needs_llm_ok": [
+          "earnings"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": [
+        "Implemented as split_bizbuysell_newbizopps \u2014 normalizes to Location: + Asking for generic extract()",
+        "Truncates before Business Summary so prose cash flow / A/R $ cannot invent SDE",
+        "Do not run digest BIZALERT_LISTING regex on these"
+      ]
+    },
+    {
+      "id": "bizbuysell.unknown",
+      "format_family": "bizbuysell",
+      "source": "bizbuysell.com",
+      "sub_source": "*@bizbuysell.com",
+      "provider_subcategory": "",
+      "nickname": "BizBuySell",
+      "email_type": "daily_digest",
+      "status": "needs_samples",
+      "split": "log_only",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "axial.single_deal",
+      "format_family": "axial",
+      "source": "axial.net",
+      "sub_source": "newdeal@axial.net",
+      "provider_subcategory": "newdeal",
+      "nickname": "Axial",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "whole_body",
+      "expected_fields": {
+        "present": [
+          "title",
+          "revenue",
+          "ebitda"
+        ],
+        "optional": [
+          "location_region",
+          "url"
+        ],
+        "absent": []
+      },
+      "gotchas": [
+        "Money on separate lines: label, amount, M/K unit \u2014 needs Axial-aware money parse",
+        "Geography: 'Western Midwest (IA, KS, \u2026)' \u2014 multi-state, not City/ST"
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "axial.action_summary",
+      "format_family": "axial",
+      "source": "axial.net",
+      "sub_source": "notifications@axial.net",
+      "provider_subcategory": "notifications",
+      "nickname": "Axial",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "axial.deal_alert_digest",
+      "format_family": "axial",
+      "source": "axial.net",
+      "sub_source": "alerts@axial.net",
+      "provider_subcategory": "alerts",
+      "nickname": "Axial",
+      "email_type": "daily_digest",
+      "status": "needs_samples",
+      "split": "axial",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "axial.account_notice",
+      "format_family": "axial",
+      "source": "axial.net",
+      "sub_source": "notifications@axial.net",
+      "provider_subcategory": "notifications",
+      "nickname": "Axial",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "benchmark.broker_followup",
+      "format_family": "benchmark",
+      "source": "benchmarkintl.com",
+      "sub_source": "*@benchmarkintl.com",
+      "provider_subcategory": "any",
+      "nickname": "Benchmark International",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ],
+        "absent_ok": [
+          "revenue",
+          "ebitda",
+          "sde",
+          "asking",
+          "location"
+        ],
+        "needs_llm_ok": [
+          "earnings",
+          "location"
+        ]
+      },
+      "gotchas": [
+        "SOURCE_RULES must include benchmarkintl.com (today only benchmark[a-z]*.com \u2014 intl matches)",
+        "Quoted earlier listing in thread can leak money/location \u2014 attribute carefully"
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "benchmark.broker_prose",
+      "format_family": "benchmark",
+      "source": "benchmarkintl.com",
+      "sub_source": "*@benchmarktennessee.com",
+      "provider_subcategory": "any",
+      "nickname": "Benchmark International",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title",
+          "revenue",
+          "ebitda",
+          "location"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "smb_deal_hunter.daily_digest",
+      "format_family": "newsletter",
+      "source": "smbdealhunter.xyz",
+      "sub_source": "helen@mail.smbdealhunter.xyz",
+      "provider_subcategory": "helen",
+      "nickname": "SMB Deal Hunter",
+      "email_type": "daily_digest",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title",
+          "revenue_or_earnings",
+          "location"
+        ]
+      },
+      "gotchas": [
+        "U+2019 apostrophe in Today's",
+        "Forward chrome from tristan@ still matches via body + sub_source rules"
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "smb_deal_hunter.editorial",
+      "format_family": "newsletter",
+      "source": "mail.smbdealhunter.xyz",
+      "sub_source": "helen@mail.smbdealhunter.xyz",
+      "provider_subcategory": "helen",
+      "nickname": "SMB Deal Hunter",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "gateway.subscription_confirm",
+      "format_family": "newsletter",
+      "source": "gatewayma.com",
+      "sub_source": "inquiries@gatewayma.com",
+      "provider_subcategory": "inquiries",
+      "nickname": "Gateway M&A",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "gateway.single_listing",
+      "format_family": "newsletter",
+      "source": "gatewayma.com",
+      "sub_source": "inquiries@gatewayma.com",
+      "provider_subcategory": "inquiries",
+      "nickname": "Gateway M&A",
+      "email_type": "single_listing",
+      "status": "needs_samples",
+      "split": "newsletter",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "businessexits.single_listing",
+      "format_family": "businessexits",
+      "source": "businessexits.com",
+      "sub_source": "inquiries@businessexits.com",
+      "provider_subcategory": "inquiries",
+      "nickname": "BusinessExits",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title",
+          "revenue",
+          "sde",
+          "asking",
+          "location",
+          "url"
+        ],
+        "label_rules": {
+          "Profit": "sde"
+        }
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "vanla.single_teaser",
+      "format_family": "newsletter",
+      "source": "vanlagroup.com",
+      "sub_source": "*@vanlagroup.com",
+      "provider_subcategory": "any",
+      "nickname": "Vanla Group",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "vanla.follow_up",
+      "format_family": "newsletter",
+      "source": "vanlagroup.com",
+      "sub_source": "*@vanlagroup.com",
+      "provider_subcategory": "any",
+      "nickname": "Vanla Group",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "gulf_coast.single_listing",
+      "format_family": "newsletter",
+      "source": "gulfcoastma.com",
+      "sub_source": "*@gulfcoastma.com",
+      "provider_subcategory": "any",
+      "nickname": "Gulf Coast M&A",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "bizquest.alert",
+      "format_family": "bizquest",
+      "source": "bizquest.com",
+      "sub_source": "*@bizquest.com",
+      "provider_subcategory": "any",
+      "nickname": "BizQuest",
+      "email_type": "daily_digest",
+      "status": "needs_samples",
+      "split": "bizbuysell",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "dealstream.alert",
+      "format_family": "dealstream",
+      "source": "dealstream.com",
+      "sub_source": "*@dealstream.com",
+      "provider_subcategory": "any",
+      "nickname": "DealStream",
+      "email_type": "daily_digest",
+      "status": "needs_samples",
+      "split": "newsletter",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "doeren.marketing",
+      "format_family": "newsletter",
+      "source": "doeren.com",
+      "sub_source": "*@doeren.com",
+      "provider_subcategory": "any",
+      "nickname": "Doeren Mayhew (non-deal)",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {},
+      "gotchas": [],
+      "parser_notes": []
+    }
+  ],
+  "subcategories": [
+    {
+      "id": "bizalert",
+      "email": "bizalert@bizbuysell.com",
+      "provider_domain": "bizbuysell.com",
+      "provider_nickname": "BizBuySell",
+      "default_format": "bizbuysell.bizalert_digest",
+      "label": "BizAlert",
+      "purpose": "Saved-search multi-listing digest"
+    },
+    {
+      "id": "newbizopps",
+      "email": "newbizopps@bizbuysell.com",
+      "provider_domain": "bizbuysell.com",
+      "provider_nickname": "BizBuySell",
+      "default_format": "bizbuysell.newbizopps_single",
+      "label": "New business opps",
+      "purpose": "One listing per email from saved search"
+    },
+    {
+      "id": "alerts_legacy",
+      "email": "alerts@bizbuysell.com",
+      "provider_domain": "bizbuysell.com",
+      "provider_nickname": "BizBuySell",
+      "default_format": "bizbuysell.bizalert_digest",
+      "label": "Alerts (legacy fixture)",
+      "purpose": "Older fixture alias \u2014 not seen in live 5d survey"
+    },
+    {
+      "id": "newdeal",
+      "email": "newdeal@axial.net",
+      "provider_domain": "axial.net",
+      "provider_nickname": "Axial",
+      "default_format": "axial.single_deal",
+      "label": "New deal",
+      "purpose": "One opportunity teaser per email"
+    },
+    {
+      "id": "notifications",
+      "email": "notifications@axial.net",
+      "provider_domain": "axial.net",
+      "provider_nickname": "Axial",
+      "default_format": "",
+      "label": "Notifications",
+      "purpose": "Action summaries and account notices (yield 0)"
+    },
+    {
+      "id": "alerts",
+      "email": "alerts@axial.net",
+      "provider_domain": "axial.net",
+      "provider_nickname": "Axial",
+      "default_format": "axial.deal_alert_digest",
+      "label": "Alerts digest",
+      "purpose": "Multi-deal alert (fixture; rare in live survey)"
+    },
+    {
+      "id": "helen",
+      "email": "helen@mail.smbdealhunter.xyz",
+      "provider_domain": "smbdealhunter.xyz",
+      "provider_nickname": "SMB Deal Hunter",
+      "default_format": "",
+      "label": "Helen / beehiiv",
+      "purpose": "Same mailbox for daily digest AND editorial/podcast \u2014 body open decides"
+    },
+    {
+      "id": "helen",
+      "email": "helen@mail.smbdealhunter.xyz",
+      "provider_domain": "mail.smbdealhunter.xyz",
+      "provider_nickname": "SMB Deal Hunter",
+      "default_format": "",
+      "label": "Helen / beehiiv",
+      "purpose": "Same as smbdealhunter.xyz / helen"
+    },
+    {
+      "id": "any",
+      "email": "*@benchmarkintl.com",
+      "provider_domain": "benchmarkintl.com",
+      "provider_nickname": "Benchmark International",
+      "default_format": "benchmark.broker_followup",
+      "label": "Broker desk",
+      "purpose": "Follow-ups and opportunity mail from any staff address"
+    },
+    {
+      "id": "any",
+      "email": "*@benchmarktennessee.com",
+      "provider_domain": "benchmarktennessee.com",
+      "provider_nickname": "Benchmark International (TN)",
+      "default_format": "benchmark.broker_prose",
+      "label": "TN affiliate",
+      "purpose": "Regional Benchmark opportunity / follow-up mail"
+    },
+    {
+      "id": "inquiries",
+      "email": "inquiries@businessexits.com",
+      "provider_domain": "businessexits.com",
+      "provider_nickname": "BusinessExits",
+      "default_format": "businessexits.single_listing",
+      "label": "Inquiries",
+      "purpose": "Single listing / for-sale alerts"
+    },
+    {
+      "id": "any",
+      "email": "*@vanlagroup.com",
+      "provider_domain": "vanlagroup.com",
+      "provider_nickname": "Vanla Group",
+      "default_format": "",
+      "label": "Vanla",
+      "purpose": "Teaser vs follow-up distinguished by body (NDA/CIM)"
+    },
+    {
+      "id": "any",
+      "email": "*@gulfcoastma.com",
+      "provider_domain": "gulfcoastma.com",
+      "provider_nickname": "Gulf Coast M&A",
+      "default_format": "gulf_coast.single_listing",
+      "label": "Gulf Coast",
+      "purpose": "Confidential opportunity mail"
+    },
+    {
+      "id": "inquiries",
+      "email": "inquiries@gatewayma.com",
+      "provider_domain": "gatewayma.com",
+      "provider_nickname": "Gateway M&A",
+      "default_format": "",
+      "label": "Inquiries",
+      "purpose": "Subscription confirms + occasional single listings"
+    },
+    {
+      "id": "any",
+      "email": "*@doeren.com",
+      "provider_domain": "doeren.com",
+      "provider_nickname": "Doeren Mayhew (non-deal)",
+      "default_format": "doeren.marketing",
+      "label": "Marketing",
+      "purpose": "Non-deal marketing \u2014 yield 0"
+    },
+    {
+      "id": "any",
+      "email": "*@bizquest.com",
+      "provider_domain": "bizquest.com",
+      "provider_nickname": "BizQuest",
+      "default_format": "bizquest.alert",
+      "label": "Alerts",
+      "purpose": "Marketplace alerts (needs samples)"
+    },
+    {
+      "id": "any",
+      "email": "*@dealstream.com",
+      "provider_domain": "dealstream.com",
+      "provider_nickname": "DealStream",
+      "default_format": "dealstream.alert",
+      "label": "Alerts",
+      "purpose": "Marketplace alerts (needs samples)"
+    }
+  ],
+  "by_email": {
+    "bizalert@bizbuysell.com": "bizbuysell.bizalert_digest",
+    "newbizopps@bizbuysell.com": "bizbuysell.newbizopps_single",
+    "newdeal@axial.net": "axial.single_deal",
+    "notifications@axial.net": "axial.account_notice",
+    "alerts@axial.net": "axial.deal_alert_digest",
+    "helen@mail.smbdealhunter.xyz": "smb_deal_hunter.editorial",
+    "inquiries@gatewayma.com": "gateway.single_listing",
+    "inquiries@businessexits.com": "businessexits.single_listing"
+  },
+  "by_domain": {
+    "bizbuysell.com": [
+      "bizbuysell.bizalert_digest",
+      "bizbuysell.newbizopps_single",
+      "bizbuysell.unknown"
+    ],
+    "axial.net": [
+      "axial.single_deal",
+      "axial.action_summary",
+      "axial.deal_alert_digest",
+      "axial.account_notice"
+    ],
+    "benchmarkintl.com": [
+      "benchmark.broker_followup",
+      "benchmark.broker_prose"
+    ],
+    "smbdealhunter.xyz": [
+      "smb_deal_hunter.daily_digest"
+    ],
+    "mail.smbdealhunter.xyz": [
+      "smb_deal_hunter.editorial"
+    ],
+    "gatewayma.com": [
+      "gateway.subscription_confirm",
+      "gateway.single_listing"
+    ],
+    "businessexits.com": [
+      "businessexits.single_listing"
+    ],
+    "vanlagroup.com": [
+      "vanla.single_teaser",
+      "vanla.follow_up"
+    ],
+    "gulfcoastma.com": [
+      "gulf_coast.single_listing"
+    ],
+    "bizquest.com": [
+      "bizquest.alert"
+    ],
+    "dealstream.com": [
+      "dealstream.alert"
+    ],
+    "doeren.com": [
+      "doeren.marketing"
+    ]
+  }
+}

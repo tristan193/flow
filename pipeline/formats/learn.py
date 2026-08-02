@@ -46,21 +46,114 @@ def cmd_validate(_: argparse.Namespace) -> None:
     by_status = Counter(f.status for f in cat.formats)
     for s, n in sorted(by_status.items()):
         print(f"    status {s}: {n}")
+    web_meta = PIPE.parent / "web" / "lib" / "repertoire.meta.json"
+    written = cat.write_meta_json(HERE / "repertoire.meta.json", web_meta)
+    for p in written:
+        print(f"    meta -> {p}")
+
+
+def cmd_train_queue(args: argparse.Namespace) -> None:
+    """Turn exported Train-AI flags into repertoire review notes under train/."""
+    path = Path(args.input)
+    if not path.exists():
+        raise SystemExit(f"Train export not found: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    rows = data if isinstance(data, list) else data.get("flags") or data.get("reviews") or []
+    out_dir = HERE / "train"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cat = get_catalog()
+    stamped = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    written = 0
+    for i, row in enumerate(rows):
+        insp = row.get("inspection") or {}
+        fmt_id = (
+            row.get("format_id")
+            or insp.get("format_id")
+            or ""
+        )
+        deal_id = row.get("deal_id") or insp.get("deal_id") or i
+        reason = row.get("reason") or ""
+        detail = row.get("detail") or insp.get("detail") or ""
+        slug = re_slug(f"{deal_id}_{reason}")[:60]
+        target = out_dir / f"{stamped}_{slug}.md"
+        fmt = cat.get(fmt_id) if fmt_id else None
+        checklist = insp.get("checklist") or []
+        focus = insp.get("focus_fields") or []
+        lines = [
+            f"# Train AI → repertoire review",
+            "",
+            f"- deal_id: {deal_id}",
+            f"- ext_id: {row.get('ext_id') or insp.get('ext_id') or ''}",
+            f"- reason: {reason}",
+            f"- detail: {detail}",
+            f"- format_id: {fmt_id or '(unmatched)'}",
+            f"- source / sub_source: {row.get('source') or insp.get('source')} / "
+            f"{row.get('sub_source') or insp.get('sub_source')}",
+            f"- title: {row.get('title') or insp.get('title') or ''}",
+            "",
+            "## Repertoire target",
+            "",
+            f"Edit `{cat.path.name}` entry `{fmt_id or 'NEW FORMAT'}` "
+            f"(playbook: docs/deal-format-repertoire.md).",
+            "",
+        ]
+        if focus:
+            lines += ["## Focus fields", "", *[f"- {f}" for f in focus], ""]
+        if checklist:
+            lines += ["## Inspection checklist", "", *[f"- [ ] {c}" for c in checklist], ""]
+        if fmt:
+            gotchas = fmt.raw.get("gotchas") or []
+            gotcha_lines = [f"- {g}" for g in gotchas] or ["- (none)"]
+            lines += [
+                "## Current gotchas",
+                "",
+                *gotcha_lines,
+                "",
+                "## Suggested gotcha to append",
+                "",
+                f"- Train AI ({reason}): {detail or (row.get('title') or 'see deal')}",
+                "",
+            ]
+        else:
+            lines += [
+                "## Action",
+                "",
+                "- No format matched — run `learn.py propose` after surveying the source mailbox,",
+                "  or add a provider subcategory + format stub.",
+                "",
+            ]
+        target.write_text("\n".join(lines), encoding="utf-8")
+        written += 1
+        print(f"wrote {target.name}")
+    print(f"train reviews: {written} -> {out_dir}")
+
+
+def re_slug(s: str) -> str:
+    import re
+    return re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower() or "flag"
 
 
 def cmd_summary(_: argparse.Namespace) -> None:
     cat = get_catalog()
-    print("PROVIDERS")
+    print("PROVIDERS -> SUBCATEGORIES (sender mailbox)")
     for p in cat.providers:
-        addrs = ", ".join(a.get("email", "") for a in (p.get("addresses") or []))
-        print(f"  {p.get('nickname') or '?':28}  {p.get('domain')}  [{addrs}]")
+        print(f"  {p.get('nickname') or '?':28}  {p.get('domain')}")
+        subs = [s for s in cat.subcategories if s.provider_domain == (p.get("domain") or "").lower()]
+        if not subs:
+            print("      (no subcategories yet)")
+            continue
+        for s in subs:
+            df = s.default_format or "(body/subject decides)"
+            print(f"      - {s.id:16}  {s.email:42}  -> {df}")
+            if s.purpose:
+                print(f"        {s.purpose[:88]}")
     if not cat.providers:
         print("  (none yet — add a providers: section to repertoire.yaml)")
     print("\nFORMATS")
     for f in cat.formats:
+        sub = f.provider_subcategory or "-"
         print(
-            f"  {f.id:42}  {f.email_type:22}  {f.status:14}  "
-            f"{f.sub_source or f.source}"
+            f"  {f.id:42}  sub={sub:14}  {f.email_type:22}  {f.status:14}"
         )
     print("\nEMAIL TYPES")
     for name, meta in cat.email_types.items():
@@ -95,6 +188,7 @@ def _classify_rows(cat: FormatCatalog, survey: dict) -> list[dict]:
             "subject": r.get("subject"),
             "kept_listings": r.get("kept_listings"),
             "format_id": m.format_id if m else None,
+            "provider_subcategory": m.provider_subcategory if m else None,
             "email_type": m.email_type if m else None,
             "status": m.status if m else None,
             "score": m.score if m else 0,
@@ -126,8 +220,12 @@ def cmd_classify(args: argparse.Namespace) -> None:
     survey = _load_survey(Path(args.survey) if args.survey else SURVEY_DEFAULT)
     rows = _classify_rows(cat, survey)
     by_fmt = Counter(r["format_id"] or "(unmatched)" for r in rows)
+    by_sub = Counter(r["provider_subcategory"] or "(none)" for r in rows if r["format_id"])
     print(f"classified {len(rows)} messages against {cat.path.name}\n")
-    print("BY FORMAT")
+    print("BY PROVIDER SUBCATEGORY (sender mailbox)")
+    for k, n in by_sub.most_common():
+        print(f"  {n:3d}  {k}")
+    print("\nBY FORMAT")
     for k, n in by_fmt.most_common():
         print(f"  {n:3d}  {k}")
 
@@ -222,6 +320,16 @@ def main() -> None:
     p_prop = sub.add_parser("propose", help="Write stubs for unmatched survey mail")
     p_prop.add_argument("--survey", default=str(SURVEY_DEFAULT))
 
+    p_train = sub.add_parser(
+        "train-queue",
+        help="Turn exported Train-AI JSON into repertoire review notes under formats/train/",
+    )
+    p_train.add_argument(
+        "--input",
+        required=True,
+        help="JSON from GET /api/train or a manual export ({flags:[…]} or a list)",
+    )
+
     args = ap.parse_args()
     {
         "validate": cmd_validate,
@@ -229,6 +337,7 @@ def main() -> None:
         "show": cmd_show,
         "classify": cmd_classify,
         "propose": cmd_propose,
+        "train-queue": cmd_train_queue,
     }[args.cmd](args)
 
 

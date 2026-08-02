@@ -486,6 +486,113 @@ def split_bizbuysell(body: str) -> List[str]:
         out.append(block)
     return out
 
+
+# newbizopps@ single-listing shape (repertoire: bizbuysell.newbizopps_single).
+# No "Location:" label — location is a linked line:
+#   City, ST (Relocatable): (https://…/listings/Profile/…)
+# Headline carries utm_content=headline. Truncate before Business Summary so
+# prose "cash flow" / A/R dollars cannot invent SDE via generic extractors.
+NEWBIZOPPS_LOC = re.compile(
+    r"(?P<loc>[A-Za-z0-9 .,'\-]+(?:,\s*[A-Z]{2})?(?:\s*\([^)]+\))?)"
+    r":\s*\((https://www\.bizbuysell\.com/listings/[^)]+)\)",
+    re.I,
+)
+NEWBIZOPPS_TITLE = re.compile(
+    r"(?P<title>[^\r\n]{8,300}?)\s*\("
+    r"(https://www\.bizbuysell\.com/listings/Profile/[^)]*utm_content=headline)\)",
+    re.I,
+)
+NEWBIZOPPS_ASK = re.compile(r"Asking Price:\s*(?P<price>\$?[\d,]+)", re.I)
+NEWBIZOPPS_CUT = re.compile(
+    r"(?i)\b(?:Business Summary|View details|View complete details|Please Contact)\b"
+)
+
+
+def split_bizbuysell_newbizopps(body: str) -> List[str]:
+    """Normalize one newbizopps@ alert into a BizAlert-shaped block (0 or 1)."""
+    if not body or not NEWBIZOPPS_ASK.search(body):
+        return []
+    # Prefer the listing half; ignore footer / franchise chrome if present.
+    work = FRANCHISE_SECTION.split(body)[0]
+    cut = NEWBIZOPPS_CUT.search(work)
+    if cut:
+        # Keep Asking Price if it sits before the cut; drop summary/broker prose.
+        ask_m = NEWBIZOPPS_ASK.search(work)
+        end = cut.start()
+        if ask_m and ask_m.end() > end:
+            end = ask_m.end()
+        work = work[:end]
+
+    loc_m = NEWBIZOPPS_LOC.search(work)
+    title_m = NEWBIZOPPS_TITLE.search(work)
+    ask_m = NEWBIZOPPS_ASK.search(work)
+    if not ask_m:
+        return []
+
+    price = ask_m.group("price").strip()
+    if not re.search(r"\$?\d", price):
+        return []
+    if not price.startswith("$"):
+        price = f"${price}"
+
+    loc = ""
+    url = ""
+    if loc_m:
+        loc = re.sub(r"\s*\([^)]*\)\s*$", "", loc_m.group("loc")).strip(" :")
+        url = loc_m.group(2).strip()
+    title = ""
+    if title_m:
+        title = title_m.group("title").strip()
+        url = title_m.group(2).strip() or url
+    if not title:
+        # Fallback: first non-URL, non-chrome line after the loc line.
+        for raw in work.splitlines():
+            s = raw.strip()
+            if not s or s.startswith("(") or s.startswith("http"):
+                continue
+            if re.match(r"(?i)^(bizbuysell|tristan|asking price|view )", s):
+                continue
+            if loc and s.lower().startswith(loc.split(",")[0].lower()):
+                continue
+            if NEWBIZOPPS_LOC.match(s):
+                continue
+            title = TRAILING_LINK.sub("", s).strip()
+            if title:
+                break
+    if not title or re.match(r"(?i)^https?://", title):
+        return []
+
+    # Short blurb: line(s) between headline and Asking Price.
+    blurb = ""
+    if title_m:
+        after = work[title_m.end():ask_m.start()]
+        bits = []
+        for raw in after.splitlines():
+            s = TRAILING_LINK.sub("", raw).strip()
+            if not s or s.startswith("(") or s.startswith("http"):
+                continue
+            if re.match(r"(?i)^(view |business summary)", s):
+                break
+            bits.append(s)
+            if len(bits) >= 2:
+                break
+        blurb = " ".join(bits).strip()
+
+    if not url:
+        um = re.search(r"https://www\.bizbuysell\.com/listings/Profile/[^\s)>]+", work, re.I)
+        if um:
+            url = um.group(0)
+
+    block = f"{title}\nAsking Price: {price}"
+    if loc:
+        block += f"\nLocation: {loc}"
+    if url:
+        block += f"\n{url}"
+    if blurb:
+        block += f"\n{blurb}"
+    return [block]
+
+
 def split_axial(body: str) -> List[str]:
     """Axial alerts use a numbered / rule-separated deal list.
 
@@ -795,6 +902,7 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
 
 SPLITTERS = {
     "bizbuysell": split_bizbuysell,
+    "bizbuysell_newbizopps": split_bizbuysell_newbizopps,
     "axial": split_axial,
     "bizquest": split_bizbuysell,
     "dealstream": split_newsletter,
@@ -802,6 +910,40 @@ SPLITTERS = {
     "benchmark": split_newsletter,
     "newsletter": split_newsletter,
 }
+
+
+def blocks_for_email(
+    em: "RawEmail",
+    matched=None,
+    family: str = "",
+    email_addr: str = "",
+) -> List[str]:
+    """Pick the right splitter from repertoire match (format_id / split / mailbox)."""
+    fam = family or (matched.format_family if matched else "") or format_family(em)
+    email = (email_addr or "").lower()
+    if matched and (
+        matched.split == "drop"
+        or matched.status == "control"
+        or matched.email_type in ("newsletter_marketing", "account_notice")
+    ):
+        return []
+    if matched and (
+        matched.format_id == "bizbuysell.newbizopps_single"
+        or matched.split == "bizbuysell_newbizopps"
+        or (
+            matched.split == "needs_new_splitter"
+            and "newbizopps@" in (matched.sub_source or email)
+        )
+    ):
+        return split_bizbuysell_newbizopps(em.body)
+    if "newbizopps@" in email:
+        return split_bizbuysell_newbizopps(em.body)
+    if fam in ("newsletter", "dealstream", "businessexits", "benchmark"):
+        return split_newsletter(em.body, sender=em.sender)
+    splitter = SPLITTERS.get(fam, split_newsletter)
+    if splitter is split_newsletter:
+        return split_newsletter(em.body, sender=em.sender)
+    return splitter(em.body)
 
 
 # =====================================================================
@@ -1122,7 +1264,16 @@ def extract_title(block: str, subject: str = "") -> str:
         if len(s) > 6:
             # Long sentence-like lines are broker prose, not listing names.
             # Prefer the email subject when we have one (Gateway / Vanla / etc.).
-            if subject and (len(s) > 80 or ". " in s):
+            # Exception: BizBuySell newbizopps subjects are category+geo
+            # ("Business For Sale: …"), not the headline — keep the block title.
+            subject_is_bbs_category = bool(
+                re.match(r"(?i)^(?:fwd:\s*)?business for sale:", subject or "")
+            )
+            if (
+                subject
+                and not subject_is_bbs_category
+                and (len(s) > 80 or ". " in s)
+            ):
                 cleaned = re.sub(r"^(?:fwd|fw|re)\s*:\s*", "", subject, flags=re.I).strip()
                 cleaned = re.sub(r"\s+", " ", cleaned)
                 if len(cleaned) > 6:
@@ -1162,6 +1313,8 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
     """Human-readable blurb: drop digest numbers and tracking/duplicate URLs."""
     text = block.strip()
     text = re.sub(r"^#?\d+[:.]\s*", "", text)
+    # Normalized BizBuySell blocks carry label lines — not blurb prose.
+    text = re.sub(r"(?im)^(asking\s+price|location)\s*:.*$", " ", text)
     listing = _url_core(listing_url)
 
     def repl(m: re.Match) -> str:
@@ -1220,6 +1373,14 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     if lst.earnings is None: lst.needs_llm.append("earnings")
     if lst.state is None:    lst.needs_llm.append("location")
     if not confident:        lst.needs_llm.append("business_model_type")
+    # newbizopps@ never labels earnings; title/blurb often say "$390K Cash Flow"
+    # or "| $387k SDE" as marketing copy — do not invent money fields from that.
+    if format_id == "bizbuysell.newbizopps_single":
+        lst.revenue = None
+        lst.ebitda = None
+        lst.sde = None
+        lst.needs_llm = [x for x in lst.needs_llm if x != "earnings"]
+        lst.needs_llm.append("earnings")
     return lst
 
 
@@ -1373,17 +1534,9 @@ def ingest(emails: List[RawEmail]):
         fmt_id = matched.format_id if matched else ""
         em_type = matched.email_type if matched else ""
 
-        # Repertoire says this mailbox/shape must not produce listings.
-        if matched and (
-            matched.split == "drop"
-            or matched.status == "control"
-            or em_type in ("newsletter_marketing", "account_notice")
-        ):
-            blocks = []
-        elif family in ("newsletter", "dealstream", "businessexits", "benchmark"):
-            blocks = split_newsletter(em.body, sender=em.sender)
-        else:
-            blocks = SPLITTERS[family](em.body)
+        blocks = blocks_for_email(
+            em, matched=matched, family=family, email_addr=email_addr,
+        )
 
         per_family[family] = per_family.get(family, 0) + len(blocks)
         per_source[domain] = per_source.get(domain, 0) + len(blocks)

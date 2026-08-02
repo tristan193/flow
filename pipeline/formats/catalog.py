@@ -47,6 +47,26 @@ class FormatMatch:
     split: str
     score: int
     reasons: Tuple[str, ...] = ()
+    provider_subcategory: str = ""
+    subcategory_label: str = ""
+
+
+@dataclass(frozen=True)
+class ProviderSubcategory:
+    """Sender-mailbox subcategory under a provider domain."""
+    provider_domain: str
+    provider_nickname: str
+    id: str
+    email: str
+    label: str = ""
+    purpose: str = ""
+    typical_email_type: str = ""
+    default_format: str = ""
+    note: str = ""
+
+    @property
+    def is_wildcard(self) -> bool:
+        return self.email.startswith("*@")
 
 
 @dataclass
@@ -68,6 +88,10 @@ class FormatEntry:
     @property
     def sub_source(self) -> str:
         return (self.raw.get("sub_source") or "").lower()
+
+    @property
+    def provider_subcategory(self) -> str:
+        return (self.raw.get("provider_subcategory") or "").lower()
 
     @property
     def nickname(self) -> str:
@@ -121,7 +145,40 @@ class FormatCatalog:
             FormatEntry(f) for f in (data.get("formats") or []) if f.get("id")
         ]
         self._by_id = {f.id: f for f in self.formats}
+        self.subcategories: List[ProviderSubcategory] = self._load_subcategories()
         self._validate()
+
+    def _load_subcategories(self) -> List[ProviderSubcategory]:
+        out: List[ProviderSubcategory] = []
+        for prov in self.providers:
+            domain = (prov.get("domain") or "").lower()
+            nick = prov.get("nickname") or _core_cap(domain)
+            rows = prov.get("subcategories") or []
+            # Back-compat: older YAML used addresses: [{email, role}]
+            if not rows and prov.get("addresses"):
+                for addr in prov["addresses"]:
+                    rows.append({
+                        "id": _mailbox_slug(addr.get("email") or ""),
+                        "email": addr.get("email"),
+                        "label": addr.get("role") or "",
+                        "purpose": addr.get("note") or addr.get("role") or "",
+                    })
+            for row in rows:
+                email = (row.get("email") or "").lower().strip()
+                if not email:
+                    continue
+                out.append(ProviderSubcategory(
+                    provider_domain=domain,
+                    provider_nickname=nick,
+                    id=(row.get("id") or _mailbox_slug(email)).lower(),
+                    email=email,
+                    label=row.get("label") or "",
+                    purpose=row.get("purpose") or "",
+                    typical_email_type=row.get("typical_email_type") or "",
+                    default_format=(row.get("default_format") or "") or "",
+                    note=row.get("note") or "",
+                ))
+        return out
 
     def _validate(self) -> None:
         ids = [f.id for f in self.formats]
@@ -143,27 +200,113 @@ class FormatCatalog:
                 val = f.detect.get(key)
                 if val is not None and not isinstance(val, list):
                     raise ValueError(f"{f.id}: detect.{key} must be a list")
+        for sub in self.subcategories:
+            if sub.default_format and sub.default_format not in self._by_id:
+                raise ValueError(
+                    f"providers[{sub.provider_domain}/{sub.id}]: "
+                    f"default_format {sub.default_format!r} not in formats"
+                )
 
     def get(self, format_id: str) -> Optional[FormatEntry]:
         return self._by_id.get(format_id)
 
-    def nickname_for_domain(self, domain: str, email: str = "") -> Optional[str]:
-        d = (domain or "").lower()
+    def export_meta(self) -> Dict[str, Any]:
+        """Slim JSON for the Flow App Train-AI → repertoire inspector."""
+        formats = []
+        by_email: Dict[str, str] = {}
+        by_domain: Dict[str, List[str]] = {}
+        for f in self.formats:
+            formats.append({
+                "id": f.id,
+                "format_family": f.format_family,
+                "source": f.source,
+                "sub_source": f.sub_source,
+                "provider_subcategory": f.provider_subcategory,
+                "nickname": f.nickname,
+                "email_type": f.email_type,
+                "status": f.status,
+                "split": f.split,
+                "expected_fields": f.raw.get("expected_fields") or {},
+                "gotchas": list(f.raw.get("gotchas") or []),
+                "parser_notes": list(f.raw.get("parser_notes") or []),
+            })
+            if f.sub_source and "@" in f.sub_source and not f.sub_source.startswith("*"):
+                by_email[f.sub_source.lower()] = f.id
+            if f.source:
+                by_domain.setdefault(f.source.lower(), []).append(f.id)
+        subs = [
+            {
+                "id": s.id,
+                "email": s.email,
+                "provider_domain": s.provider_domain,
+                "provider_nickname": s.provider_nickname,
+                "default_format": s.default_format,
+                "label": s.label,
+                "purpose": s.purpose,
+            }
+            for s in self.subcategories
+        ]
+        return {
+            "version": self.version,
+            "updated": self.updated,
+            "repertoire_path": "pipeline/formats/repertoire.yaml",
+            "playbook_path": "docs/deal-format-repertoire.md",
+            "formats": formats,
+            "subcategories": subs,
+            "by_email": by_email,
+            "by_domain": by_domain,
+        }
+
+    def write_meta_json(self, *paths: Path) -> List[Path]:
+        import json
+        from datetime import date, datetime
+
+        def _default(obj: Any) -> str:
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+        meta = self.export_meta()
+        written: List[Path] = []
+        payload = json.dumps(meta, indent=2, default=_default) + "\n"
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(payload, encoding="utf-8")
+            written.append(path)
+        return written
+
+    def lookup_subcategory(
+        self, email: str = "", domain: str = "",
+    ) -> Optional[ProviderSubcategory]:
+        """Resolve provider subcategory from sender mailbox (preferred) or domain."""
         e = (email or "").lower()
+        d = (domain or "").lower() or _email_domain(e)
+        # Exact mailbox first — this is the primary automated-mail signal.
+        if e and "@" in e:
+            for sub in self.subcategories:
+                if not sub.is_wildcard and sub.email == e:
+                    return sub
+        # Wildcard *@domain under matching provider.
+        if d:
+            for sub in self.subcategories:
+                if sub.is_wildcard:
+                    tail = sub.email[2:]
+                    if d == tail or d.endswith("." + tail) or sub.provider_domain == d:
+                        return sub
+        return None
+
+    def nickname_for_domain(self, domain: str, email: str = "") -> Optional[str]:
+        sub = self.lookup_subcategory(email=email, domain=domain)
+        if sub:
+            return sub.provider_nickname
+        d = (domain or "").lower()
         for prov in self.providers:
             pd = (prov.get("domain") or "").lower()
-            if not pd:
-                continue
-            if d == pd or d.endswith("." + pd) or pd.endswith("." + d.split(".", 1)[-1]):
-                for addr in prov.get("addresses") or []:
-                    if (addr.get("email") or "").lower() == e and addr.get("nickname"):
-                        return addr["nickname"]
-                if prov.get("nickname"):
-                    return prov["nickname"]
-        # Fall back to format entries with matching domain / address.
+            if pd and (d == pd or d.endswith("." + pd)):
+                return prov.get("nickname") or None
         for f in self.formats:
             addrs = [a.lower() for a in (f.detect.get("sender_addresses") or [])]
-            if e and e in addrs:
+            if email and email.lower() in addrs:
                 return f.nickname
         for f in self.formats:
             domains = [x.lower() for x in (f.detect.get("sender_domains") or [])]
@@ -182,8 +325,9 @@ class FormatCatalog:
     ) -> Optional[FormatMatch]:
         """Score every format; return the best match or None.
 
-        Detection order within a candidate (additive score):
-          sender address → subject → body open → body markers → domain only.
+        Provider subcategory (sender mailbox) is resolved first and heavily
+        weights the match — for many providers the From: address alone selects
+        the product/format. Subject/body still confirm and break ties.
         """
         email = _parse_email(sub_source_email) or _parse_email(sender)
         domain = ""
@@ -194,14 +338,21 @@ class FormatCatalog:
         subj = subject or ""
         open_text = _open_text(body, 12)
         hay = f"{sender}\n{subj}\n{(body or '')[:12000]}"
+        subcat = self.lookup_subcategory(email=email, domain=domain)
 
         best: Optional[FormatMatch] = None
         for fmt in self.formats:
-            score, reasons = self._score(fmt, email=email, domain=domain,
-                                         subject=subj, open_text=open_text, hay=hay)
+            score, reasons = self._score(
+                fmt,
+                email=email,
+                domain=domain,
+                subject=subj,
+                open_text=open_text,
+                hay=hay,
+                subcat=subcat,
+            )
             if score <= 0:
                 continue
-            # Prefer higher score; tie-break by status freshness then id.
             cand = FormatMatch(
                 format_id=fmt.id,
                 format_family=fmt.format_family,
@@ -214,6 +365,8 @@ class FormatCatalog:
                 split=fmt.split,
                 score=score,
                 reasons=tuple(reasons),
+                provider_subcategory=subcat.id if subcat else fmt.provider_subcategory,
+                subcategory_label=(subcat.label if subcat else "") or "",
             )
             if best is None or _better(cand, best):
                 best = cand
@@ -228,6 +381,7 @@ class FormatCatalog:
         subject: str,
         open_text: str,
         hay: str,
+        subcat: Optional[ProviderSubcategory] = None,
     ) -> Tuple[int, List[str]]:
         det = fmt.detect
         score = 0
@@ -269,6 +423,24 @@ class FormatCatalog:
         if addrs and not addr_hit:
             return 0, []
 
+        # --- Provider subcategory (sender mailbox) — primary automated signal
+        if subcat:
+            if fmt.provider_subcategory and fmt.provider_subcategory == subcat.id:
+                score += 80
+                reasons.append(f"provider_subcategory:{subcat.id}")
+            if subcat.default_format and subcat.default_format == fmt.id:
+                score += 120
+                reasons.append("subcategory_default_format")
+            # Same mailbox but format tied to a *different* subcategory → soft reject
+            # unless this format also lists the address (shared helen@ cases use
+            # body open to compete fairly without default_format).
+            if (
+                fmt.provider_subcategory
+                and fmt.provider_subcategory != subcat.id
+                and not addr_hit
+            ):
+                return 0, []
+
         if addr_hit:
             score += 100
             reasons.append("sender_address")
@@ -302,6 +474,7 @@ class FormatCatalog:
         if (
             not addr_hit
             and not fmt.id.endswith(".unknown")
+            and not (subcat and subcat.default_format == fmt.id)
             and (det.get("subject_patterns") or det.get("body_open_patterns") or det.get("body_markers"))
             and not (subj_hit or open_hit or marker_hit)
         ):
@@ -312,18 +485,20 @@ class FormatCatalog:
     def unmatched_provider_hint(self, domain: str, email: str) -> Dict[str, Any]:
         """Draft fields for a new stub when mail doesn't match any format."""
         nick = self.nickname_for_domain(domain, email) or _core_cap(domain)
+        sub_id = _mailbox_slug(email) if email else "any"
         return {
-            "id": f"{_core(domain) or 'unknown'}.unclassified",
+            "id": f"{_core(domain) or 'unknown'}.{sub_id}",
             "format_family": "newsletter",
             "source": domain or "unknown",
-            "sub_source": email or f"*@{domain}" if domain else "unknown",
+            "sub_source": email or (f"*@{domain}" if domain else "unknown"),
+            "provider_subcategory": sub_id,
             "nickname": nick,
             "email_type": "single_listing",
             "confidence": "stub",
             "status": "needs_samples",
             "description": "Auto-proposed from unmatched survey mail — fill detect + expected_fields.",
             "detect": {
-                "sender_addresses": [email] if email else [],
+                "sender_addresses": [email] if email and not email.startswith("*") else [],
                 "sender_domains": [domain] if domain else [],
                 "subject_patterns": [],
                 "body_open_patterns": [],
@@ -331,6 +506,18 @@ class FormatCatalog:
             "expected_fields": {"present": [], "absent": []},
             "gotchas": [],
             "split": "newsletter",
+            "provider_stub": {
+                "domain": domain,
+                "nickname": nick,
+                "subcategories": [{
+                    "id": sub_id,
+                    "email": email or (f"*@{domain}" if domain else ""),
+                    "label": sub_id,
+                    "purpose": "Fill in — why this mailbox exists",
+                    "typical_email_type": "single_listing",
+                    "default_format": f"{_core(domain) or 'unknown'}.{sub_id}",
+                }],
+            },
         }
 
 
@@ -369,6 +556,12 @@ def _core(domain: str) -> str:
 
 def _core_cap(domain: str) -> str:
     return _core(domain).capitalize() if domain else "Unknown"
+
+
+def _mailbox_slug(email: str) -> str:
+    local = (email or "").split("@", 1)[0].lower()
+    local = re.sub(r"[^a-z0-9]+", "_", local).strip("_")
+    return local or "mailbox"
 
 
 def _open_text(body: str, n: int = 12) -> str:

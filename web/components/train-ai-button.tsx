@@ -71,6 +71,13 @@ export function TrainAiButton({
         }),
       });
       if (!response.ok) throw new Error("rejected");
+      const payload = (await response.json().catch(() => null)) as {
+        format_id?: string | null;
+      } | null;
+      if (nextReason && payload?.format_id) {
+        // Soft confirmation in the open panel before close — format linkage.
+        setError(null);
+      }
       setOpen(false);
       router.refresh();
     } catch {
@@ -90,17 +97,29 @@ export function TrainAiButton({
             ? "text-flag font-semibold"
             : "text-ink-faint hover:text-ink-dim"
         }`}
-        title="Flag a bad parse so we can improve the harvest"
+        title="Flag a bad parse so we can improve the format repertoire"
       >
-        {existing ? `Train AI · ${existing.reason}` : "Train AI"}
+        {existing
+          ? `Train AI · ${existing.reason}${existing.format_id ? ` · ${existing.format_id}` : ""}`
+          : "Train AI"}
       </button>
 
       {open && (
         <div className="border-line bg-surface-raised mt-2 rounded-lg border p-2.5">
           <p className="text-ink-faint mb-2 text-[11px] leading-relaxed">
-            What’s wrong with how this listing was captured? Doesn’t change your
+            What’s wrong with how this listing was captured? Flags the matching
+            format in the repertoire for a detect/gotcha pass — doesn’t change
             shortlist / pass.
           </p>
+          {existing?.inspection && Array.isArray((existing.inspection as { checklist?: unknown }).checklist) && (
+            <ul className="text-ink-faint mb-2 list-disc space-y-0.5 pl-4 text-[10.5px] leading-relaxed">
+              {((existing.inspection as { checklist: string[] }).checklist || [])
+                .slice(0, 3)
+                .map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+            </ul>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {TRAIN_REASONS.map((option) => (
               <button

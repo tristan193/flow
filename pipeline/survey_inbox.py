@@ -72,16 +72,14 @@ def survey(days: int) -> list[dict]:
         family = ing.format_family(em)
         domain, email_addr, nick = ing.attribution(em)
         matched = ing.classify_format(em, domain=domain, email=email_addr)
-        if matched and (
-            matched.split == "drop"
-            or matched.status == "control"
-            or matched.email_type in ("newsletter_marketing", "account_notice")
-        ):
-            blocks = []
-        elif family in ("newsletter", "dealstream", "businessexits", "benchmark"):
-            blocks = ing.split_newsletter(em.body, sender=em.sender)
-        else:
-            blocks = ing.SPLITTERS.get(family, ing.split_newsletter)(em.body)
+        family = (
+            matched.format_family
+            if matched and matched.format_family
+            else family
+        )
+        blocks = ing.blocks_for_email(
+            em, matched=matched, family=family, email_addr=email_addr,
+        )
         kept = 0
         for i, b in enumerate(blocks):
             lst = ing.extract(
@@ -99,8 +97,10 @@ def survey(days: int) -> list[dict]:
         body_path = os.path.join(BODIES_DIR, f"{em.msg_id}.txt")
         with open(body_path, "w", encoding="utf-8") as f:
             f.write(f"From: {em.sender}\nSubject: {em.subject}\nDate: {em.received}\n")
+            subcat = matched.provider_subcategory if matched else ""
             f.write(
                 f"source={domain} sub_source={email_addr} nickname={nick} "
+                f"provider_subcategory={subcat} "
                 f"format_family={family} format_id="
                 f"{matched.format_id if matched else ''} "
                 f"email_type={matched.email_type if matched else ''}\n"
@@ -116,6 +116,9 @@ def survey(days: int) -> list[dict]:
                 "source": domain,
                 "sub_source": email_addr,
                 "nickname": nick,
+                "provider_subcategory": (
+                    matched.provider_subcategory if matched else None
+                ),
                 "format_family": family,
                 "format_id": matched.format_id if matched else None,
                 "email_type": matched.email_type if matched else None,
@@ -151,6 +154,7 @@ def main() -> None:
             "source": "sender domain",
             "sub_source": "sender email address",
             "nickname": "human-facing label",
+            "provider_subcategory": "mailbox subcategory under provider (From:)",
             "format_family": "internal splitter key (not stored as source)",
             "format_id": "repertoire.yaml id when matched",
             "email_type": "daily_digest | single_listing | …",
@@ -170,6 +174,7 @@ def main() -> None:
         "source",
         "sub_source",
         "nickname",
+        "provider_subcategory",
         "format_family",
         "format_id",
         "email_type",

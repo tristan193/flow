@@ -83,6 +83,8 @@ export interface TrainFlagRow {
   member: MemberId;
   reason: string;
   detail: string | null;
+  format_id: string | null;
+  inspection: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }

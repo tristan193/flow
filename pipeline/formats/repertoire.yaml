@@ -69,56 +69,167 @@ signals:
     weight: 40
 
 # ---------------------------------------------------------------------------
-# Providers — domain / mailbox → nickname (learning sheet for new senders)
+# Providers — brand/domain, with subcategories keyed by sender email
+#
+# Provider subcategory = the From: mailbox. Automated deal mail almost always
+# uses a fixed address per product (digest vs single vs account notice). That
+# mailbox alone is often enough to pick the right format; subject/body still
+# confirm and disambiguate (e.g. one helen@ address for digest + editorial).
 # ---------------------------------------------------------------------------
 providers:
   - domain: bizbuysell.com
     nickname: BizBuySell
-    addresses:
-      - email: bizalert@bizbuysell.com
-        role: saved_search_digest
-      - email: newbizopps@bizbuysell.com
-        role: single_listing_alert
-      - email: alerts@bizbuysell.com
-        role: legacy_fixture_alias
-        note: Not seen in 5d live survey; fixtures only.
+    subcategories:
+      - id: bizalert
+        email: bizalert@bizbuysell.com
+        label: BizAlert
+        purpose: Saved-search multi-listing digest
+        typical_email_type: daily_digest
+        default_format: bizbuysell.bizalert_digest
+      - id: newbizopps
+        email: newbizopps@bizbuysell.com
+        label: New business opps
+        purpose: One listing per email from saved search
+        typical_email_type: single_listing
+        default_format: bizbuysell.newbizopps_single
+      - id: alerts_legacy
+        email: alerts@bizbuysell.com
+        label: Alerts (legacy fixture)
+        purpose: Older fixture alias — not seen in live 5d survey
+        typical_email_type: daily_digest
+        default_format: bizbuysell.bizalert_digest
+        note: Fixtures only
+
   - domain: axial.net
     nickname: Axial
-    addresses:
-      - email: newdeal@axial.net
-        role: single_opportunity
-      - email: notifications@axial.net
-        role: account_notice
-      - email: alerts@axial.net
-        role: digest_fixture
+    subcategories:
+      - id: newdeal
+        email: newdeal@axial.net
+        label: New deal
+        purpose: One opportunity teaser per email
+        typical_email_type: single_listing
+        default_format: axial.single_deal
+      - id: notifications
+        email: notifications@axial.net
+        label: Notifications
+        purpose: Action summaries and account notices (yield 0)
+        typical_email_type: account_notice
+        # Subject disambiguates action_summary vs account_notice formats
+        default_format: null
+      - id: alerts
+        email: alerts@axial.net
+        label: Alerts digest
+        purpose: Multi-deal alert (fixture; rare in live survey)
+        typical_email_type: daily_digest
+        default_format: axial.deal_alert_digest
+
   - domain: smbdealhunter.xyz
     nickname: SMB Deal Hunter
-    addresses:
-      - email: helen@mail.smbdealhunter.xyz
-        role: digest_and_editorial
+    subcategories:
+      - id: helen
+        email: helen@mail.smbdealhunter.xyz
+        label: Helen / beehiiv
+        purpose: Same mailbox for daily digest AND editorial/podcast — body open decides
+        typical_email_type: null
+        default_format: null
+
   - domain: mail.smbdealhunter.xyz
     nickname: SMB Deal Hunter
+    # Alias domain; real mailbox listed under smbdealhunter.xyz
+    subcategories:
+      - id: helen
+        email: helen@mail.smbdealhunter.xyz
+        label: Helen / beehiiv
+        purpose: Same as smbdealhunter.xyz / helen
+        default_format: null
+
   - domain: benchmarkintl.com
     nickname: Benchmark International
+    subcategories:
+      - id: any
+        email: "*@benchmarkintl.com"
+        label: Broker desk
+        purpose: Follow-ups and opportunity mail from any staff address
+        typical_email_type: follow_up
+        default_format: benchmark.broker_followup
+
   - domain: benchmarktennessee.com
     nickname: Benchmark International (TN)
+    subcategories:
+      - id: any
+        email: "*@benchmarktennessee.com"
+        label: TN affiliate
+        purpose: Regional Benchmark opportunity / follow-up mail
+        typical_email_type: single_listing
+        default_format: benchmark.broker_prose
+
   - domain: businessexits.com
     nickname: BusinessExits
-    addresses:
-      - email: inquiries@businessexits.com
-        role: single_listing
+    subcategories:
+      - id: inquiries
+        email: inquiries@businessexits.com
+        label: Inquiries
+        purpose: Single listing / for-sale alerts
+        typical_email_type: single_listing
+        default_format: businessexits.single_listing
+
   - domain: vanlagroup.com
     nickname: Vanla Group
+    subcategories:
+      - id: any
+        email: "*@vanlagroup.com"
+        label: Vanla
+        purpose: Teaser vs follow-up distinguished by body (NDA/CIM)
+        default_format: null
+
   - domain: gulfcoastma.com
     nickname: Gulf Coast M&A
+    subcategories:
+      - id: any
+        email: "*@gulfcoastma.com"
+        label: Gulf Coast
+        purpose: Confidential opportunity mail
+        typical_email_type: single_listing
+        default_format: gulf_coast.single_listing
+
   - domain: gatewayma.com
     nickname: Gateway M&A
+    subcategories:
+      - id: inquiries
+        email: inquiries@gatewayma.com
+        label: Inquiries
+        purpose: Subscription confirms + occasional single listings
+        default_format: null
+
   - domain: doeren.com
     nickname: Doeren Mayhew (non-deal)
+    subcategories:
+      - id: any
+        email: "*@doeren.com"
+        label: Marketing
+        purpose: Non-deal marketing — yield 0
+        typical_email_type: newsletter_marketing
+        default_format: doeren.marketing
+
   - domain: bizquest.com
     nickname: BizQuest
+    subcategories:
+      - id: any
+        email: "*@bizquest.com"
+        label: Alerts
+        purpose: Marketplace alerts (needs samples)
+        typical_email_type: daily_digest
+        default_format: bizquest.alert
+
   - domain: dealstream.com
     nickname: DealStream
+    subcategories:
+      - id: any
+        email: "*@dealstream.com"
+        label: Alerts
+        purpose: Marketplace alerts (needs samples)
+        typical_email_type: daily_digest
+        default_format: dealstream.alert
 
 formats:
 
@@ -131,6 +242,7 @@ formats:
     format_family: bizbuysell
     source: bizbuysell.com
     sub_source: bizalert@bizbuysell.com
+    provider_subcategory: bizalert
     nickname: BizBuySell
     email_type: daily_digest
     confidence: verified
@@ -172,10 +284,11 @@ formats:
     format_family: bizbuysell
     source: bizbuysell.com
     sub_source: newbizopps@bizbuysell.com
+    provider_subcategory: newbizopps
     nickname: BizBuySell
     email_type: single_listing
     confidence: verified
-    status: needs_parser
+    status: active
     survey_count_5d: 35
     description: >
       ONE listing per email from newbizopps@. Subject encodes category + geo.
@@ -205,10 +318,10 @@ formats:
       present: [title, asking, location, url, blurb]
       absent: [revenue, ebitda, sde]
       needs_llm_ok: [earnings]
-    split: needs_new_splitter  # current split_bizbuysell requires Location: label → 0 yield
+    split: bizbuysell_newbizopps
     parser_notes:
-      - "35/35 survey hits: loc line + headline URL + Asking Price"
-      - "Cash Flow labeled field: rare; word 'cash flow' in blurb is not a field"
+      - "Implemented as split_bizbuysell_newbizopps — normalizes to Location: + Asking for generic extract()"
+      - "Truncates before Business Summary so prose cash flow / A/R $ cannot invent SDE"
       - "Do not run digest BIZALERT_LISTING regex on these"
     survey_evidence:
       subject_example: "Business For Sale: Architecture and Engineering Firm in New York, NY"
@@ -237,6 +350,7 @@ formats:
     format_family: axial
     source: axial.net
     sub_source: newdeal@axial.net
+    provider_subcategory: newdeal
     nickname: Axial
     email_type: single_listing
     confidence: provisional
@@ -272,6 +386,7 @@ formats:
     format_family: axial
     source: axial.net
     sub_source: notifications@axial.net
+    provider_subcategory: notifications
     nickname: Axial
     email_type: account_notice
     confidence: verified
@@ -294,6 +409,7 @@ formats:
     format_family: axial
     source: axial.net
     sub_source: alerts@axial.net
+    provider_subcategory: alerts
     nickname: Axial
     email_type: daily_digest
     confidence: stub
@@ -314,6 +430,7 @@ formats:
     format_family: axial
     source: axial.net
     sub_source: notifications@axial.net
+    provider_subcategory: notifications
     nickname: Axial
     email_type: account_notice
     confidence: verified
@@ -336,6 +453,7 @@ formats:
     format_family: benchmark
     source: benchmarkintl.com
     sub_source: "*@benchmarkintl.com"
+    provider_subcategory: any
     nickname: Benchmark International
     email_type: follow_up
     confidence: verified
@@ -368,6 +486,7 @@ formats:
     format_family: benchmark
     source: benchmarkintl.com
     sub_source: "*@benchmarktennessee.com"
+    provider_subcategory: any
     nickname: Benchmark International
     email_type: single_listing
     confidence: verified
@@ -396,6 +515,7 @@ formats:
     format_family: newsletter
     source: smbdealhunter.xyz
     sub_source: helen@mail.smbdealhunter.xyz
+    provider_subcategory: helen
     nickname: SMB Deal Hunter
     email_type: daily_digest
     confidence: verified
@@ -423,6 +543,7 @@ formats:
     format_family: newsletter
     source: mail.smbdealhunter.xyz
     sub_source: helen@mail.smbdealhunter.xyz
+    provider_subcategory: helen
     nickname: SMB Deal Hunter
     email_type: newsletter_marketing
     confidence: verified
@@ -461,6 +582,7 @@ formats:
     format_family: newsletter
     source: gatewayma.com
     sub_source: inquiries@gatewayma.com
+    provider_subcategory: inquiries
     nickname: Gateway M&A
     email_type: account_notice
     confidence: verified
@@ -481,6 +603,7 @@ formats:
     format_family: newsletter
     source: gatewayma.com
     sub_source: "inquiries@gatewayma.com"
+    provider_subcategory: inquiries
     nickname: Gateway M&A
     email_type: single_listing
     confidence: stub
@@ -497,6 +620,7 @@ formats:
     format_family: businessexits
     source: businessexits.com
     sub_source: inquiries@businessexits.com
+    provider_subcategory: inquiries
     nickname: BusinessExits
     email_type: single_listing
     confidence: verified
@@ -520,6 +644,7 @@ formats:
     format_family: newsletter
     source: vanlagroup.com
     sub_source: "*@vanlagroup.com"
+    provider_subcategory: any
     nickname: Vanla Group
     email_type: single_listing
     confidence: provisional
@@ -536,6 +661,7 @@ formats:
     format_family: newsletter
     source: vanlagroup.com
     sub_source: "*@vanlagroup.com"
+    provider_subcategory: any
     nickname: Vanla Group
     email_type: follow_up
     confidence: verified
@@ -554,6 +680,7 @@ formats:
     format_family: newsletter
     source: gulfcoastma.com
     sub_source: "*@gulfcoastma.com"
+    provider_subcategory: any
     nickname: Gulf Coast M&A
     email_type: single_listing
     confidence: provisional
@@ -571,6 +698,7 @@ formats:
     format_family: bizquest
     source: bizquest.com
     sub_source: "*@bizquest.com"
+    provider_subcategory: any
     nickname: BizQuest
     email_type: daily_digest
     confidence: stub
@@ -584,6 +712,7 @@ formats:
     format_family: dealstream
     source: dealstream.com
     sub_source: "*@dealstream.com"
+    provider_subcategory: any
     nickname: DealStream
     email_type: daily_digest
     confidence: stub
@@ -597,6 +726,7 @@ formats:
     format_family: newsletter
     source: doeren.com
     sub_source: "*@doeren.com"
+    provider_subcategory: any
     nickname: Doeren Mayhew (non-deal)
     email_type: newsletter_marketing
     confidence: verified

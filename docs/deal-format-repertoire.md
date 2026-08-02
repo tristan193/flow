@@ -9,14 +9,30 @@ Handoff context: [`Deal_Extraction_Format_Repertoire_Whitepaper.md`](./Deal_Extr
 
 ---
 
-## 1. What we store (four layers)
+## 1. What we store (five layers)
 
 | Layer | Lives in | Purpose |
 |-------|----------|---------|
-| **Providers** | `repertoire.yaml` → `providers:` | Domain + known mailboxes → nickname |
+| **Providers** | `providers:` | Brand / domain → nickname |
+| **Provider subcategories** | `providers[].subcategories:` | **Sender mailbox** — primary format signal for automated mail |
 | **Email types** | `email_types:` | digest / single / marketing / follow-up / notice |
 | **Signals** | `signals:` | Named regexes reusable across formats |
 | **Formats** | `formats:` | Full shape: detect rules, expected fields, gotchas, status |
+
+### Provider subcategory = From: address
+
+Most marketplace/broker automation uses a **fixed mailbox per product**. That
+address alone often selects the right format:
+
+| Provider | Subcategory id | Email | Default format |
+|----------|----------------|-------|----------------|
+| BizBuySell | `bizalert` | `bizalert@…` | digest |
+| BizBuySell | `newbizopps` | `newbizopps@…` | single listing |
+| Axial | `newdeal` | `newdeal@…` | single deal |
+| Axial | `notifications` | `notifications@…` | account notice (subject splits variants) |
+
+Subject/body still confirm and disambiguate when one mailbox serves two jobs
+(e.g. SMB `helen@` → digest vs editorial).
 
 Every **format** also carries the attribution triad:
 
@@ -25,6 +41,7 @@ Every **format** also carries the attribution triad:
 | `source` | Sender **domain** | `bizbuysell.com` |
 | `sub_source` | Sender **email** (or `*@domain`) | `bizalert@bizbuysell.com` |
 | `nickname` | Human-facing pill | `BizBuySell` |
+| `provider_subcategory` | Mailbox subcategory id | `bizalert` |
 
 `format_family` picks the splitter / `ext_id` prefix. It is **not** the stored
 `source` column.
@@ -33,11 +50,15 @@ Every **format** also carries the attribution triad:
 
 ## 2. Detection order (always)
 
-1. **`sub_source` / `source`** (address, then domain)
-2. **Subject line shape**
-3. **Body open** (first meaningful lines after `strip_html`)
-4. **Body markers** (confirmation / last resort)
-5. Optional **named signals** from `signals:`
+1. **Provider subcategory** (`From:` mailbox → `subcategories[].email`)
+2. **`sub_source` / `source`** on the format (address, then domain)
+3. **Subject line shape**
+4. **Body open** (first meaningful lines after `strip_html`)
+5. **Body markers** / named **signals**
+
+If a subcategory lists `default_format`, that format is strongly preferred.
+Subject/body still win when the same mailbox has multiple formats
+(`default_format: null`).
 
 Forwards: unwrap `Forwarded message`, attribute the **original** mailbox — never
 `tullyinvesting.com` / Gmail as provider.
@@ -126,12 +147,45 @@ Template: [`pipeline/formats/_FORMAT_TEMPLATE.yaml`](../pipeline/formats/_FORMAT
 
 ---
 
-## 7. Live catalog highlights (5-day survey)
+## 7. Train AI → repertoire loop
+
+The Flow App **Train AI** button is not triage — it is a human signal that the
+**format repertoire** entry for that mailbox needs attention.
+
+```text
+Human flags deal (reason + optional note)
+   │
+   ▼
+POST /api/train
+   │  resolve format via sub_source / provider subcategory
+   │  (web/lib/repertoire.meta.json ← learn.py validate)
+   ▼
+train_flags row + inspection checklist (Neon)
+   │
+   ├─ Agent / human: GET /api/train  → open queue
+   └─ learn.py train-queue --input flags.json
+          → pipeline/formats/train/*.md review notes
+          → edit repertoire.yaml (gotchas / detect / status)
+```
+
+When you (or an agent) act on a Train AI flag:
+
+1. Open the matched `format_id` in `repertoire.yaml`.
+2. Walk the inspection checklist (detect, expected_fields, split, control).
+3. Append a `gotchas:` line or tighten patterns — then `learn.py validate`.
+4. Only change `ingest.py` after the repertoire entry says what changed.
+
+`repertoire.meta.json` is regenerated on every `learn.py validate` (also copied
+to `web/lib/` so the app stays in sync).
+
+---
+
+## 8. Live catalog highlights (5-day survey)
 
 | Format id | sub_source | Type | Status |
 |-----------|------------|------|--------|
 | `bizbuysell.bizalert_digest` | `bizalert@` | digest | active |
-| `bizbuysell.newbizopps_single` | `newbizopps@` | single | **needs_parser** (largest gap) |
+| `bizbuysell.newbizopps_single` | `newbizopps@` | single | **active** (`split_bizbuysell_newbizopps`) |
 | `axial.single_deal` | `newdeal@` | single | active (money provisional) |
 | `axial.action_summary` | `notifications@` | account_notice | control |
 | `smb_deal_hunter.daily_digest` | `helen@mail.smb…` | digest | active |
@@ -142,7 +196,7 @@ decides type after address match.
 
 ---
 
-## 8. Extraction rules (do not regress)
+## 9. Extraction rules (do not regress)
 
 - Money / location: **regex-first**; bare `$` is never assigned to a field
 - Ambiguous profit labels → **SDE**, not EBITDA
@@ -151,8 +205,8 @@ decides type after address match.
 
 ---
 
-## 9. Next leverage
+## 10. Next leverage
 
-1. Implement parser for `bizbuysell.newbizopps_single` → `active`
+1. Re-survey so attribution rows use real domain/email (old nicknames in `sub_source` leave forwards unmatched)
 2. Axial LTM money lines (`Revenue` / `$7.6` / `M`)
-3. Keep running `classify` after each survey so new mailboxes become stubs early
+3. Act on Train AI queue → repertoire gotchas (`learn.py train-queue`)
