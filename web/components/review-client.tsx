@@ -4,30 +4,39 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { type Fit, type FitLevel, assessFit, byFit } from "@/lib/fit";
 import {
   type Deal,
   type MemberId,
   PASS_REASONS,
   type VerdictAction,
-  businessModelLabel,
-  earningsLabel,
-  locationLabel,
-  money,
 } from "@/lib/model";
-import { DealListCard, NeedsTags, SourcePill, VerdictChips } from "./deal-card";
+import {
+  CardFooter,
+  DealListCard,
+  FitStrip,
+  LeadLine,
+  MetricRow,
+  VerdictChips,
+  Where,
+} from "./deal-card";
 import { BlurbText } from "./blurb-text";
 import { TrainAiButton } from "./train-ai-button";
 
 type Override = { action: VerdictAction | null; reason: string | null };
+type Scored = Deal & { fit: Fit };
 
 const FILTERS = [
   { id: "todo", label: "To review" },
-  { id: "all", label: "All" },
-  { id: "hasfin", label: "Has earnings" },
-  { id: "needs", label: "Needs info" },
+  { id: "priority", label: "Priority" },
+  { id: "inbox", label: "In the box" },
+  { id: "unknown", label: "No financials" },
+  { id: "out", label: "Out of box" },
   { id: "short", label: "Shortlisted" },
   { id: "discuss", label: "To discuss" },
+  { id: "needs", label: "Needs info" },
   { id: "train", label: "Train AI" },
+  { id: "all", label: "Everything" },
 ] as const;
 
 type FilterId = (typeof FILTERS)[number]["id"];
@@ -36,20 +45,12 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   const router = useRouter();
   const [mode, setMode] = useState<"swipe" | "list">("swipe");
   const [filter, setFilter] = useState<FilterId>("todo");
-
-  /**
-   * Verdicts applied in this session, layered over what the server sent. The
-   * write goes to the database immediately; this is only so the card reacts
-   * without waiting for a round trip.
-   */
   const [overrides, setOverrides] = useState<Record<number, Override>>({});
   const [history, setHistory] = useState<number[]>([]);
   const [failed, setFailed] = useState(false);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Re-fetching on every tap would fight the swipe animation, so server state is
-  // pulled once the session goes quiet.
   const scheduleRefresh = useCallback(() => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(() => router.refresh(), 2500);
@@ -60,6 +61,11 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
     };
   }, []);
+
+  const scored = useMemo<Scored[]>(
+    () => deals.map((deal) => ({ ...deal, fit: assessFit(deal) })),
+    [deals],
+  );
 
   const verdictOf = useCallback(
     (deal: Deal): Override | null => {
@@ -83,8 +89,6 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
         setFailed(false);
         scheduleRefresh();
       } catch {
-        // The optimistic state stays put so the session is not lost; the banner
-        // tells them the server did not take it.
         setFailed(true);
       }
     },
@@ -99,7 +103,6 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
     [send],
   );
 
-  /** Tapping the current verdict again clears it, which is how a mis-tap is undone. */
   const toggle = useCallback(
     (deal: Deal, action: VerdictAction) => {
       const current = verdictOf(deal);
@@ -125,31 +128,37 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
     void send(last, null, null);
   }, [history, send]);
 
-  const stats = useMemo(() => {
-    let toReview = 0;
-    let short = 0;
-    let passed = 0;
-    let needs = 0;
-    for (const deal of deals) {
-      const verdict = verdictOf(deal);
-      if (!verdict) toReview += 1;
-      else if (verdict.action === "short") short += 1;
-      else if (verdict.action === "pass") passed += 1;
-      if (deal.needs_llm.length > 0) needs += 1;
-    }
-    return { toReview, short, passed, needs };
-  }, [deals, verdictOf]);
+  const queue = useMemo(
+    () => scored.filter((deal) => !verdictOf(deal)).sort(byFit),
+    [scored, verdictOf],
+  );
 
-  const queue = useMemo(() => deals.filter((deal) => !verdictOf(deal)), [deals, verdictOf]);
+  const remaining = useMemo(() => {
+    const counts: Record<FitLevel, number> = {
+      priority: 0,
+      fits: 0,
+      unknown: 0,
+      low: 0,
+      out: 0,
+    };
+    for (const deal of queue) counts[deal.fit.level] += 1;
+    return counts;
+  }, [queue]);
 
   const visible = useMemo(() => {
-    return deals.filter((deal) => {
+    const rows = scored.filter((deal) => {
       const verdict = verdictOf(deal);
       switch (filter) {
         case "todo":
           return !verdict;
-        case "hasfin":
-          return deal.ebitda != null || deal.sde != null;
+        case "priority":
+          return deal.fit.level === "priority";
+        case "inbox":
+          return deal.fit.level === "priority" || deal.fit.level === "fits";
+        case "unknown":
+          return deal.fit.level === "unknown";
+        case "out":
+          return deal.fit.level === "out" || deal.fit.level === "low";
         case "needs":
           return deal.needs_llm.length > 0;
         case "short":
@@ -161,12 +170,15 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
             deal.verdicts.partner?.action === "discuss"
           );
         case "train":
-          return Boolean(deal.trainFlags[member] || deal.trainFlags.tristan || deal.trainFlags.partner);
+          return Boolean(
+            deal.trainFlags[member] || deal.trainFlags.tristan || deal.trainFlags.partner,
+          );
         default:
           return true;
       }
     });
-  }, [deals, filter, verdictOf]);
+    return rows.sort(byFit);
+  }, [scored, filter, verdictOf, member]);
 
   return (
     <div className="space-y-3">
@@ -176,7 +188,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
             key={value}
             onClick={() => setMode(value)}
             className={`flex-1 rounded-lg px-3 py-2 text-[13.5px] font-semibold capitalize transition-colors ${
-              mode === value ? "bg-discuss text-white" : "text-ink-dim"
+              mode === value ? "bg-surface-raised text-ink" : "text-ink-faint"
             }`}
           >
             {value === "swipe" ? "Swipe" : "List"}
@@ -184,12 +196,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
         ))}
       </div>
 
-      <div className="grid grid-cols-4 gap-1.5">
-        <Stat value={stats.toReview} label="To review" />
-        <Stat value={stats.short} label="Short" />
-        <Stat value={stats.passed} label="Passed" />
-        <Stat value={stats.needs} label="Needs info" />
-      </div>
+      <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />
 
       {failed && (
         <p className="bg-pass-bg text-pass rounded-lg px-3 py-2 text-xs">
@@ -237,8 +244,8 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
               {visible.map((deal) => {
                 const verdict = verdictOf(deal);
                 return (
-                  <DealListCard key={deal.id} deal={deal} member={member}>
-                    <div className="mt-3 flex gap-1.5">
+                  <DealListCard key={deal.id} deal={deal} fit={deal.fit} member={member}>
+                    <div className="flex gap-1.5 pt-0.5">
                       <ActionButton
                         active={verdict?.action === "short"}
                         tone="short"
@@ -263,7 +270,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                     </div>
 
                     {verdict?.action === "pass" && (
-                      <div className="border-line mt-3 border-t border-dashed pt-3">
+                      <div className="border-line border-t border-dashed pt-3">
                         <p className="text-ink-faint mb-2 text-xs font-semibold">
                           Why pass? This is what a buy box eventually gets tuned against.
                         </p>
@@ -299,11 +306,53 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+const METER_BARS: Array<{ level: FitLevel; label: string; bar: string; text: string }> = [
+  { level: "priority", label: "Priority", bar: "bg-fit-good", text: "text-fit-good" },
+  { level: "fits", label: "In box", bar: "bg-fit-good/45", text: "text-fit-good/80" },
+  { level: "unknown", label: "No financials", bar: "bg-line-bright", text: "text-ink-dim" },
+  { level: "low", label: "Below floor", bar: "bg-fit-weak/60", text: "text-fit-weak" },
+  { level: "out", label: "Out", bar: "bg-fit-out/45", text: "text-fit-out" },
+];
+
+function QueueMeter({
+  counts,
+  total,
+  reviewed,
+}: {
+  counts: Record<FitLevel, number>;
+  total: number;
+  reviewed: number;
+}) {
+  const present = METER_BARS.filter((bar) => counts[bar.level] > 0);
+
+  if (total === 0) {
+    return (
+      <div className="border-line bg-surface rounded-xl border px-3.5 py-3">
+        <p className="text-ink-dim text-[13px]">Queue empty · {reviewed} reviewed</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="border-line bg-surface rounded-lg border px-2 py-2 text-center">
-      <b className="block text-lg leading-tight font-semibold">{value}</b>
-      <span className="text-ink-faint text-[10.5px] tracking-wide uppercase">{label}</span>
+    <div className="border-line bg-surface space-y-2.5 rounded-xl border px-3.5 py-3">
+      <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full">
+        {present.map((bar) => (
+          <span
+            key={bar.level}
+            className={bar.bar}
+            style={{ width: `${(counts[bar.level] / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+        {present.map((bar) => (
+          <span key={bar.level} className="text-[12px]">
+            <b className={`tabular font-semibold ${bar.text}`}>{counts[bar.level]}</b>{" "}
+            <span className="text-ink-faint">{bar.label}</span>
+          </span>
+        ))}
+        <span className="text-ink-faint ms-auto text-[11.5px]">{reviewed} done</span>
+      </div>
     </div>
   );
 }
@@ -320,16 +369,16 @@ function ActionButton({
   children: React.ReactNode;
 }) {
   const activeTone = {
-    short: "border-short bg-short text-white",
-    discuss: "border-discuss bg-discuss text-white",
-    pass: "border-pass bg-pass text-white",
+    short: "border-short bg-short text-canvas",
+    discuss: "border-discuss bg-discuss text-canvas",
+    pass: "border-pass bg-pass text-canvas",
   }[tone];
 
   return (
     <button
       onClick={onClick}
-      className={`flex-1 rounded-lg border py-2.5 text-[13px] font-semibold transition-colors ${
-        active ? activeTone : "border-line bg-surface text-ink"
+      className={`flex-1 rounded-lg border py-2 text-[12.5px] font-semibold transition-colors ${
+        active ? activeTone : "border-line bg-surface-raised text-ink-dim"
       }`}
     >
       {children}
@@ -337,12 +386,6 @@ function ActionButton({
   );
 }
 
-/**
- * One card at a time, dragged left to pass or right to shortlist.
- *
- * This is the mode that makes a fifty-listing morning survivable: the decision is
- * a thumb flick, and the queue only contains deals this member has not ruled on.
- */
 function SwipeDeck({
   queue,
   total,
@@ -352,7 +395,7 @@ function SwipeDeck({
   canUndo,
   onBrowse,
 }: {
-  queue: Deal[];
+  queue: Scored[];
   total: number;
   member: MemberId;
   onCommit: (deal: Deal, action: VerdictAction) => void;
@@ -364,6 +407,7 @@ function SwipeDeck({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef({ startX: 0, dx: 0, active: false });
   const [flying, setFlying] = useState(false);
+  const [intent, setIntent] = useState<VerdictAction | null>(null);
 
   const fling = useCallback(
     (deal: Deal, action: VerdictAction) => {
@@ -380,10 +424,9 @@ function SwipeDeck({
         card.style.opacity = "0";
       }
 
-      // Let the card leave the screen before the queue drops it, otherwise the
-      // next deal appears underneath a still-visible card.
       setTimeout(() => {
         setFlying(false);
+        setIntent(null);
         onCommit(deal, action);
       }, 190);
     },
@@ -432,12 +475,14 @@ function SwipeDeck({
     if (card) {
       card.style.transform = `translateX(${drag.current.dx}px) rotate(${drag.current.dx / 18}deg)`;
     }
+    setIntent(drag.current.dx > 60 ? "short" : drag.current.dx < -60 ? "pass" : null);
   }
 
   function onPointerUp() {
     if (!drag.current.active) return;
     const { dx } = drag.current;
     drag.current.active = false;
+    setIntent(null);
 
     if (Math.abs(dx) > 90) {
       fling(top!, dx < 0 ? "pass" : "short");
@@ -451,22 +496,15 @@ function SwipeDeck({
     }
   }
 
-  const dragProgress = 0;
-
   return (
     <div>
-      <p className="text-ink-faint mb-2 text-center text-xs">
-        {total - queue.length + 1} of {total}
-      </p>
-
-      <div className="relative mb-4 h-[460px]">
+      <div className="relative mb-4 h-[430px]">
         {queue
           .slice(0, 3)
           .reverse()
           .map((deal, index, arr) => {
             const depth = arr.length - 1 - index;
             const isTop = depth === 0;
-            const model = businessModelLabel(deal);
             return (
               <div
                 key={deal.id}
@@ -475,61 +513,56 @@ function SwipeDeck({
                 onPointerMove={isTop ? onPointerMove : undefined}
                 onPointerUp={isTop ? onPointerUp : undefined}
                 onPointerCancel={isTop ? onPointerUp : undefined}
-                className="deck-card border-line bg-surface absolute inset-0 flex flex-col rounded-2xl border p-4 shadow-xl shadow-black/30"
+                className="deck-card border-line bg-surface absolute inset-0 flex flex-col overflow-hidden rounded-2xl border shadow-xl shadow-black/40"
                 style={{
                   zIndex: 10 - depth,
                   transform: `translateY(${depth * 8}px) scale(${1 - depth * 0.03})`,
-                  opacity: dragProgress || 1,
                 }}
               >
-                <div className="mb-3 flex items-start gap-2.5">
-                  <SourcePill deal={deal} />
-                  <h2 className="min-w-0 flex-1 text-[19px] leading-snug font-semibold">
-                    {deal.title}
-                  </h2>
-                  <span className="shrink-0 text-right text-xl font-semibold">
-                    {earningsLabel(deal)}
-                    <small className="text-ink-faint mt-0.5 block text-[9.5px] font-semibold tracking-wide uppercase">
-                      {deal.earnings_basis ?? "no data"}
-                    </small>
-                  </span>
-                </div>
+                <FitStrip fit={deal.fit} />
 
-                <div className="text-ink-dim space-y-1 text-[13px]">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+                  <MetricRow deal={deal} fit={deal.fit} large />
+
                   <div>
-                    <span className="text-ink font-semibold">{locationLabel(deal)}</span>
-                    {model ? <> · {model}</> : null}
+                    <h2 className="text-[18px] leading-snug font-semibold">{deal.title}</h2>
+                    <div className="mt-1">
+                      <Where deal={deal} />
+                    </div>
                   </div>
-                  <div>
-                    Rev {money(deal.revenue) ?? "—"} · Asking {money(deal.asking) ?? "—"}
-                  </div>
-                </div>
 
-                <p className="text-ink-dim mt-3 flex-1 overflow-auto text-[14px] leading-relaxed">
-                  <BlurbText text={deal.blurb} listingUrl={deal.url} />
-                </p>
+                  {isTop ? (
+                    <div className="text-ink-dim min-h-0 flex-1 overflow-auto text-[13.5px] leading-relaxed">
+                      <BlurbText text={deal.blurb} listingUrl={deal.url} />
+                    </div>
+                  ) : (
+                    <div className="flex-1">
+                      <LeadLine deal={deal} lines={3} />
+                    </div>
+                  )}
 
-                <div className="mt-3 space-y-2">
-                  <NeedsTags deal={deal} />
-                  <VerdictChips deal={deal} member={member} />
-                  <div className="flex items-center justify-between gap-2">
-                    {deal.url ? (
-                      <a
-                        href={deal.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-discuss text-xs"
-                      >
-                        View original listing →
-                      </a>
-                    ) : (
-                      <span />
-                    )}
-                    <div className="flex items-center gap-3">
-                      <TrainAiButton deal={deal} member={member} compact />
-                      <Link href={`/deals/${deal.id}`} className="text-ink-faint text-xs">
-                        Details
-                      </Link>
+                  <div className="space-y-2">
+                    <VerdictChips deal={deal} member={member} />
+                    <CardFooter deal={deal} />
+                    <div className="border-line flex items-center justify-between gap-2 border-t pt-2.5">
+                      {deal.url ? (
+                        <a
+                          href={deal.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-discuss text-[11.5px]"
+                        >
+                          Original listing →
+                        </a>
+                      ) : (
+                        <span />
+                      )}
+                      <div className="flex items-center gap-3">
+                        <TrainAiButton deal={deal} member={member} compact />
+                        <Link href={`/deals/${deal.id}`} className="text-ink-faint text-[11.5px]">
+                          Details
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -538,8 +571,13 @@ function SwipeDeck({
           })}
       </div>
 
-      <div className="mb-2 flex items-center justify-center gap-3">
-        <DeckButton tone="pass" onClick={() => fling(top, "pass")} title="Pass (left arrow)">
+      <div className="mb-2.5 flex items-center justify-center gap-3">
+        <DeckButton
+          tone="pass"
+          active={intent === "pass"}
+          onClick={() => fling(top, "pass")}
+          title="Pass (left arrow)"
+        >
           ✕
         </DeckButton>
         <DeckButton
@@ -550,18 +588,28 @@ function SwipeDeck({
         >
           ?
         </DeckButton>
-        <DeckButton tone="short" onClick={() => fling(top, "short")} title="Shortlist (right arrow)">
+        <DeckButton
+          tone="short"
+          active={intent === "short"}
+          onClick={() => fling(top, "short")}
+          title="Shortlist (right arrow)"
+        >
           ♥
         </DeckButton>
       </div>
 
-      <button
-        onClick={onUndo}
-        disabled={!canUndo}
-        className="text-ink-faint mx-auto block text-[12.5px] underline disabled:opacity-40"
-      >
-        Undo last
-      </button>
+      <div className="flex items-center justify-center gap-4">
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="text-ink-faint text-[12px] underline disabled:opacity-40"
+        >
+          Undo last
+        </button>
+        <span className="text-ink-faint tabular text-[12px]">
+          {total - queue.length + 1} of {total}
+        </span>
+      </div>
     </div>
   );
 }
@@ -572,20 +620,29 @@ function DeckButton({
   children,
   title,
   small = false,
+  active = false,
 }: {
   tone: "short" | "discuss" | "pass";
   onClick: () => void;
   children: React.ReactNode;
   title: string;
   small?: boolean;
+  active?: boolean;
 }) {
-  const color = { short: "text-short", discuss: "text-discuss", pass: "text-pass" }[tone];
+  const idle = { short: "text-short", discuss: "text-discuss", pass: "text-pass" }[tone];
+  const lit = {
+    short: "bg-short text-canvas border-short",
+    discuss: "bg-discuss text-canvas border-discuss",
+    pass: "bg-pass text-canvas border-pass",
+  }[tone];
   const size = small ? "h-12 w-12 text-lg" : "h-14 w-14 text-2xl";
   return (
     <button
       onClick={onClick}
       title={title}
-      className={`border-line bg-surface flex items-center justify-center rounded-full border shadow-lg shadow-black/20 active:scale-95 ${size} ${color}`}
+      className={`flex items-center justify-center rounded-full border shadow-lg shadow-black/20 transition-colors active:scale-95 ${size} ${
+        active ? lit : `border-line bg-surface ${idle}`
+      }`}
     >
       {children}
     </button>

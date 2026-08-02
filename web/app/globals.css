@@ -1,29 +1,38 @@
 @import "tailwindcss";
 
 /**
- * Flow App is used mostly on a phone, often in the evening, for long triage
- * sessions. The palette is dark and low-contrast on purpose: the only things
- * allowed to be bright are money figures and the three verdict actions.
+ * Flow App is used mostly on a phone, in the evening, for long triage sessions.
+ *
+ * Contrast is a budget. Only three things spend it: the buy-box fit strip, the
+ * earnings figure, and the three verdict actions. Everything else is dim on
+ * purpose so the eye lands on the decision.
  */
 @theme {
-  --color-canvas: #0e1013;
-  --color-surface: #171a1f;
-  --color-surface-raised: #1e222a;
-  --color-line: #2a2f38;
-  --color-line-bright: #3a4149;
+  --color-canvas: #0b0d10;
+  --color-surface: #14171c;
+  --color-surface-raised: #1c2128;
+  --color-line: #262c35;
+  --color-line-bright: #39414c;
 
-  --color-ink: #e8eaed;
-  --color-ink-dim: #9aa3ad;
-  --color-ink-faint: #6b747e;
+  --color-ink: #f2f4f7;
+  --color-ink-dim: #99a2ad;
+  --color-ink-faint: #646c77;
 
-  --color-short: #2fa36b;
-  --color-short-bg: #14301f;
-  --color-discuss: #6b8cc4;
-  --color-discuss-bg: #1a2233;
-  --color-pass: #c4564a;
-  --color-pass-bg: #331a18;
-  --color-flag: #c9922b;
+  --color-short: #3ecf8e;
+  --color-short-bg: #0f2f21;
+  --color-discuss: #7aa2f7;
+  --color-discuss-bg: #16203a;
+  --color-pass: #f0645a;
+  --color-pass-bg: #331816;
+  --color-flag: #e0a63c;
   --color-flag-bg: #2e2413;
+
+  --color-fit-good: #3ecf8e;
+  --color-fit-good-bg: #10291f;
+  --color-fit-weak: #e0a63c;
+  --color-fit-weak-bg: #2a2214;
+  --color-fit-out: #b8564d;
+  --color-fit-out-bg: #2a1715;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -37,8 +46,11 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* Hide scrollbars on the horizontal filter and board rails without disabling
-   scrolling itself. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -47,9 +59,20 @@ body {
   display: none;
 }
 
-/* The swipe deck sets its own transforms from JavaScript; this keeps the browser
-   from also trying to pan or select while a card is being dragged. */
 .deck-card {
   touch-action: none;
   user-select: none;
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

@@ -19,7 +19,8 @@ export default async function ReviewPage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Review</h1>
           <p className="text-ink-dim text-[12.5px]">
-            {deals.length} listings · verdicts are shared with your partner as soon as you make them
+            {deals.length} listings · best fit first · verdicts are shared with your partner as soon
+            as you make them
           </p>
         </div>
 
@@ -35,8 +36,10 @@ export default async function ReviewPage() {
         )}
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          An asterisk on an earnings figure means it is SDE, not EBITDA — it includes owner
-          compensation and is not comparable to an EBITDA number. Deals flagged &ldquo;needs
+          The fit line reads the buy box in <code>pipeline/buybox.yaml</code> — geography tier,
+          financial floor, excluded and strategic categories. It is a filter for attention, not a
+          decision. An asterisk on an earnings figure means it is SDE, not EBITDA: it includes owner
+          compensation, so the floor is compared against 85% of it. Deals flagged &ldquo;needs
           info&rdquo; have gaps the parser refused to guess at rather than errors.
         </p>
       </main>
