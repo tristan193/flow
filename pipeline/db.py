@@ -180,6 +180,17 @@ BACKFILL = (
     "source", "sub_source", "nickname",
 )
 
+# Everything the extractor owns. When the SAME email is ingested again the
+# current parser's output supersedes the stored row — otherwise a parser fix
+# can never correct a value the old code got wrong, and the only way to repair
+# a deal is to delete it. Cross-source merges keep the BACKFILL rule below.
+REPARSE = BACKFILL + ("title", "blurb", "business_model_type", "needs_llm")
+
+# A blank re-parse usually means the extractor lost ground, so it is ignored —
+# except for the money fields, where "no figure" is a real answer a parser is
+# entitled to give (newbizopps mail carries marketing prose, not earnings).
+CLEARABLE = ("revenue", "ebitda", "sde", "asking")
+
 def _title_sim(a: str, b: str) -> float:
     clean = lambda s: re.sub(r"[^a-z ]", "", (s or "").lower())
     return SequenceMatcher(None, clean(a), clean(b)).ratio()
@@ -221,6 +232,7 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     fp = l.fingerprint()
 
     row = con.execute("SELECT id FROM deals WHERE ext_id=?", (l.ext_id,)).fetchone()
+    same_email = row is not None
     mode = "repeat"
     if not row and un:
         row = con.execute("SELECT id FROM deals WHERE url_norm=? AND url_norm<>''", (un,)).fetchone()
@@ -238,16 +250,36 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     if row:
         did = row["id"]
         cur = con.execute("SELECT * FROM deals WHERE id=?", (did,)).fetchone()
+        updates: dict = {}
+
+        if same_email:
+            # Clearing a field back to NULL is only safe when this email is the
+            # deal's only source; on a merged row another email may have been
+            # the one that supplied it.
+            sole_source = con.execute(
+                "SELECT COUNT(DISTINCT msg_id) AS c FROM deal_sources WHERE deal_id=?",
+                (did,),
+            ).fetchone()["c"] <= 1
+            for f in REPARSE:
+                new = json.dumps(l.needs_llm) if f == "needs_llm" else getattr(l, f, None)
+                blank = new is None or (isinstance(new, str) and not new.strip())
+                if blank and not (sole_source and f in CLEARABLE):
+                    continue
+                if new != cur[f]:
+                    updates[f] = new
+            if fp != cur["fingerprint"]:
+                updates["fingerprint"] = fp
+
         # backfill only NULLs — a later source may disclose EBITDA where the
         # first only gave SDE. Never overwrite a value we already trust.
-        sets, vals = [], []
         for f in BACKFILL:
-            if cur[f] is None and getattr(l, f) is not None:
-                sets.append(f"{f}=?"); vals.append(getattr(l, f))
+            if f not in updates and cur[f] is None and getattr(l, f) is not None:
+                updates[f] = getattr(l, f)
         if not cur["url_norm"] and un:
-            sets.append("url_norm=?"); vals.append(un)
-        sets += ["last_seen=?", "times_seen=times_seen+1"]
-        vals += [ts, did]
+            updates["url_norm"] = un
+
+        sets = [f"{f}=?" for f in updates] + ["last_seen=?", "times_seen=times_seen+1"]
+        vals = list(updates.values()) + [ts, did]
         con.execute(f"UPDATE deals SET {', '.join(sets)} WHERE id=?", vals)
     else:
         mode = "new"

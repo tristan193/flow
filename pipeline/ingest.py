@@ -613,35 +613,90 @@ def split_axial(body: str) -> List[str]:
     return [normalize_axial_ltm_money(p) for p in parts]
 
 
-# Axial HTML→text often breaks the LTM table into three lines with blank
-# spacer lines between them (confirmed deal 45 / Architectural Sign):
-#   Revenue\n\n \n\n $5.4\n\n M
-#   EBITDA\n\n $1.3\n\n M
-# Generic extract then misses EBITDA entirely and latches onto aspirational
-# prose ("grow its revenue to $15M"). Collapse onto one line before money parse.
-_AXIAL_LTM_TRIPLE = re.compile(
-    r"(?im)^[ \t]*(Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?)\b[ \t]*\r?\n"
-    r"(?:[ \t]*\r?\n)*[ \t]*\$?\s*([\d,]+(?:\.\d+)?)\s*\r?\n"
-    r"(?:[ \t]*\r?\n)*[ \t]*(million|billion|mm|[KMB])\b"
+# Axial's financials are an HTML table, and the text version flattens it to one
+# cell per line — a year header row, then a label followed by one $amount and
+# one unit per column (confirmed against the Architectural Sign and Vocational
+# Education deals):
+#
+#   2023 / 2024 / 2025
+#   Revenue / $6.5 / M / $4.9 / M / $5.0 / M
+#   EBITDA / $2.1 / M / $2.1 / M / $2.0 / M
+#
+# Left alone this costs us twice: the generic money parser misses EBITDA
+# entirely and latches onto aspirational prose ("grow its revenue to $15M"),
+# and where it does read the table it takes the first column, reporting a
+# three-year-old figure as current. Collapse each row to one line on the most
+# recent column before the money parse runs.
+_AXIAL_MONEY_LABEL = re.compile(
+    r"(?i)^[ \t]*(Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?)[ \t]*:?[ \t]*$"
 )
-_AXIAL_LTM_DOUBLE = re.compile(
-    r"(?im)^[ \t]*(Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?)\b[ \t]*\r?\n"
-    r"(?:[ \t]*\r?\n)*[ \t]*(\$\s*[\d,]+(?:\.\d+)?[ \t]*(?:million|billion|mm|[KMB])?)\b"
-)
+_AXIAL_AMOUNT = re.compile(r"^[ \t]*\$[ \t]*([\d,]+(?:\.\d+)?)[ \t]*$")
+_AXIAL_UNIT = re.compile(r"(?i)^[ \t]*(million|billion|thousand|mm|[KMB])[ \t]*$")
+_AXIAL_YEAR = re.compile(r"^[ \t]*((?:19|20)\d{2})[ \t]*$")
+
+
+def _latest_column(amounts: list, years: list) -> str:
+    """The figure for the most recent period in an Axial financials row."""
+    if len(years) == len(amounts) and len(amounts) > 1:
+        return amounts[years.index(max(years))]
+    return amounts[-1]
 
 
 def normalize_axial_ltm_money(text: str) -> str:
-    """Rewrite Axial broken LTM lines into `Label: $N[unit]` for extract_money."""
-    def triple(m: re.Match) -> str:
-        label, num, unit = m.group(1), m.group(2), m.group(3)
-        return f"{label}: ${num}{unit}"
+    """Collapse Axial's split financials table into `Label: $N[unit]` lines."""
+    lines = (text or "").splitlines()
+    out: list = []
+    years: list = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            out.append(line)
+            i += 1
+            continue
 
-    def double(m: re.Match) -> str:
-        return f"{m.group(1)}: {m.group(2)}"
+        year = _AXIAL_YEAR.match(line)
+        if year:
+            years.append(int(year.group(1)))
+            i += 1
+            continue
 
-    out = _AXIAL_LTM_TRIPLE.sub(triple, text or "")
-    out = _AXIAL_LTM_DOUBLE.sub(double, out)
-    return out
+        label = _AXIAL_MONEY_LABEL.match(line)
+        if not label:
+            # Any other prose ends the header run, so a year quoted later in
+            # the body cannot be mistaken for a table column.
+            years = []
+            out.append(line)
+            i += 1
+            continue
+
+        amounts: list = []
+        j = i + 1
+        while j < len(lines):
+            if not lines[j].strip():
+                j += 1
+                continue
+            amount = _AXIAL_AMOUNT.match(lines[j])
+            if not amount:
+                break
+            figure = amount.group(1)
+            j += 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            unit = _AXIAL_UNIT.match(lines[j]) if j < len(lines) else None
+            if unit:
+                figure += unit.group(1)
+                j += 1
+            amounts.append(figure)
+
+        if not amounts:
+            out.append(line)
+            i += 1
+            continue
+
+        out.append(f"{label.group(1)}: ${_latest_column(amounts, years)}")
+        i = j
+    return "\n".join(out)
 
 
 MONEY_SIGNAL = re.compile(r"\$[\d,.]+\s*(?:[KMB]|million)?|\b(?:EBITDA|SDE|revenue|cash flow)\b", re.I)
@@ -1386,10 +1441,12 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     domain = source or format_family
     title = extract_title(work, subject=subject)
     blurb = clean_blurb(work, url)
-    # Axial blurb often opens with title + "Tristan, Based on your criteria…"
-    # and redaction blocks — skip that chrome so the business prose leads.
+    # Axial needs the line structure to locate the description, so it slices the
+    # block itself rather than the already-flattened blurb.
     if format_id == "axial.single_deal" or format_family == "axial":
-        blurb = _clean_axial_blurb(blurb, title)
+        prose = _clean_axial_blurb(work, title)
+        if len(prose) >= 40:
+            blurb = clean_blurb(prose, url)
 
     lst = Listing(
         # ext_id keeps format_family prefix for stable upsert identity across
@@ -1428,38 +1485,53 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     return lst
 
 
-def _clean_axial_blurb(blurb: str, title: str = "") -> str:
-    text = blurb or ""
-    if title:
-        text = re.sub(re.escape(title), " ", text, count=1, flags=re.I)
-    text = re.sub(r"█+", " ", text)
-    text = re.sub(
-        r"(?i)^(?:tristan\s*,?\s*)?(?:based on your criteria[^.]*\.\s*)+"
-        r"(?:have a look below[^.]*\.\s*)?",
-        "",
-        text.strip(),
-    )
-    # Drop leading LTM grid leftovers ("2024 Revenue: $5.4M EBITDA: $1.3M").
-    text = re.sub(
-        r"(?i)^(?:\d{4}\s*)?(?:revenue|ebitda|sde)\s*:?\s*\$?[\d,.]+[KMB]?\s*",
-        "",
-        text,
-    )
-    text = re.sub(
-        r"(?i)^(?:revenue|ebitda|sde)\s*:?\s*\$?[\d,.]+[KMB]?\s*",
-        "",
-        text,
-    )
-    # Prefer the business-description sentence when chrome still leads.
-    m = re.search(
-        r"(?i)((?:a |an |the )?(?:fast[- ]growing|mid-sized|full-service|regional|"
-        r"asset-light|accredited)[^.]{20,400}\.)",
-        text,
-    )
-    if m:
-        text = (m.group(1) + " " + text[m.end():]).strip()
-    text = re.sub(r"\s+", " ", text).strip(" -|")
-    return text[:600]
+# Axial mail is templated in a fixed order: headline, greeting, financials
+# table, the seller's description, then boilerplate sections. That order is the
+# reliable part, so the blurb is the slice between the table and the first
+# boilerplate heading. An earlier version scrubbed chrome phrase by phrase and
+# lost — the headline, greeting and grid all survived into the blurb, while a
+# "lead with the business description" heuristic beheaded real sentences
+# ("The Company is a nationally accredited…" → "accredited…").
+_AXIAL_BOILERPLATE = re.compile(
+    r"(?im)^[ \t]*(?:Footnotes and Legend|Geography|Industries|Documents"
+    r"|Axial NDA Available|CIM Instantly Available|iOS App Now Available"
+    r"|Was this deal forwarded|Pass \(https?://|Pursue \(https?://)"
+)
+_AXIAL_MONEY_LINE = re.compile(
+    r"(?i)^[ \t]*(?:Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?):[ \t]*\$"
+)
+_AXIAL_GREETING = re.compile(
+    r"(?i)^(?:tristan\s*,?$|based on your criteria|have a look below)"
+)
+
+
+def _clean_axial_blurb(text: str, title: str = "") -> str:
+    """The seller's description, without Axial's greeting, grid, or footer."""
+    lines = _AXIAL_BOILERPLATE.split(text or "", maxsplit=1)[0].splitlines()
+
+    # Prose starts after the financials table, which normalize_axial_ltm_money
+    # has already collapsed to one `Label: $N` line per row.
+    start = 0
+    for i, line in enumerate(lines):
+        if _AXIAL_MONEY_LINE.match(line):
+            start = i + 1
+
+    compact = re.sub(r"\s+", " ", (title or "")).strip().lower()
+    kept = []
+    for line in lines[start:]:
+        # Redacted contact details ("Raymond ███ at (cell) ███") only ever
+        # carry blanked-out text.
+        if "█" in line or not line.strip():
+            continue
+        line = line.strip()
+        if _AXIAL_GREETING.match(line):
+            continue
+        # Axial repeats the headline just above the description.
+        if compact and len(line) < 120 and re.sub(r"\s+", " ", line).lower() in compact:
+            continue
+        kept.append(line)
+
+    return re.sub(r"\s+", " ", " ".join(kept)).strip(" -|")
 
 
 # =====================================================================
