@@ -376,11 +376,14 @@ formats:
       absent: []
     split: whole_body  # split_axial may return 1 block; treat as single
     gotchas:
-      - "Money on separate lines: label, amount, M/K unit — needs Axial-aware money parse"
-      - "Geography: 'Western Midwest (IA, KS, …)' — multi-state, not City/ST"
+      - "Money on separate lines: label, amount, M/K unit — normalize_axial_ltm_money collapses before extract"
+      - "Geography: 'Western Midwest (IA, KS, …)' / 'Middle Atlantic (CT, DE, …)' — multi-state, not City/ST"
+      - "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M on broken lines"
+      - "Blurb opens with title + Tristan/criteria chrome + redaction blocks — strip before display"
     subject_examples:
       - "Regional Restoration And Environmental Services Contractor"
       - "Asset-Light Environmental Services Platform Providing Recurring…"
+      - "Highly Successful Full-Service Architectural Sign Company"
 
   - id: axial.action_summary
     format_family: axial

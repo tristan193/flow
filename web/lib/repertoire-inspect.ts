@@ -87,9 +87,12 @@ function subcategories(): Array<{
 }
 
 /** Resolve the repertoire format most likely responsible for this deal. */
-export function resolveFormatForDeal(deal: Pick<DealRow, "source" | "sub_source">): RepertoireFormatMeta | null {
+export function resolveFormatForDeal(
+  deal: Pick<DealRow, "source" | "sub_source" | "nickname">,
+): RepertoireFormatMeta | null {
   const email = (deal.sub_source || "").toLowerCase().trim();
   const domain = (deal.source || "").toLowerCase().trim();
+  const nick = (deal.nickname || "").toLowerCase().trim();
   const all = formats();
 
   if (email && byEmail()[email]) {
@@ -111,8 +114,18 @@ export function resolveFormatForDeal(deal: Pick<DealRow, "source" | "sub_source"
     }
   }
 
+  // Legacy imports sometimes stored nickname in sub_source / source.
+  const nickKey = nick || (!email.includes("@") ? email : "");
+  if (nickKey) {
+    const nickHits = all.filter((f) => f.nickname.toLowerCase() === nickKey);
+    const active = nickHits.find((f) => f.status === "active") ?? nickHits[0];
+    if (active) return active;
+  }
+
   if (domain) {
     const domainHits = all.filter((f) => f.source === domain);
+    const active = domainHits.find((f) => f.status === "active");
+    if (active) return active;
     if (domainHits.length === 1) return domainHits[0];
   }
   return null;

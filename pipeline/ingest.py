@@ -608,7 +608,41 @@ def split_axial(body: str) -> List[str]:
     without touching real alerts. Matches what split_newsletter already
     does for the same reason."""
     parts = re.split(r"\n\s*(?:-{3,}|={3,}|\d+\.\s)", body)
-    return [p for p in parts if len(p.strip()) > 80 and MONEY_SIGNAL.search(p)]
+    parts = [p for p in parts if len(p.strip()) > 80 and MONEY_SIGNAL.search(p)]
+    # Single-deal newdeal@ mail is usually one part — still normalize LTM grid.
+    return [normalize_axial_ltm_money(p) for p in parts]
+
+
+# Axial HTML→text often breaks the LTM table into three lines with blank
+# spacer lines between them (confirmed deal 45 / Architectural Sign):
+#   Revenue\n\n \n\n $5.4\n\n M
+#   EBITDA\n\n $1.3\n\n M
+# Generic extract then misses EBITDA entirely and latches onto aspirational
+# prose ("grow its revenue to $15M"). Collapse onto one line before money parse.
+_AXIAL_LTM_TRIPLE = re.compile(
+    r"(?im)^[ \t]*(Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?)\b[ \t]*\r?\n"
+    r"(?:[ \t]*\r?\n)*[ \t]*\$?\s*([\d,]+(?:\.\d+)?)\s*\r?\n"
+    r"(?:[ \t]*\r?\n)*[ \t]*(million|billion|mm|[KMB])\b"
+)
+_AXIAL_LTM_DOUBLE = re.compile(
+    r"(?im)^[ \t]*(Revenue|EBITDA|SDE|Asking(?:[ \t]+Price)?)\b[ \t]*\r?\n"
+    r"(?:[ \t]*\r?\n)*[ \t]*(\$\s*[\d,]+(?:\.\d+)?[ \t]*(?:million|billion|mm|[KMB])?)\b"
+)
+
+
+def normalize_axial_ltm_money(text: str) -> str:
+    """Rewrite Axial broken LTM lines into `Label: $N[unit]` for extract_money."""
+    def triple(m: re.Match) -> str:
+        label, num, unit = m.group(1), m.group(2), m.group(3)
+        return f"{label}: ${num}{unit}"
+
+    def double(m: re.Match) -> str:
+        return f"{m.group(1)}: {m.group(2)}"
+
+    out = _AXIAL_LTM_TRIPLE.sub(triple, text or "")
+    out = _AXIAL_LTM_DOUBLE.sub(double, out)
+    return out
+
 
 MONEY_SIGNAL = re.compile(r"\$[\d,.]+\s*(?:[KMB]|million)?|\b(?:EBITDA|SDE|revenue|cash flow)\b", re.I)
 
@@ -1335,24 +1369,34 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
 def extract(block: str, format_family: str, msg_id: str, idx: int,
             source: str = "", sub_source: str = "", nickname: str = "",
             subject: str = "", format_id: str = "", email_type: str = "") -> Listing:
-    money = extract_money_fields(block)
-    city, state, county = extract_location(block)
-    model, confident = classify_model(block)
-    url_m = re.search(r"https?://[^\s\)>\]]+", block)
+    work = block
+    if format_id == "axial.single_deal" or format_family == "axial":
+        work = normalize_axial_ltm_money(work)
+    money = extract_money_fields(work)
+    city, state, county = extract_location(work)
+    model, confident = classify_model(work)
+    url_m = re.search(r"https?://[^\s\)>\]]+", work)
     url = url_m.group(0) if url_m else ""
     # Prefer a real listing URL over an elink wrapper when both appear.
-    for candidate in re.findall(r"https?://[^\s\)>\]]+", block):
+    for candidate in re.findall(r"https?://[^\s\)>\]]+", work):
         if "elink" not in candidate.lower() and "mail.smbdealhunter" not in candidate.lower():
             url = candidate
             break
 
     domain = source or format_family
+    title = extract_title(work, subject=subject)
+    blurb = clean_blurb(work, url)
+    # Axial blurb often opens with title + "Tristan, Based on your criteria…"
+    # and redaction blocks — skip that chrome so the business prose leads.
+    if format_id == "axial.single_deal" or format_family == "axial":
+        blurb = _clean_axial_blurb(blurb, title)
+
     lst = Listing(
         # ext_id keeps format_family prefix for stable upsert identity across
         # remodel of source→domain.
         ext_id=f"{format_family}:{msg_id}:{idx}",
-        title=extract_title(block, subject=subject),
-        blurb=clean_blurb(block, url),
+        title=title,
+        blurb=blurb,
         source=domain,
         sub_source=sub_source,
         nickname=nickname,
@@ -1382,6 +1426,40 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         lst.needs_llm = [x for x in lst.needs_llm if x != "earnings"]
         lst.needs_llm.append("earnings")
     return lst
+
+
+def _clean_axial_blurb(blurb: str, title: str = "") -> str:
+    text = blurb or ""
+    if title:
+        text = re.sub(re.escape(title), " ", text, count=1, flags=re.I)
+    text = re.sub(r"█+", " ", text)
+    text = re.sub(
+        r"(?i)^(?:tristan\s*,?\s*)?(?:based on your criteria[^.]*\.\s*)+"
+        r"(?:have a look below[^.]*\.\s*)?",
+        "",
+        text.strip(),
+    )
+    # Drop leading LTM grid leftovers ("2024 Revenue: $5.4M EBITDA: $1.3M").
+    text = re.sub(
+        r"(?i)^(?:\d{4}\s*)?(?:revenue|ebitda|sde)\s*:?\s*\$?[\d,.]+[KMB]?\s*",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"(?i)^(?:revenue|ebitda|sde)\s*:?\s*\$?[\d,.]+[KMB]?\s*",
+        "",
+        text,
+    )
+    # Prefer the business-description sentence when chrome still leads.
+    m = re.search(
+        r"(?i)((?:a |an |the )?(?:fast[- ]growing|mid-sized|full-service|regional|"
+        r"asset-light|accredited)[^.]{20,400}\.)",
+        text,
+    )
+    if m:
+        text = (m.group(1) + " " + text[m.end():]).strip()
+    text = re.sub(r"\s+", " ", text).strip(" -|")
+    return text[:600]
 
 
 # =====================================================================
