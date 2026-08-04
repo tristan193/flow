@@ -358,8 +358,12 @@ def enrichment_from_apify_item(
 
     e = Enrichment(
         listing_id=lid,
-        asking=parse_money(pick("askingPrice", "asking_price", "asking")),
-        sde=parse_money(pick("cashFlow", "cash_flow", "sde", "cashFlowSde")),
+        asking=parse_money(
+            pick("askingPrice", "asking_price", "asking", "price", "Asking Price")
+        ),
+        sde=parse_money(
+            pick("cashFlow", "cash_flow", "cashFlow_SDE", "cashFlowSde", "sde")
+        ),
         ebitda=parse_money(pick("ebitda", "EBITDA")),
         revenue=parse_money(pick("grossRevenue", "gross_revenue", "revenue")),
         city=(item.get("city") or None),
@@ -419,6 +423,7 @@ def candidates(
       WHERE url_norm LIKE '%bizbuysell.com%'
         AND (
           (ebitda IS NULL AND sde IS NULL)
+          OR asking IS NULL
           OR blurb IS NULL
           OR TRIM(blurb) = ''
           OR length(TRIM(blurb)) <= length(TRIM(COALESCE(title, ''))) + 60
@@ -431,7 +436,8 @@ def candidates(
     for row in rows:
         needs_earnings = row["ebitda"] is None and row["sde"] is None
         needs_blurb = blurb_is_thin(row["title"] or "", row["blurb"] or "")
-        if not needs_earnings and not needs_blurb:
+        needs_asking = row["asking"] is None
+        if not needs_earnings and not needs_blurb and not needs_asking:
             continue
         if skip_buybox:
             reason = headline_buybox_reject(row["title"] or "", row["blurb"] or "")

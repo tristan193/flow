@@ -27,6 +27,32 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/web/review` — DONE
+
+**Scope:** Stop labeling BizBuySell cards “no price” when asking exists but earnings don’t  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/deal-card.tsx` — MetricRow shows asking amount when multiple can’t be computed (common after BBS enrich fills revenue without SDE)
+- `pipeline/enrich_bizbuysell.py` — map `cashFlow_SDE`; re-enrich candidates missing `asking`
+
+### Follow-ups
+- Train AI “price missing” flags on BBS were largely this UI mislabel; clear after Tristan confirms
+
+## 2026-08-04 — `nm/web/review` — DONE
+
+**Scope:** Stop labeling BizBuySell cards “no price” when asking exists but earnings don’t  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/deal-card.tsx` — MetricRow shows asking amount when multiple can’t be computed (common after BBS enrich fills revenue without SDE)
+- `pipeline/enrich_bizbuysell.py` — map `cashFlow_SDE`; re-enrich candidates missing `asking`
+
+### Follow-ups
+- Train AI “price missing” flags on BBS were largely this UI mislabel; clear after Tristan confirms
+
 ## 2026-08-04 — `nm/ingest/repertoire` — DONE
 
 **Scope:** Control stubs so Anthropic receipts + AgencyEquity marketing yield 0  

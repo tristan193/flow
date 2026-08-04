@@ -50,6 +50,7 @@ export function FitStrip({ fit }: { fit: Fit }) {
 export function MetricRow({ deal, fit, large = false }: { deal: Deal; fit: Fit; large?: boolean }) {
   const multiple = multipleLabel(fit);
   const margin = marginLabel(fit);
+  const asking = money(deal.asking);
 
   return (
     <div className="flex items-end gap-4">
@@ -72,7 +73,14 @@ export function MetricRow({ deal, fit, large = false }: { deal: Deal; fit: Fit; 
         </div>
       )}
 
-      <Metric value={multiple} label={multiple ? `on ${money(deal.asking)}` : "no price"} />
+      {/* Asking and earnings are independent. Multiple is a derived bonus when
+          both exist — never hide asking behind a "no price" label just because
+          SDE/EBITDA is missing. */}
+      {multiple ? (
+        <Metric value={multiple} label={asking ? `on ${asking}` : "multiple"} />
+      ) : (
+        <Metric value={asking} label="asking" />
+      )}
       <Metric value={margin} label="margin" />
       <Metric value={money(deal.revenue)} label="revenue" />
     </div>
