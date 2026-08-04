@@ -27,6 +27,19 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/ingest/repertoire` — DONE
+
+**Scope:** Control stubs so Anthropic receipts + AgencyEquity marketing yield 0  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `pipeline/formats/repertoire.yaml` v4 — providers + `anthropic.receipt` / `agencyequity.marketing` (`status: control`, `split: drop`)
+- `pipeline/formats/repertoire.meta.json` + `web/lib/repertoire.meta.json` — regenerated for Train AI inspector
+
+### Follow-ups
+- Existing junk cards (1763/1764/2434) already in Neon — purge or pass separately; future harvests will not re-ingest
+
 ## 2026-08-04 — `nm/web/train` — DONE
 
 **Scope:** Shorter Train AI reason labels / prompts  

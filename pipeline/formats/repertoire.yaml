@@ -11,8 +11,8 @@
 #   nickname   = human-facing label     e.g. BizBuySell
 # format_family = internal splitter key (NOT stored as source)
 #
-version: 3
-updated: 2026-08-02
+version: 4
+updated: 2026-08-04
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -210,6 +210,36 @@ providers:
         purpose: Non-deal marketing — yield 0
         typical_email_type: newsletter_marketing
         default_format: doeren.marketing
+
+  - domain: mail.anthropic.com
+    nickname: Anthropic (non-deal)
+    subcategories:
+      - id: invoices
+        email: invoice+statements@mail.anthropic.com
+        label: Invoices / receipts
+        purpose: Stripe receipt mail — not listings; yield 0
+        typical_email_type: account_notice
+        default_format: anthropic.receipt
+
+  - domain: anthropic.com
+    nickname: Anthropic (non-deal)
+    subcategories:
+      - id: any
+        email: "*@anthropic.com"
+        label: Anthropic
+        purpose: Transactional Anthropic mail — yield 0
+        typical_email_type: account_notice
+        default_format: anthropic.receipt
+
+  - domain: strategicagencies.com
+    nickname: AgencyEquity (non-deal)
+    subcategories:
+      - id: agencyequity
+        email: agencyequity@strategicagencies.com
+        label: AgencyEquity marketing
+        purpose: Insurance-agency tax / wealth promo — not deal listings; yield 0
+        typical_email_type: newsletter_marketing
+        default_format: agencyequity.marketing
 
   - domain: bizquest.com
     nickname: BizQuest
@@ -739,6 +769,61 @@ formats:
     detect:
       sender_domains: ["doeren.com"]
     split: drop
+
+  - id: anthropic.receipt
+    format_family: newsletter
+    source: mail.anthropic.com
+    sub_source: invoice+statements@mail.anthropic.com
+    provider_subcategory: invoices
+    nickname: Anthropic (non-deal)
+    email_type: account_notice
+    confidence: verified
+    status: control
+    survey_count_5d: 0
+    description: >
+      Stripe / Claude receipt and invoice mail. Train AI flagged live cards as
+      Not a real deal (Aug 2026). Must yield 0.
+    detect:
+      sender_addresses: ["invoice+statements@mail.anthropic.com"]
+      sender_domains: ["mail.anthropic.com", "anthropic.com"]
+      subject_patterns:
+        - '(?i)receipt from anthropic'
+        - '(?i)invoice'
+        - '(?i)^your receipt'
+    expected_fields:
+      present: []
+    split: drop
+    gotchas:
+      - "Train AI deals 1763/1764 — one receipt email split into two junk cards"
+
+  - id: agencyequity.marketing
+    format_family: newsletter
+    source: strategicagencies.com
+    sub_source: agencyequity@strategicagencies.com
+    provider_subcategory: agencyequity
+    nickname: AgencyEquity (non-deal)
+    email_type: newsletter_marketing
+    confidence: verified
+    status: control
+    survey_count_5d: 0
+    description: >
+      AgencyEquity tax / wealth marketing. Train AI flagged as Not a real deal
+      (marketing email, Aug 2026). Must yield 0.
+    detect:
+      sender_addresses: ["agencyequity@strategicagencies.com"]
+      sender_domains: ["strategicagencies.com"]
+      subject_patterns:
+        - '(?i)tax planning'
+        - '(?i)wealth'
+        - '(?i)insurance agency'
+      body_open_patterns:
+        - '(?i)tax planning strategies'
+        - '(?i)minimize your tax burden'
+    expected_fields:
+      present: []
+    split: drop
+    gotchas:
+      - "Train AI deal 2434 — promo prose ingested as a listing"
 
 shared_markers:
   broker_teaser:

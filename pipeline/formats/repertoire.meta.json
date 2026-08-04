@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "updated": "2026-08-02",
+  "version": 4,
+  "updated": "2026-08-04",
   "repertoire_path": "pipeline/formats/repertoire.yaml",
   "playbook_path": "docs/deal-format-repertoire.md",
   "formats": [
@@ -110,8 +110,11 @@
         "absent": []
       },
       "gotchas": [
-        "Money on separate lines: label, amount, M/K unit \u2014 needs Axial-aware money parse",
-        "Geography: 'Western Midwest (IA, KS, \u2026)' \u2014 multi-state, not City/ST"
+        "Financials are a table flattened to one cell per line: year header row, then label + ($amount, unit) per column \u2014 normalize_axial_ltm_money collapses each row before extract",
+        "Multi-year tables are ascending left to right (2023 2024 2025); take the LAST column. Vocational Education read $6.5M/$2.1M (2023) instead of $5.0M/$2.0M (2025)",
+        "Geography: 'Western Midwest (IA, KS, \u2026)' / 'Middle Atlantic (CT, DE, \u2026)' \u2014 a census region, not City/ST. extract_location still files the first two states as city/state, which is wrong but load-bearing for dedupe",
+        "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M \u2014 normalize_axial_ltm_money + listing correction applied 2026-08-04",
+        "Body order is fixed \u2014 headline, greeting, table, seller prose, boilerplate \u2014 so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold."
       ],
       "parser_notes": []
     },
@@ -388,6 +391,42 @@
       "expected_fields": {},
       "gotchas": [],
       "parser_notes": []
+    },
+    {
+      "id": "anthropic.receipt",
+      "format_family": "newsletter",
+      "source": "mail.anthropic.com",
+      "sub_source": "invoice+statements@mail.anthropic.com",
+      "provider_subcategory": "invoices",
+      "nickname": "Anthropic (non-deal)",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [
+        "Train AI deals 1763/1764 \u2014 one receipt email split into two junk cards"
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "agencyequity.marketing",
+      "format_family": "newsletter",
+      "source": "strategicagencies.com",
+      "sub_source": "agencyequity@strategicagencies.com",
+      "provider_subcategory": "agencyequity",
+      "nickname": "AgencyEquity (non-deal)",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [
+        "Train AI deal 2434 \u2014 promo prose ingested as a listing"
+      ],
+      "parser_notes": []
     }
   ],
   "subcategories": [
@@ -527,6 +566,33 @@
       "purpose": "Non-deal marketing \u2014 yield 0"
     },
     {
+      "id": "invoices",
+      "email": "invoice+statements@mail.anthropic.com",
+      "provider_domain": "mail.anthropic.com",
+      "provider_nickname": "Anthropic (non-deal)",
+      "default_format": "anthropic.receipt",
+      "label": "Invoices / receipts",
+      "purpose": "Stripe receipt mail \u2014 not listings; yield 0"
+    },
+    {
+      "id": "any",
+      "email": "*@anthropic.com",
+      "provider_domain": "anthropic.com",
+      "provider_nickname": "Anthropic (non-deal)",
+      "default_format": "anthropic.receipt",
+      "label": "Anthropic",
+      "purpose": "Transactional Anthropic mail \u2014 yield 0"
+    },
+    {
+      "id": "agencyequity",
+      "email": "agencyequity@strategicagencies.com",
+      "provider_domain": "strategicagencies.com",
+      "provider_nickname": "AgencyEquity (non-deal)",
+      "default_format": "agencyequity.marketing",
+      "label": "AgencyEquity marketing",
+      "purpose": "Insurance-agency tax / wealth promo \u2014 not deal listings; yield 0"
+    },
+    {
       "id": "any",
       "email": "*@bizquest.com",
       "provider_domain": "bizquest.com",
@@ -553,7 +619,9 @@
     "alerts@axial.net": "axial.deal_alert_digest",
     "helen@mail.smbdealhunter.xyz": "smb_deal_hunter.editorial",
     "inquiries@gatewayma.com": "gateway.single_listing",
-    "inquiries@businessexits.com": "businessexits.single_listing"
+    "inquiries@businessexits.com": "businessexits.single_listing",
+    "invoice+statements@mail.anthropic.com": "anthropic.receipt",
+    "agencyequity@strategicagencies.com": "agencyequity.marketing"
   },
   "by_domain": {
     "bizbuysell.com": [
@@ -599,6 +667,12 @@
     ],
     "doeren.com": [
       "doeren.marketing"
+    ],
+    "mail.anthropic.com": [
+      "anthropic.receipt"
+    ],
+    "strategicagencies.com": [
+      "agencyequity.marketing"
     ]
   }
 }
