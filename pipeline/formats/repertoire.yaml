@@ -379,7 +379,7 @@ formats:
       - "Financials are a table flattened to one cell per line: year header row, then label + ($amount, unit) per column — normalize_axial_ltm_money collapses each row before extract"
       - "Multi-year tables are ascending left to right (2023 2024 2025); take the LAST column. Vocational Education read $6.5M/$2.1M (2023) instead of $5.0M/$2.0M (2025)"
       - "Geography: 'Western Midwest (IA, KS, …)' / 'Middle Atlantic (CT, DE, …)' — a census region, not City/ST. extract_location still files the first two states as city/state, which is wrong but load-bearing for dedupe"
-      - "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M"
+      - "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M — normalize_axial_ltm_money + listing correction applied 2026-08-04"
       - "Body order is fixed — headline, greeting, table, seller prose, boilerplate — so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold."
     subject_examples:
       - "Regional Restoration And Environmental Services Contractor"

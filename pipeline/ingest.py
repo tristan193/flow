@@ -1140,6 +1140,17 @@ def _closest_money_for_label(text: str, label_pat: str, markers: List[str],
         gap = m.group(1)
         if _crosses_other_field(gap, markers):
             continue
+        # "$50M in revenue, $15M in EBITDA": forward from "revenue" finds $15M
+        # with a 2-char gap, beating the correct backward "$50M in revenue".
+        # Reject only when THIS dollar amount is owned by a competing label
+        # ("$15M in EBITDA") — not when the next line is simply another field
+        # ("Revenue: $6.4M\nEBITDA: $1.05M").
+        tail = text[m.end() : m.end() + 40]
+        if re.match(
+            rf"(?i)^\s*(?:in|of)\s+(?:{'|'.join(markers)})\b",
+            tail,
+        ):
+            continue
         val = parse_money(m.group(2), m.group(3))
         if best is None or len(gap) < best[0]:
             best = (len(gap), val)
@@ -1317,12 +1328,47 @@ def _is_financial_summary_line(s: str) -> bool:
     listing)", because it was the only headline that happened to use two
     financial words instead of one. A genuine summary line carries multiple
     dollar figures; a headline naming its highlight carries one. Require
-    both signals, not just keyword count."""
+    both signals, not just keyword count. Only short lines — a full blurb
+    that happens to name revenue and EBITDA (Rejigg oilfield) is prose."""
+    if len(s) > 120:
+        return False
     hits = sum(bool(re.search(p, s, re.I)) for p in
                [r"\basking\b", r"\brevenue\b", r"\bsde\b", r"\bebitda\b", r"cash\s*flow"])
     return hits >= 2 and s.count("$") >= 2
 
+_DIGEST_SUBJECT = re.compile(
+    r"(?i)\band\s+\d+\s+other(?:\s+new)?\s+leads?\b"
+    r"|\band\s+\d+\s+others?\b"
+    r"|\b\d+\s+new\s+leads?\b"
+)
+
+
+def _title_from_prose(s: str) -> str:
+    """Short headline from broker prose when the subject is a digest teaser.
+
+    Train AI (Rejigg): subject was "Tire Servicing Business and 7 other new
+    leads" while the block described an oilfield services operation — the
+    digest subject must not win over the listing prose.
+    """
+    m = re.match(
+        r"(?i)^(?:an?\s+|the\s+)?(.+?)(?=\s+with\s+|\s+that\s+|\s+which\s+|,|\.|$)",
+        s.strip(),
+    )
+    phrase = (m.group(1) if m else s).strip(" -|")
+    phrase = re.sub(r"\s+", " ", phrase)
+    if len(phrase) < 8:
+        return s[:110]
+    # Title-case lightly without yelling acronyms already uppercase.
+    return phrase[:110]
+
+
 def extract_title(block: str, subject: str = "") -> str:
+    subject_is_bbs_category = bool(
+        re.match(r"(?i)^(?:fwd:\s*)?business for sale:", subject or "")
+    )
+    subject_is_digest = bool(_DIGEST_SUBJECT.search(subject or ""))
+    usable_subject = bool(subject) and not subject_is_bbs_category and not subject_is_digest
+
     for line in block.strip().split("\n"):
         s = line.strip()
         if not s or re.fullmatch(r"[\$\d,.\sKMB]+", s):
@@ -1355,21 +1401,18 @@ def extract_title(block: str, subject: str = "") -> str:
             # Prefer the email subject when we have one (Gateway / Vanla / etc.).
             # Exception: BizBuySell newbizopps subjects are category+geo
             # ("Business For Sale: …"), not the headline — keep the block title.
-            subject_is_bbs_category = bool(
-                re.match(r"(?i)^(?:fwd:\s*)?business for sale:", subject or "")
-            )
-            if (
-                subject
-                and not subject_is_bbs_category
-                and (len(s) > 80 or ". " in s)
-            ):
+            # Exception: digest subjects ("X and 7 other new leads") name a
+            # different listing than this block — derive from prose instead.
+            if usable_subject and (len(s) > 80 or ". " in s):
                 cleaned = re.sub(r"^(?:fwd|fw|re)\s*:\s*", "", subject, flags=re.I).strip()
                 cleaned = re.sub(r"\s+", " ", cleaned)
                 if len(cleaned) > 6:
                     return cleaned[:110]
+            if subject_is_digest and (len(s) > 80 or ". " in s):
+                return _title_from_prose(s)
             return s[:110]
     # Single-listing broker mail often has the real name only in Subject.
-    if subject:
+    if usable_subject:
         cleaned = re.sub(r"^(?:fwd|fw|re)\s*:\s*", "", subject, flags=re.I).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
         if len(cleaned) > 6:

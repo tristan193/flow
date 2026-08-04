@@ -216,6 +216,36 @@ export async function clearTrainFlag(dealId: number, member: MemberId): Promise<
   await query("DELETE FROM train_flags WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
+/** Manual correction from Train AI review — updates listing fields without a full re-import. */
+export async function updateDealListing(
+  dealId: number,
+  fields: {
+    title?: string;
+    blurb?: string | null;
+    revenue?: number | null;
+    ebitda?: number | null;
+    sde?: number | null;
+    asking?: number | null;
+  },
+): Promise<Deal | null> {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  for (const key of ["title", "blurb", "revenue", "ebitda", "sde", "asking"] as const) {
+    if (fields[key] !== undefined) {
+      sets.push(`${key} = $${i++}`);
+      vals.push(fields[key]);
+    }
+  }
+  if (!sets.length) {
+    return getDeal(dealId);
+  }
+  sets.push("updated_at = now()");
+  vals.push(dealId);
+  await query(`UPDATE deals SET ${sets.join(", ")} WHERE id = $${i}`, vals);
+  return getDeal(dealId);
+}
+
 /** Open Train-AI queue with deal attribution — for repertoire follow-up. */
 export async function listTrainFlags(): Promise<
   Array<
@@ -225,11 +255,17 @@ export async function listTrainFlags(): Promise<
       source: string | null;
       sub_source: string | null;
       nickname: string | null;
+      revenue: number | null;
+      ebitda: number | null;
+      sde: number | null;
+      asking: number | null;
+      blurb: string | null;
     }
   >
 > {
   const rows = await query<Record<string, unknown>>(
-    `SELECT f.*, d.ext_id, d.title, d.source, d.sub_source, d.nickname
+    `SELECT f.*, d.ext_id, d.title, d.source, d.sub_source, d.nickname,
+            d.revenue, d.ebitda, d.sde, d.asking, d.blurb
        FROM train_flags f
        JOIN deals d ON d.id = f.deal_id
       ORDER BY f.updated_at DESC`,
@@ -241,6 +277,11 @@ export async function listTrainFlags(): Promise<
     source: (row.source as string | null) ?? null,
     sub_source: (row.sub_source as string | null) ?? null,
     nickname: (row.nickname as string | null) ?? null,
+    revenue: row.revenue == null ? null : Number(row.revenue),
+    ebitda: row.ebitda == null ? null : Number(row.ebitda),
+    sde: row.sde == null ? null : Number(row.sde),
+    asking: row.asking == null ? null : Number(row.asking),
+    blurb: (row.blurb as string | null) ?? null,
   }));
 }
 
