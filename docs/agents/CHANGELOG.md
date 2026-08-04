@@ -29,6 +29,20 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-04 — `nm/web/review` — DONE
 
+**Scope:** Hover affordances on triage buttons + optional notes on short/discuss  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/review-client.tsx` / `deal-actions.tsx` — hover states on ✓ / ? / Pass (and filters)
+- `web/components/verdict-note.tsx` — note field after shortlist or discuss; swipe shows post-action prompt
+- `web/app/api/verdict/route.ts` + `web/lib/deals.ts` — persist `verdicts.note` (already in schema)
+
+### Follow-ups
+- none
+
+## 2026-08-04 — `nm/web/review` — DONE
+
 **Scope:** Green check shortlist button + partner-aware Shortlisted / pass visibility  
 **Risk:** low  
 **Coords:** none

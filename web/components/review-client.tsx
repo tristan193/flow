@@ -23,9 +23,11 @@ import {
 } from "./deal-card";
 import { BlurbText } from "./blurb-text";
 import { TrainAiButton } from "./train-ai-button";
+import { VerdictNoteField } from "./verdict-note";
 
-type Override = { action: VerdictAction | null; reason: string | null };
+type Override = { action: VerdictAction | null; reason: string | null; note: string | null };
 type Scored = Deal & { fit: Fit };
+type NotePrompt = { id: number; title: string; action: "short" | "discuss" };
 
 const FILTERS = [
   { id: "todo", label: "To review" },
@@ -53,6 +55,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   // Session-only skips: advance the deck without a verdict (comes back on refresh).
   const [skipped, setSkipped] = useState<number[]>([]);
   const [failed, setFailed] = useState(false);
+  const [notePrompt, setNotePrompt] = useState<NotePrompt | null>(null);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -77,18 +80,25 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
       const override = overrides[deal.id];
       if (override !== undefined) return override.action === null ? null : override;
       const stored = deal.verdicts[member];
-      return stored ? { action: stored.action, reason: stored.reason } : null;
+      return stored
+        ? { action: stored.action, reason: stored.reason, note: stored.note }
+        : null;
     },
     [overrides, member],
   );
 
   const send = useCallback(
-    async (dealId: number, action: VerdictAction | null, reason: string | null) => {
+    async (
+      dealId: number,
+      action: VerdictAction | null,
+      reason: string | null,
+      note: string | null,
+    ) => {
       try {
         const response = await fetch("/api/verdict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dealId, action, reason }),
+          body: JSON.stringify({ dealId, action, reason, note }),
         });
         if (!response.ok) throw new Error("rejected");
         setFailed(false);
@@ -101,9 +111,14 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   );
 
   const apply = useCallback(
-    (deal: Deal, action: VerdictAction | null, reason: string | null = null) => {
-      setOverrides((prev) => ({ ...prev, [deal.id]: { action, reason } }));
-      void send(deal.id, action, reason);
+    (
+      deal: Deal,
+      action: VerdictAction | null,
+      reason: string | null = null,
+      note: string | null = null,
+    ) => {
+      setOverrides((prev) => ({ ...prev, [deal.id]: { action, reason, note } }));
+      void send(deal.id, action, reason, note);
     },
     [send],
   );
@@ -112,7 +127,14 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
     (deal: Deal, action: VerdictAction) => {
       const current = verdictOf(deal);
       if (current?.action === action) apply(deal, null);
-      else apply(deal, action, action === "pass" ? (current?.reason ?? null) : null);
+      else {
+        apply(
+          deal,
+          action,
+          action === "pass" ? (current?.reason ?? null) : null,
+          action === "pass" ? null : (current?.note ?? null),
+        );
+      }
     },
     [apply, verdictOf],
   );
@@ -122,6 +144,11 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
       setHistory((prev) => [...prev, { id: deal.id, kind: "verdict" }]);
       setSkipped((prev) => prev.filter((id) => id !== deal.id));
       apply(deal, action);
+      if (action === "short" || action === "discuss") {
+        setNotePrompt({ id: deal.id, title: deal.title, action });
+      } else {
+        setNotePrompt(null);
+      }
     },
     [apply],
   );
@@ -129,6 +156,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   const skipDeal = useCallback((deal: Deal) => {
     setHistory((prev) => [...prev, { id: deal.id, kind: "skip" }]);
     setSkipped((prev) => (prev.includes(deal.id) ? prev : [...prev, deal.id]));
+    setNotePrompt(null);
   }, []);
 
   const undo = useCallback(() => {
@@ -139,9 +167,20 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
       setSkipped((prev) => prev.filter((id) => id !== last.id));
       return;
     }
-    setOverrides((prev) => ({ ...prev, [last.id]: { action: null, reason: null } }));
-    void send(last.id, null, null);
+    setOverrides((prev) => ({ ...prev, [last.id]: { action: null, reason: null, note: null } }));
+    void send(last.id, null, null, null);
+    setNotePrompt((prev) => (prev?.id === last.id ? null : prev));
   }, [history, send]);
+
+  const savePromptNote = useCallback(
+    (note: string | null) => {
+      if (!notePrompt) return;
+      const deal = scored.find((row) => row.id === notePrompt.id);
+      if (deal) apply(deal, notePrompt.action, null, note);
+      setNotePrompt(null);
+    },
+    [notePrompt, scored, apply],
+  );
 
   const queue = useMemo(
     () =>
@@ -213,7 +252,9 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
             key={value}
             onClick={() => setMode(value)}
             className={`flex-1 rounded-lg px-3 py-2 text-[13.5px] font-semibold capitalize transition-colors ${
-              mode === value ? "bg-surface-raised text-ink" : "text-ink-faint"
+              mode === value
+                ? "bg-surface-raised text-ink"
+                : "text-ink-faint hover:bg-surface-raised/60 hover:text-ink-dim"
             }`}
           >
             {value === "swipe" ? "Swipe" : "List"}
@@ -231,16 +272,40 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
       )}
 
       {mode === "swipe" ? (
-        <SwipeDeck
-          queue={queue}
-          total={deals.length}
-          member={member}
-          onCommit={commitSwipe}
-          onSkip={skipDeal}
-          onUndo={undo}
-          canUndo={history.length > 0}
-          onBrowse={() => setMode("list")}
-        />
+        <>
+          <SwipeDeck
+            queue={queue}
+            total={deals.length}
+            member={member}
+            onCommit={commitSwipe}
+            onSkip={skipDeal}
+            onUndo={undo}
+            canUndo={history.length > 0}
+            onBrowse={() => setMode("list")}
+          />
+          {notePrompt && (
+            <div className="border-line bg-surface space-y-2 rounded-xl border px-3.5 py-3">
+              <p className="text-ink-dim text-[13px]">
+                {notePrompt.action === "short" ? "Shortlisted" : "Marked to discuss"}:{" "}
+                <span className="text-ink font-semibold">{notePrompt.title}</span>
+              </p>
+              <VerdictNoteField
+                action={notePrompt.action}
+                note={overrides[notePrompt.id]?.note ?? null}
+                autofocus
+                compact
+                onSave={savePromptNote}
+              />
+              <button
+                type="button"
+                onClick={() => setNotePrompt(null)}
+                className="text-ink-faint hover:text-ink-dim text-[12px] underline"
+              >
+                Skip note
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
@@ -251,7 +316,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                 className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
                   filter === option.id
                     ? "border-ink bg-ink text-canvas"
-                    : "border-line bg-surface text-ink-dim"
+                    : "border-line bg-surface text-ink-dim hover:border-line-bright hover:text-ink"
                 }`}
               >
                 {option.label}
@@ -311,7 +376,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                               className={`rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors ${
                                 verdict.reason === reason
                                   ? "border-pass bg-pass text-white"
-                                  : "border-line bg-surface text-ink-dim"
+                                  : "border-line bg-surface text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass"
                               }`}
                             >
                               {reason}
@@ -319,6 +384,14 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                           ))}
                         </div>
                       </div>
+                    )}
+
+                    {(verdict?.action === "short" || verdict?.action === "discuss") && (
+                      <VerdictNoteField
+                        action={verdict.action}
+                        note={verdict.note}
+                        onSave={(next) => apply(deal, verdict.action!, null, next)}
+                      />
                     )}
 
                     <TrainAiButton deal={deal} member={member} />
@@ -398,15 +471,16 @@ function ActionButton({
   title?: string;
 }) {
   const activeTone = {
-    short: "border-short bg-short text-canvas",
-    discuss: "border-discuss bg-discuss text-canvas",
-    pass: "border-pass bg-pass text-canvas",
+    short: "border-short bg-short text-canvas hover:brightness-110",
+    discuss: "border-discuss bg-discuss text-canvas hover:brightness-110",
+    pass: "border-pass bg-pass text-canvas hover:brightness-110",
   }[tone];
 
   const idleTone = {
-    short: "border-line bg-surface-raised text-short",
-    discuss: "border-line bg-surface-raised text-ink-dim",
-    pass: "border-line bg-surface-raised text-ink-dim",
+    short: "border-line bg-surface-raised text-short hover:border-short hover:bg-short-bg",
+    discuss:
+      "border-line bg-surface-raised text-ink-dim hover:border-discuss hover:bg-discuss-bg hover:text-discuss",
+    pass: "border-line bg-surface-raised text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass",
   }[tone];
 
   return (
@@ -673,7 +747,7 @@ function SwipeDeck({
         <button
           type="button"
           onClick={() => skipAway(top)}
-          className="text-ink-faint text-[12px] underline"
+          className="text-ink-faint hover:text-ink-dim text-[12px] underline transition-colors"
           title="Skip for now — no verdict, comes back later"
         >
           Skip deal
@@ -681,7 +755,7 @@ function SwipeDeck({
         <button
           onClick={onUndo}
           disabled={!canUndo}
-          className="text-ink-faint text-[12px] underline disabled:opacity-40"
+          className="text-ink-faint hover:text-ink-dim text-[12px] underline transition-colors disabled:opacity-40"
         >
           Undo last
         </button>
@@ -708,19 +782,23 @@ function DeckButton({
   small?: boolean;
   active?: boolean;
 }) {
-  const idle = { short: "text-short", discuss: "text-discuss", pass: "text-pass" }[tone];
+  const idle = {
+    short: "border-line bg-surface text-short hover:border-short hover:bg-short-bg",
+    discuss: "border-line bg-surface text-discuss hover:border-discuss hover:bg-discuss-bg",
+    pass: "border-line bg-surface text-pass hover:border-pass hover:bg-pass-bg",
+  }[tone];
   const lit = {
-    short: "bg-short text-canvas border-short",
-    discuss: "bg-discuss text-canvas border-discuss",
-    pass: "bg-pass text-canvas border-pass",
+    short: "bg-short text-canvas border-short hover:brightness-110",
+    discuss: "bg-discuss text-canvas border-discuss hover:brightness-110",
+    pass: "bg-pass text-canvas border-pass hover:brightness-110",
   }[tone];
   const size = small ? "h-12 w-12 text-lg" : "h-14 w-14 text-2xl";
   return (
     <button
       onClick={onClick}
       title={title}
-      className={`flex items-center justify-center rounded-full border shadow-lg shadow-black/20 transition-colors active:scale-95 ${size} ${
-        active ? lit : `border-line bg-surface ${idle}`
+      className={`flex items-center justify-center rounded-full border shadow-lg shadow-black/20 transition-all active:scale-95 ${size} ${
+        active ? lit : idle
       }`}
     >
       {children}

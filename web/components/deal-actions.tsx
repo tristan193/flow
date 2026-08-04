@@ -12,6 +12,7 @@ import {
   type VerdictAction,
 } from "@/lib/model";
 import { TrainAiButton } from "./train-ai-button";
+import { VerdictNoteField } from "./verdict-note";
 
 export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) {
   const router = useRouter();
@@ -19,14 +20,25 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function setAction(action: VerdictAction | null, reason: string | null = null) {
+  async function setAction(
+    action: VerdictAction | null,
+    reason: string | null = null,
+    note: string | null | undefined = undefined,
+  ) {
     setBusy(true);
     setError(null);
     try {
-      const next =
-        action !== null && mine?.action === action
-          ? { action: null, reason: null }
-          : { action, reason: action === "pass" ? reason : null };
+      const clearing = action !== null && mine?.action === action && note === undefined;
+      const next = clearing
+        ? { action: null, reason: null, note: null }
+        : {
+            action,
+            reason: action === "pass" ? reason : null,
+            note:
+              action === "short" || action === "discuss"
+                ? (note !== undefined ? note : (mine?.note ?? null))
+                : null,
+          };
 
       const response = await fetch("/api/verdict", {
         method: "POST",
@@ -92,6 +104,15 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
         </ActionButton>
       </div>
 
+      {(mine?.action === "short" || mine?.action === "discuss") && (
+        <VerdictNoteField
+          action={mine.action}
+          note={mine.note}
+          disabled={busy}
+          onSave={(next) => setAction(mine.action, null, next)}
+        />
+      )}
+
       {mine?.action === "pass" && (
         <div className="border-line border-t border-dashed pt-3">
           <p className="text-ink-faint mb-2 text-xs font-semibold">Why pass?</p>
@@ -104,7 +125,7 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
                 className={`rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors ${
                   mine.reason === reason
                     ? "border-pass bg-pass text-white"
-                    : "border-line bg-surface text-ink-dim"
+                    : "border-line bg-surface text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass"
                 }`}
               >
                 {reason}
@@ -154,15 +175,15 @@ function ActionButton({
   title?: string;
 }) {
   const activeTone = {
-    short: "border-short bg-short text-white",
-    discuss: "border-discuss bg-discuss text-white",
-    pass: "border-pass bg-pass text-white",
+    short: "border-short bg-short text-white hover:brightness-110",
+    discuss: "border-discuss bg-discuss text-white hover:brightness-110",
+    pass: "border-pass bg-pass text-white hover:brightness-110",
   }[tone];
 
   const idleTone = {
-    short: "border-line bg-surface text-short",
-    discuss: "border-line bg-surface text-ink",
-    pass: "border-line bg-surface text-ink",
+    short: "border-line bg-surface text-short hover:border-short hover:bg-short-bg",
+    discuss: "border-line bg-surface text-ink hover:border-discuss hover:bg-discuss-bg hover:text-discuss",
+    pass: "border-line bg-surface text-ink hover:border-pass hover:bg-pass-bg hover:text-pass",
   }[tone];
 
   return (

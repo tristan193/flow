@@ -159,15 +159,17 @@ export async function setVerdict(
   member: MemberId,
   action: VerdictAction,
   reason: string | null,
+  note: string | null = null,
 ): Promise<void> {
   await query(
-    `INSERT INTO verdicts (deal_id, member, action, reason)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO verdicts (deal_id, member, action, reason, note)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (deal_id, member) DO UPDATE
        SET action = excluded.action,
            reason = excluded.reason,
+           note = excluded.note,
            updated_at = now()`,
-    [dealId, member, action, reason],
+    [dealId, member, action, reason, note],
   );
 
   if (action === "short") {

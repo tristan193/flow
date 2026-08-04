@@ -181,6 +181,7 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
         <span className="bg-surface-raised text-ink-dim rounded px-2 py-1 font-semibold">
           You: {mine.action}
           {mine.reason ? ` · ${mine.reason}` : ""}
+          {mine.note ? ` · “${mine.note.length > 40 ? `${mine.note.slice(0, 40)}…` : mine.note}”` : ""}
         </span>
       )}
       {theirs && (
@@ -190,6 +191,9 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
           }`}
         >
           {memberLabel(otherMember(member))}: {theirs.action}
+          {theirs.note
+            ? ` · “${theirs.note.length > 40 ? `${theirs.note.slice(0, 40)}…` : theirs.note}”`
+            : ""}
         </span>
       )}
       {myTrain && (
