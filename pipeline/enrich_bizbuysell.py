@@ -3,8 +3,9 @@ Enrich BizBuySell deals by opening the listing URL from the email.
 
 Email alerts carry asking + location only. Cash Flow (SDE) / EBITDA / Gross
 Revenue live on the listing page when the broker disclosed them. Discovery
-stays email-only; this is a second pass that fills money fields from the
-exact Profile URL we already stored (deals.url_norm — tracking params stripped).
+stays email-only; this is a second pass that fills money fields (and thin /
+missing blurbs) from the listing URL we already stored (deals.url_norm —
+tracking params stripped).
 
 Primary fetch path: Apify `abotapi/bizbuysell-scraper` with
 `/business-opportunity/{slug}/{id}/` URLs (Profile/?q= returns empty; generic
@@ -125,9 +126,56 @@ class Enrichment:
     revenue: Optional[float] = None
     city: Optional[str] = None
     state: Optional[str] = None
+    blurb: Optional[str] = None
     final_url: str = ""
     ok: bool = False
     error: str = ""
+
+
+def _norm_prose(text: str) -> str:
+    s = re.sub(r"[^a-z0-9\s]+", " ", (text or "").lower())
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def blurb_is_thin(title: str, blurb: str) -> bool:
+    """True when the email didn't give a real description.
+
+    BizBuySell alerts often omit the listing body, or echo the headline
+    (sometimes with a few extra words). Those should be replaced from the
+    listing page when Apify returns fullDescription / shortDescription.
+    """
+    b = (blurb or "").strip()
+    if len(b) < 24:
+        return True
+    nt, nb = _norm_prose(title), _norm_prose(b)
+    if not nb:
+        return True
+    if not nt:
+        return False
+    if nb == nt:
+        return True
+    # Headline plus a short teaser ("… Five Studios Across Two Markets").
+    if nb.startswith(nt) and len(nb) <= len(nt) + 60:
+        return True
+    if nt in nb and len(nb) <= len(nt) + 60:
+        return True
+    tt, tb = set(nt.split()), set(nb.split())
+    if tb and len(tt & tb) / len(tb) >= 0.8 and len(nb) < 160:
+        return True
+    return False
+
+
+def clean_listing_blurb(raw: Any, title: str = "") -> Optional[str]:
+    """Normalize Apify description text; drop empties and headline echoes."""
+    if raw is None:
+        return None
+    text = re.sub(r"\s+", " ", str(raw)).strip()
+    if not text:
+        return None
+    # Actor occasionally returns the HTML-stripped title again.
+    if blurb_is_thin(title, text):
+        return None
+    return text[:2000]
 
 
 def listing_id_from_url(url: str) -> str:
@@ -266,7 +314,9 @@ def parse_listing_text(text: str, final_url: str = "") -> Enrichment:
     return out
 
 
-def enrichment_from_apify_item(item: dict, fallback_url: str = "") -> Enrichment:
+def enrichment_from_apify_item(
+    item: dict, fallback_url: str = "", title: str = ""
+) -> Enrichment:
     """Map abotapi/bizbuysell-scraper (and similar) JSON → Enrichment."""
     url = (
         item.get("url")
@@ -275,8 +325,13 @@ def enrichment_from_apify_item(item: dict, fallback_url: str = "") -> Enrichment
         or fallback_url
         or ""
     )
-    lid = str(item.get("id") or "").strip() or listing_id_from_url(url) or listing_id_from_url(fallback_url)
+    lid = (
+        str(item.get("id") or "").strip()
+        or listing_id_from_url(url)
+        or listing_id_from_url(fallback_url)
+    )
     raw = item.get("detailsRaw") if isinstance(item.get("detailsRaw"), dict) else {}
+    title = title or str(item.get("title") or "")
 
     def pick(*keys: str) -> Any:
         for k in keys:
@@ -286,6 +341,21 @@ def enrichment_from_apify_item(item: dict, fallback_url: str = "") -> Enrichment
                 return raw.get(k)
         return None
 
+    # Prefer the full listing body; shortDescription is often search-card teaser.
+    blurb = None
+    for key in (
+        "fullDescription",
+        "full_description",
+        "description",
+        "detailedDescription",
+        "shortDescription",
+        "short_description",
+        "summary",
+    ):
+        blurb = clean_listing_blurb(pick(key), title)
+        if blurb:
+            break
+
     e = Enrichment(
         listing_id=lid,
         asking=parse_money(pick("askingPrice", "asking_price", "asking")),
@@ -294,6 +364,7 @@ def enrichment_from_apify_item(item: dict, fallback_url: str = "") -> Enrichment
         revenue=parse_money(pick("grossRevenue", "gross_revenue", "revenue")),
         city=(item.get("city") or None),
         state=(item.get("state") or None),
+        blurb=blurb,
         final_url=url or fallback_url,
         ok=True,
     )
@@ -334,23 +405,34 @@ def candidates(
     *,
     skip_buybox: bool = True,
 ) -> tuple[list[sqlite3.Row], list[tuple[sqlite3.Row, str]]]:
-    """BizBuySell rows with a URL and no earnings yet.
+    """BizBuySell rows that still need page enrich.
 
+    Pulls deals missing earnings, or whose blurb is empty / just the headline.
     Returns (to_enrich, skipped_buybox) where skipped entries are (row, reason).
     """
     order = "last_seen DESC, id DESC" if newest else "id"
+    # SQL prefilter keeps the scan cheap; title-echo blurbs are confirmed in Python.
     sql = f"""
       SELECT id, ext_id, title, blurb, url_norm, city, state,
              revenue, ebitda, sde, asking, needs_llm, source, nickname
       FROM deals
       WHERE url_norm LIKE '%bizbuysell.com%'
-        AND ebitda IS NULL AND sde IS NULL
+        AND (
+          (ebitda IS NULL AND sde IS NULL)
+          OR blurb IS NULL
+          OR TRIM(blurb) = ''
+          OR length(TRIM(blurb)) <= length(TRIM(COALESCE(title, ''))) + 60
+        )
       ORDER BY {order}
     """
     rows = list(con.execute(sql))
     keep: list[sqlite3.Row] = []
     skipped: list[tuple[sqlite3.Row, str]] = []
     for row in rows:
+        needs_earnings = row["ebitda"] is None and row["sde"] is None
+        needs_blurb = blurb_is_thin(row["title"] or "", row["blurb"] or "")
+        if not needs_earnings and not needs_blurb:
+            continue
         if skip_buybox:
             reason = headline_buybox_reject(row["title"] or "", row["blurb"] or "")
             if reason:
@@ -381,7 +463,7 @@ def mark_buybox_skip(
 
 
 def apply_enrichment(con: sqlite3.Connection, deal_id: int, e: Enrichment, dry_run: bool) -> dict:
-    """Write page financials onto the deal; clear needs_llm earnings when filled."""
+    """Write page financials / blurb onto the deal; clear needs_llm earnings when filled."""
     row = con.execute("SELECT * FROM deals WHERE id=?", (deal_id,)).fetchone()
     if not row:
         return {"updated": False}
@@ -404,6 +486,11 @@ def apply_enrichment(con: sqlite3.Connection, deal_id: int, e: Enrichment, dry_r
         updates["city"] = e.city
     if e.state and not row["state"]:
         updates["state"] = e.state
+
+    # Replace empty or headline-echo blurbs with the listing description.
+    if e.blurb and blurb_is_thin(row["title"] or "", row["blurb"] or ""):
+        if not blurb_is_thin(row["title"] or "", e.blurb):
+            updates["blurb"] = e.blurb
 
     needs = json.loads(row["needs_llm"] or "[]")
     if (updates.get("sde") is not None or updates.get("ebitda") is not None
@@ -595,7 +682,7 @@ def fetch_with_apify(
             results[url] = e
             print(
                 f"  ok id={lid} sde={e.sde} ebitda={e.ebitda} rev={e.revenue} "
-                f"ask={e.asking} {e.city},{e.state}"
+                f"ask={e.asking} blurb={len(e.blurb or '')} {e.city},{e.state}"
             )
         elif e:
             results[url] = e
@@ -776,7 +863,14 @@ def main() -> None:
         else:
             fetched = fetch_with_playwright(urls, pause_s=args.pause)
 
-    stats = {"ok": 0, "fail": 0, "updated": 0, "with_earnings": 0, "buybox_skip": len(skipped)}
+    stats = {
+        "ok": 0,
+        "fail": 0,
+        "updated": 0,
+        "with_earnings": 0,
+        "with_blurb": 0,
+        "buybox_skip": len(skipped),
+    }
     for row in rows:
         e = fetched.get(row["url_norm"]) or Enrichment(
             listing_id="", error="not fetched"
@@ -791,9 +885,11 @@ def main() -> None:
         result = apply_enrichment(con, row["id"], e, args.dry_run)
         if result.get("updated"):
             stats["updated"] += 1
-            print(
-                f"update id={row['id']} {result.get('updates')} | {row['title'][:50]}"
-            )
+            upd = dict(result.get("updates") or {})
+            if "blurb" in upd:
+                stats["with_blurb"] += 1
+                upd["blurb"] = f"<{len(str(upd['blurb']))} chars>"
+            print(f"update id={row['id']} {upd} | {row['title'][:50]}")
 
     if not args.dry_run:
         con.commit()

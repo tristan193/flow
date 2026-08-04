@@ -67,20 +67,21 @@ URL hygiene: `norm_url` / `url_norm` strips `utm_*`, `gclid`, etc. BBS emails of
 
 | Path | Role |
 |------|------|
-| `pipeline/enrich_bizbuysell.py` | Select candidates → Apify → write money fields |
+| `pipeline/enrich_bizbuysell.py` | Select candidates → Apify → write money fields + thin blurbs |
 | `pipeline/buybox.yaml` + `pipeline/score.py` | Headline exclusion check before Apify spend |
 | `pipeline/run_daily_harvest.sh` | Calls enrich after ingest; **fails if no `APIFY_TOKEN`** |
 | `.github/workflows/daily-harvest.yml` | Passes `secrets.APIFY_TOKEN`, `BBS_ENRICH_LIMIT=120` |
 
 ### Behavior
 
-1. Candidates: `url_norm LIKE '%bizbuysell.com%'` AND `sde`/`ebitda` both NULL.
+1. Candidates: BizBuySell URLs missing earnings **or** with a thin blurb (empty / headline echo).
 2. **Buy-box skip:** if title/blurb hits excluded categories (restaurant, retail, franchise, …) and is not strategic → do **not** call Apify; stamp `rejected` / `reject_reason`.
 3. Else build actor URL:  
    `https://www.bizbuysell.com/business-opportunity/{slugify(title)}/{listingId}/`  
    (Not `Profile/?q=` — that returns empty dataset on the store actor.)
 4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`).
-5. Map: `cashFlow`→`sde`, `ebitda`→`ebitda`, `grossRevenue`→`revenue`, fill nulls; clear `needs_llm` earnings when page checked.
+5. Map: `cashFlow`→`sde`, `ebitda`→`ebitda`, `grossRevenue`→`revenue`, fill nulls;
+   `fullDescription`/`shortDescription`→`blurb` when the stored blurb is thin; clear `needs_llm` earnings when page checked.
 
 ### What failed in spikes (do not regress)
 

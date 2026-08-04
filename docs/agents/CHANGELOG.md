@@ -27,6 +27,18 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/bbs/enrich` — DONE
+
+**Scope:** Backfill missing / headline-echo BizBuySell blurbs from Apify listing description  
+**Risk:** low (Apify spend only for thin-blurb candidates still eligible)  
+**Coords:** none
+
+### Changed
+- `pipeline/enrich_bizbuysell.py` — treat empty or title-duplicate blurbs as missing; map `fullDescription`/`shortDescription`; include blurb-only candidates; write when page prose is real
+
+### Follow-ups
+- Next daily harvest (or a manual `--newest` enrich) will refill thin blurbs already in the DB
+
 ## 2026-08-04 — `nm/web/review` — DONE
 
 **Scope:** Hover affordances on triage buttons + optional notes on short/discuss  
