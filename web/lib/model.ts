@@ -10,7 +10,7 @@
  */
 export const MEMBERS = [
   { id: "tristan", label: process.env.FLOW_MEMBER_TRISTAN_LABEL || "Tristan" },
-  { id: "partner", label: process.env.FLOW_MEMBER_PARTNER_LABEL || "Partner" },
+  { id: "partner", label: process.env.FLOW_MEMBER_PARTNER_LABEL || "Jimmy" },
 ] as const;
 
 export type MemberId = (typeof MEMBERS)[number]["id"];

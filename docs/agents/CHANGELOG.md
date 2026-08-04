@@ -27,6 +27,20 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/web/identity` — DONE
+
+**Scope:** Partner display name → Jimmy  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/lib/model.ts` + `FLOW_MEMBER_PARTNER_LABEL` — UI label **Jimmy** (id stays `partner`)
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-08-04 — `nm/web/review` — DONE
 
 **Scope:** Train AI mobile usability + session skip on swipe cards  

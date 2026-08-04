@@ -67,7 +67,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | Person  | Passcode (local `.env.local`) |
 |---------|-------------------------------|
 | Tristan | `nails`  |
-| Partner | `mercy`  |
+| Jimmy   | `mercy`  |
 
 ## Flow App environment (Vercel)
 
