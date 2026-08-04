@@ -1,5 +1,5 @@
 import meta from "./repertoire.meta.json";
-import type { DealRow, TrainReason } from "./model";
+import type { DealRow, TrainListingReason } from "./model";
 
 export type RepertoireFormatMeta = {
   id: string;
@@ -47,14 +47,19 @@ export type TrainInspection = {
   };
 };
 
-const REASON_FIELDS: Record<TrainReason, string[]> = {
-  "Wrong earnings": ["ebitda", "sde", "revenue", "expected_fields.absent", "gotchas"],
-  "Wrong asking / revenue": ["asking", "revenue", "detect", "gotchas"],
-  "Wrong location": ["location", "city", "state", "county", "detect.body_open", "gotchas"],
-  "Wrong title / blurb": ["title", "blurb", "detect.subject_patterns", "gotchas"],
+const REASON_FIELDS: Record<TrainListingReason, string[]> = {
+  "Wrong EBITDA, Rev, Asking Price": [
+    "ebitda",
+    "sde",
+    "revenue",
+    "asking",
+    "expected_fields.absent",
+    "gotchas",
+  ],
+  "Wrong Location": ["location", "city", "state", "county", "detect.body_open", "gotchas"],
+  "Wrong Blurb": ["title", "blurb", "detect.subject_patterns", "gotchas"],
   "Duplicate listing": ["dedupe", "ext_id", "url"],
   "Not a real deal": ["email_type", "status", "split", "control"],
-  "Garbled / bad parse": ["split", "detect", "parser_notes", "gotchas"],
   Other: ["gotchas", "detect", "expected_fields"],
 };
 
@@ -132,12 +137,12 @@ export function resolveFormatForDeal(
 }
 
 /**
- * Inspect a Train-AI flag against the format repertoire.
+ * Inspect a listing-error Train-AI flag against the format repertoire.
  * Output is stored on train_flags.inspection and consumed by learn.py train-queue.
  */
 export function inspectTrainFlag(
   deal: DealRow,
-  reason: TrainReason,
+  reason: TrainListingReason,
   detail: string | null,
 ): TrainInspection {
   const fmt = resolveFormatForDeal(deal);
@@ -149,20 +154,32 @@ export function inspectTrainFlag(
       `Open pipeline/formats/repertoire.yaml → formats id \`${fmt.id}\` (subcategory ${fmt.provider_subcategory || "—"})`,
     );
     checklist.push(`Confirm detect still matches this mailbox (${fmt.sub_source || fmt.source})`);
-    if (focus.some((f) => f.includes("expected_fields") || ["asking", "ebitda", "sde", "revenue", "location", "title", "blurb"].includes(f))) {
+    if (
+      focus.some(
+        (f) =>
+          f.includes("expected_fields") ||
+          ["asking", "ebitda", "sde", "revenue", "location", "title", "blurb"].includes(f),
+      )
+    ) {
       const present = (fmt.expected_fields.present || []).join(", ") || "—";
       const absent = (fmt.expected_fields.absent || []).join(", ") || "—";
-      checklist.push(`Review expected_fields present=[${present}] absent=[${absent}] vs what the human flagged`);
+      checklist.push(
+        `Review expected_fields present=[${present}] absent=[${absent}] vs what the human flagged`,
+      );
     }
-    if (focus.includes("split") || focus.includes("detect") || reason === "Garbled / bad parse") {
+    if (focus.includes("split") || focus.includes("detect")) {
       checklist.push(`Check split=${fmt.split} / status=${fmt.status} and parser_notes`);
     }
     if (reason === "Not a real deal") {
-      checklist.push("Consider status: control, email_type account_notice/newsletter_marketing, or split: drop");
+      checklist.push(
+        "Consider status: control, email_type account_notice/newsletter_marketing, or split: drop",
+      );
     }
     checklist.push("Append a gotcha (or tighten detect) so this failure mode is documented");
   } else {
-    checklist.push("No repertoire format matched this source/sub_source — add provider subcategory + format stub");
+    checklist.push(
+      "No repertoire format matched this source/sub_source — add provider subcategory + format stub",
+    );
     checklist.push("Survey the mailbox body, then learn.py propose → merge into repertoire.yaml");
   }
   if (detail?.trim()) {
@@ -172,8 +189,10 @@ export function inspectTrainFlag(
   const suggested = `Train AI (${reason}): ${detail?.trim() || deal.title}`.slice(0, 280);
 
   return {
-    repertoire_path: (meta as { repertoire_path?: string }).repertoire_path || "pipeline/formats/repertoire.yaml",
-    playbook_path: (meta as { playbook_path?: string }).playbook_path || "docs/deal-format-repertoire.md",
+    repertoire_path:
+      (meta as { repertoire_path?: string }).repertoire_path || "pipeline/formats/repertoire.yaml",
+    playbook_path:
+      (meta as { playbook_path?: string }).playbook_path || "docs/deal-format-repertoire.md",
     format_id: fmt?.id ?? null,
     provider_subcategory: fmt?.provider_subcategory ?? null,
     format_status: fmt?.status ?? null,

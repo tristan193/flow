@@ -198,7 +198,8 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
       )}
       {myTrain && (
         <span className="bg-flag-bg text-flag rounded px-2 py-1 font-semibold">
-          Train · {myTrain.reason}
+          Train · {myTrain.theme === "criteria" ? "Criteria · " : ""}
+          {myTrain.reason}
         </span>
       )}
     </div>

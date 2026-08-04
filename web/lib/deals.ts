@@ -6,8 +6,10 @@ import {
   type NoteRow,
   type StageEventRow,
   type StageId,
+  type TrainCriteriaIntent,
   type TrainFlagRow,
   type TrainReason,
+  type TrainTheme,
   type VerdictAction,
   type VerdictRow,
 } from "./model";
@@ -68,10 +70,29 @@ function normalizeTrainFlag(row: Record<string, unknown>): TrainFlagRow {
       inspection = null;
     }
   }
+  const reason = String(row.reason);
+  const rawTheme = row.theme == null ? null : String(row.theme);
+  const theme =
+    rawTheme === "criteria" || rawTheme === "listing"
+      ? rawTheme
+      : reason === "Should be excluded" || reason === "Request criteria change"
+        ? "criteria"
+        : "listing";
+  const rawIntent = row.criteria_intent == null ? null : String(row.criteria_intent);
+  const criteria_intent =
+    rawIntent === "exclusion_miss" || rawIntent === "criteria_change"
+      ? rawIntent
+      : reason === "Should be excluded"
+        ? "exclusion_miss"
+        : reason === "Request criteria change"
+          ? "criteria_change"
+          : null;
   return {
     deal_id: Number(row.deal_id),
     member: row.member as TrainFlagRow["member"],
-    reason: String(row.reason),
+    theme,
+    criteria_intent: theme === "criteria" ? criteria_intent : null,
+    reason,
     detail: (row.detail as string | null) ?? null,
     format_id: (row.format_id as string | null) ?? null,
     inspection,
@@ -181,22 +202,28 @@ export async function clearVerdict(dealId: number, member: MemberId): Promise<vo
   await query("DELETE FROM verdicts WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
-/** Flag a listing as wrong for later ingest / repertoire training. Does not touch triage. */
+/** Flag a listing for repertoire (listing) or buy-box queue (criteria). Does not touch triage. */
 export async function setTrainFlag(
   dealId: number,
   member: MemberId,
   reason: TrainReason,
   detail: string | null = null,
   options: {
+    theme?: TrainTheme;
+    criteriaIntent?: TrainCriteriaIntent | null;
     formatId?: string | null;
     inspection?: Record<string, unknown> | null;
   } = {},
 ): Promise<void> {
+  const theme = options.theme ?? "listing";
+  const criteriaIntent = theme === "criteria" ? (options.criteriaIntent ?? null) : null;
   await query(
-    `INSERT INTO train_flags (deal_id, member, reason, detail, format_id, inspection)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+    `INSERT INTO train_flags (deal_id, member, theme, criteria_intent, reason, detail, format_id, inspection)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
      ON CONFLICT (deal_id, member) DO UPDATE
-       SET reason = excluded.reason,
+       SET theme = excluded.theme,
+           criteria_intent = excluded.criteria_intent,
+           reason = excluded.reason,
            detail = excluded.detail,
            format_id = excluded.format_id,
            inspection = excluded.inspection,
@@ -204,6 +231,8 @@ export async function setTrainFlag(
     [
       dealId,
       member,
+      theme,
+      criteriaIntent,
       reason,
       detail,
       options.formatId ?? null,

@@ -147,13 +147,17 @@ Template: [`pipeline/formats/_FORMAT_TEMPLATE.yaml`](../pipeline/formats/_FORMAT
 
 ---
 
-## 7. Train AI → repertoire loop
+## 7. Train AI → listing vs criteria
 
-The Flow App **Train AI** button is not triage — it is a human signal that the
-**format repertoire** entry for that mailbox needs attention.
+The Flow App **Train AI** button is not triage. It has two themes:
+
+### Listing error → repertoire
+
+Wrong capture/parse. Reasons: Wrong EBITDA/Rev/Asking · Wrong Location · Wrong
+Blurb · Duplicate · Not a real deal · Other.
 
 ```text
-Human flags deal (reason + optional note)
+Human flags deal (theme=listing + reason + optional note)
    │
    ▼
 POST /api/train
@@ -162,13 +166,13 @@ POST /api/train
    ▼
 train_flags row + inspection checklist (Neon)
    │
-   ├─ Agent / human: GET /api/train  → open queue
+   ├─ Agent / human: GET /api/train  → by_theme.listing
    └─ learn.py train-queue --input flags.json
           → pipeline/formats/train/*.md review notes
           → edit repertoire.yaml (gotchas / detect / status)
 ```
 
-When you (or an agent) act on a Train AI flag:
+When you (or an agent) act on a **listing** flag:
 
 1. Open the matched `format_id` in `repertoire.yaml`.
 2. Walk the inspection checklist (detect, expected_fields, split, control).
@@ -177,6 +181,25 @@ When you (or an agent) act on a Train AI flag:
 
 `repertoire.meta.json` is regenerated on every `learn.py validate` (also copied
 to `web/lib/` so the app stays in sync).
+
+### Criteria → buy-box queue (conservative)
+
+Two options only:
+
+| Intent | Meaning |
+|--------|---------|
+| **Should be excluded** | Current hard rules should already have kept this out; it slipped in |
+| **Request criteria change** | Nuanced free-text ask to change thesis/rules (**detail required**) |
+
+Hard rules already live in `pipeline/buybox.yaml` + `web/lib/fit.ts`, and **most
+have exceptions**. Agents must:
+
+- **Never** auto-edit the buy box from a single flag.
+- Act on **exclusion misses** only when the miss is clear and the patch is narrow.
+- Act on **criteria change** notes **only** when a **strong repeated trend**
+  emerges — prefer leaving notes queued over inventing new hard excludes.
+
+`GET /api/train` exposes `by_theme` and `by_intent` for queue triage.
 
 ---
 

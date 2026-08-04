@@ -79,29 +79,73 @@ export const PASS_REASONS = [
 ] as const;
 
 /**
- * Why a listing looks wrong to a human. Fixed list so we can count modes of
- * failure in the harvest later — free text lives in train_flags.detail.
+ * Train AI: listing capture errors (→ repertoire) vs criteria signals
+ * (→ buy-box queue only). Free text lives in train_flags.detail.
  */
-export const TRAIN_REASONS = [
-  "Wrong earnings",
-  "Wrong asking / revenue",
-  "Wrong location",
-  "Wrong title / blurb",
+export const TRAIN_THEMES = ["listing", "criteria"] as const;
+export type TrainTheme = (typeof TRAIN_THEMES)[number];
+
+export function isTrainTheme(value: unknown): value is TrainTheme {
+  return TRAIN_THEMES.includes(value as TrainTheme);
+}
+
+export const TRAIN_CRITERIA_INTENTS = ["exclusion_miss", "criteria_change"] as const;
+export type TrainCriteriaIntent = (typeof TRAIN_CRITERIA_INTENTS)[number];
+
+export function isTrainCriteriaIntent(value: unknown): value is TrainCriteriaIntent {
+  return TRAIN_CRITERIA_INTENTS.includes(value as TrainCriteriaIntent);
+}
+
+export const TRAIN_LISTING_REASONS = [
+  "Wrong EBITDA, Rev, Asking Price",
+  "Wrong Location",
+  "Wrong Blurb",
   "Duplicate listing",
   "Not a real deal",
-  "Garbled / bad parse",
   "Other",
 ] as const;
 
-export type TrainReason = (typeof TRAIN_REASONS)[number];
+export type TrainListingReason = (typeof TRAIN_LISTING_REASONS)[number];
+
+export function isTrainListingReason(value: unknown): value is TrainListingReason {
+  return (TRAIN_LISTING_REASONS as readonly string[]).includes(value as string);
+}
+
+/** Fixed reason labels stored for criteria intents (counting / GET queue). */
+export const TRAIN_CRITERIA_REASONS = [
+  "Should be excluded",
+  "Request criteria change",
+] as const;
+
+export type TrainCriteriaReason = (typeof TRAIN_CRITERIA_REASONS)[number];
+
+export const TRAIN_CRITERIA_REASON_BY_INTENT: Record<
+  TrainCriteriaIntent,
+  TrainCriteriaReason
+> = {
+  exclusion_miss: "Should be excluded",
+  criteria_change: "Request criteria change",
+};
+
+export function isTrainCriteriaReason(value: unknown): value is TrainCriteriaReason {
+  return (TRAIN_CRITERIA_REASONS as readonly string[]).includes(value as string);
+}
+
+/** Any reason string accepted on a train_flags row. */
+export type TrainReason = TrainListingReason | TrainCriteriaReason;
 
 export function isTrainReason(value: unknown): value is TrainReason {
-  return (TRAIN_REASONS as readonly string[]).includes(value as string);
+  return isTrainListingReason(value) || isTrainCriteriaReason(value);
 }
+
+/** @deprecated Use TRAIN_LISTING_REASONS — kept as alias for older imports. */
+export const TRAIN_REASONS = TRAIN_LISTING_REASONS;
 
 export interface TrainFlagRow {
   deal_id: number;
   member: MemberId;
+  theme: TrainTheme;
+  criteria_intent: TrainCriteriaIntent | null;
   reason: string;
   detail: string | null;
   format_id: string | null;

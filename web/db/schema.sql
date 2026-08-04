@@ -80,9 +80,13 @@ CREATE INDEX IF NOT EXISTS ix_verdicts_member ON verdicts (member);
 -- Extraction / parsing feedback. Separate from triage verdicts so flagging a
 -- bad listing never overwrites shortlist/pass/discuss. These rows are the
 -- training signal for improving ingest later.
+-- theme: listing (repertoire) | criteria (buy-box queue)
+-- criteria_intent: exclusion_miss | criteria_change | null when listing
 CREATE TABLE IF NOT EXISTS train_flags (
   deal_id     INTEGER NOT NULL REFERENCES deals (id) ON DELETE CASCADE,
   member      TEXT NOT NULL,
+  theme       TEXT NOT NULL DEFAULT 'listing',
+  criteria_intent TEXT,
   reason      TEXT NOT NULL,
   detail      TEXT,
   -- Repertoire inspection (Train AI → format learning). Populated on save.
@@ -94,10 +98,14 @@ CREATE TABLE IF NOT EXISTS train_flags (
 );
 
 CREATE INDEX IF NOT EXISTS ix_train_flags_reason ON train_flags (reason);
+CREATE INDEX IF NOT EXISTS ix_train_flags_theme ON train_flags (theme);
 
--- Existing hosted DBs created before repertoire inspection columns.
+-- Existing hosted DBs created before repertoire inspection / theme columns.
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS format_id TEXT;
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS inspection JSONB;
+ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS theme TEXT;
+ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS criteria_intent TEXT;
+UPDATE train_flags SET theme = 'listing' WHERE theme IS NULL;
 
 -- Stage history. The board shows where a deal is now; this is how it got
 -- there, which matters when a deal has been sitting at NDA for two months.

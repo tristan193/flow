@@ -29,6 +29,24 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-04 — `nm/web/train` — DONE
 
+**Scope:** Train AI themes — listing error vs slim criteria  
+**Risk:** medium (schema theme columns; reason vocab change)  
+**Coords:** none
+
+### Changed
+- Train AI sheet: **Listing error** (6 reasons → repertoire inspect) or **Criteria** (**Should be excluded** / **Request criteria change** with required text)
+- `train_flags.theme` + `criteria_intent`; `POST/GET /api/train` groups by theme/intent
+- Criteria never auto-edits buy box — agents act only on strong trends / careful exclude misses
+- Docs: `docs/deal-format-repertoire.md` §7, `docs/agents/SYSTEM.md`
+
+### Follow-ups
+- Old listing reason strings in Neon still display; re-save to use new labels
+- Criteria change notes: leave queued until a clear repeating pattern
+
+---
+
+## 2026-08-04 — `nm/web/train` — DONE
+
 **Scope:** Apply open Train AI notes on live Flow App + Rejigg money/title parser  
 **Risk:** medium (money extraction; Neon listing patches)  
 **Coords:** none
