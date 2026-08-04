@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/web/train` — DONE
+
+**Scope:** Apply open Train AI notes on live Flow App + Rejigg money/title parser  
+**Risk:** medium (money extraction; Neon listing patches)  
+**Coords:** none
+
+### Changed
+- Neon deal **948** (Rejigg): revenue **$50M** (was $15M), title **Oilfield Services Operation** (was digest subject); train flag cleared
+- Neon deal **45** (Axial Architectural Sign): revenue **$5.4M** / EBITDA **$1.3M** confirmed; stale train flag cleared
+- `pipeline/ingest.py` — `$XM in revenue, $YM in EBITDA` no longer files Y as revenue; digest subjects (`and N other new leads`) no longer steal titles
+- `POST /api/deals/correct` — member session can patch listing fields after Train AI review
+- Local `nm_deals.db` rows updated to match; shipped `814d33f` + prod deploy
+
+### Follow-ups
+- Rejigg multi-deal newsletter still not split into one card per lead — only the oilfield block was corrected
+- Separate open flag: deal **1646** AYCE Buffet (not part of this pass)
+
+---
+
 ## 2026-08-04 — `nm/bbs/enrich` — DONE
 
 **Scope:** Backfill missing / headline-echo BizBuySell blurbs from Apify listing description  
@@ -69,24 +88,6 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ### Follow-ups
 - none
-
-## 2026-08-04 — `nm/web/train` — DONE
-
-**Scope:** Apply open Train AI notes to listing data + money/title parser fixes  
-**Risk:** medium (money extraction change; manual Neon corrections)  
-**Coords:** none
-
-### Changed
-- Neon deal **948** (Rejigg): revenue **$50M** (was $15M), title **Oilfield Services Operation** (was digest subject)
-- Neon deal **45** (Axial Architectural Sign): confirm revenue **$5.4M** / EBITDA **$1.3M**; clear train flags
-- `pipeline/ingest.py` — `$XM in revenue, $YM in EBITDA` no longer files Y as revenue; digest subjects (`and N other new leads`) no longer steal titles
-- `POST /api/deals/correct` — member session can patch listing fields after Train AI review
-- Local `nm_deals.db` rows updated to match
-
-### Follow-ups
-- Rejigg multi-deal newsletter still not split into one card per lead — only the oilfield block was corrected
-
----
 
 ## 2026-08-04 — `nm/web/identity` — DONE
 
