@@ -27,6 +27,23 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/web/review` — DONE
+
+**Scope:** Green check shortlist button + partner-aware Shortlisted / pass visibility  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/review-client.tsx` — shortlist control is ✓ (green); Shortlisted = either partner `short` or both `discuss`; pass hides from that member’s filters and only resurfaces under Shortlisted if the other partner shorts
+- `web/components/deal-actions.tsx` — same ✓ shortlist control on deal detail
+- `web/lib/model.ts` — `isTeamShortlist()` helper
+
+### Do not touch
+- Pipeline stage promotion still only on `short` (dual discuss does not auto-move the board)
+
+### Follow-ups
+- none
+
 ## 2026-08-04 — `nm/web/identity` — DONE
 
 **Scope:** Partner display name → Jimmy  
