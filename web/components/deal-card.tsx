@@ -255,6 +255,17 @@ export function DealListCard({
 
         <CardFooter deal={deal} />
 
+        {deal.url ? (
+          <a
+            href={deal.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors"
+          >
+            Original listing →
+          </a>
+        ) : null}
+
         {children}
 
         <VerdictChips deal={deal} member={member} />
