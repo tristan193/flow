@@ -1,6 +1,6 @@
 # Daily deal harvest from dirk@ — LIVE pipeline (cloud, not Tristan's PC).
 #
-# Flow: Gmail (dirk@) → ingest → nm_deals.db artifact → POST Flow App /api/import
+# Flow: Gmail (dirk@) → ingest → Apify BBS enrich → nm_deals.db → POST Flow App
 # Google Drive is not part of this path.
 #
 # Schedule: driven by Vercel Cron hitting the Flow App route
@@ -16,9 +16,10 @@
 #   GMAIL_CLIENT_SECRET_JSON, GMAIL_TOKEN_JSON
 #   FLOW_APP_URL (e.g. https://web-tau-seven-77.vercel.app)
 #   FLOW_IMPORT_TOKEN (same value as Vercel env FLOW_IMPORT_TOKEN)
+#   APIFY_TOKEN — BizBuySell listing enrich (required; email alone has no SDE)
 #
-# Retries: run_daily_harvest.sh tries 3x with backoff.
-# Re-run failed workflow: Actions → Daily harvest → Re-run jobs.
+# Flow: Gmail → ingest → Apify BBS enrich (skip buy-box-excluded headlines) →
+#       CSV → POST Flow App /api/import
 
 name: Daily harvest
 
@@ -42,7 +43,7 @@ concurrency:
 jobs:
   harvest:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -97,6 +98,9 @@ jobs:
           DAYS: "3"
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          # Cap Apify spend on backlog days; 0 / unset = all missing-earnings BBS.
+          BBS_ENRICH_LIMIT: "120"
         run: |
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh

@@ -42,6 +42,21 @@ if [[ $ok -ne 1 ]]; then
   exit 1
 fi
 
+# BizBuySell page enrich is part of the main path: email only discovers URL +
+# headline; SDE/EBITDA come from Apify. Skip only buy-box-excluded headlines.
+if [[ -z "${APIFY_TOKEN:-}" ]]; then
+  echo "FATAL: APIFY_TOKEN is required (BizBuySell enrich is part of harvest)"
+  exit 1
+fi
+mkdir -p credentials
+printf '%s' "$APIFY_TOKEN" > credentials/apify_token.txt
+LIMIT_ARGS=()
+if [[ -n "${BBS_ENRICH_LIMIT:-}" && "${BBS_ENRICH_LIMIT}" != "0" ]]; then
+  LIMIT_ARGS=(--limit "$BBS_ENRICH_LIMIT")
+fi
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) enriching BizBuySell via Apify ${LIMIT_ARGS[*]:-all}"
+python enrich_bizbuysell.py --backend apify --newest "${LIMIT_ARGS[@]}"
+
 # Dated CSV snapshot (artifact backup — Flow App is the live review surface)
 python <<'PY'
 import csv, os, sqlite3
