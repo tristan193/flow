@@ -1,0 +1,37 @@
+# One-shot: delete BizBuySell rows from Flow App (Neon).
+# Uses the same FLOW_IMPORT_TOKEN as the daily harvest.
+#
+#   gh workflow run purge-bizbuysell.yml
+#
+name: Purge BizBuySell from Flow App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge BizBuySell deals
+        env:
+          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(printf '%s' "$FLOW_APP_URL" | tr -d '\r\n' | sed 's:/*$::')"
+          TOKEN="$(printf '%s' "$FLOW_IMPORT_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
+            echo "::error::FLOW_APP_URL and FLOW_IMPORT_TOKEN secrets are required."
+            exit 1
+          fi
+          echo "Purging bizbuysell from ${URL} ..."
+          curl -fsS -X POST "${URL}/api/import/flush" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data '{"confirm":"PURGE","match":"bizbuysell"}'
+          echo
+          echo "Done."
