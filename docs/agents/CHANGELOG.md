@@ -27,6 +27,21 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-04 — `nm/web/review` — DONE
+
+**Scope:** Train AI mobile usability + session skip on swipe cards  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/train-ai-button.tsx` — Train AI opens as a scrollable bottom-sheet / modal (portal), not inline in the height-locked card
+- `web/components/review-client.tsx` — small **Skip** on the card + **Skip deal** under the deck; session-only (no verdict); Undo restores
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-08-04 — `nm/docs/handoff` — DONE
 
 **Scope:** Agent-to-agent docs + identity/changelog; changelog only after production ship  

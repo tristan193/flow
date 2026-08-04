@@ -46,7 +46,11 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   const [mode, setMode] = useState<"swipe" | "list">("swipe");
   const [filter, setFilter] = useState<FilterId>("todo");
   const [overrides, setOverrides] = useState<Record<number, Override>>({});
-  const [history, setHistory] = useState<number[]>([]);
+  const [history, setHistory] = useState<{ id: number; kind: "verdict" | "skip" }[]>(
+    [],
+  );
+  // Session-only skips: advance the deck without a verdict (comes back on refresh).
+  const [skipped, setSkipped] = useState<number[]>([]);
   const [failed, setFailed] = useState(false);
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,23 +118,36 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
 
   const commitSwipe = useCallback(
     (deal: Deal, action: VerdictAction) => {
-      setHistory((prev) => [...prev, deal.id]);
+      setHistory((prev) => [...prev, { id: deal.id, kind: "verdict" }]);
+      setSkipped((prev) => prev.filter((id) => id !== deal.id));
       apply(deal, action);
     },
     [apply],
   );
 
+  const skipDeal = useCallback((deal: Deal) => {
+    setHistory((prev) => [...prev, { id: deal.id, kind: "skip" }]);
+    setSkipped((prev) => (prev.includes(deal.id) ? prev : [...prev, deal.id]));
+  }, []);
+
   const undo = useCallback(() => {
     const last = history[history.length - 1];
-    if (last == null) return;
+    if (!last) return;
     setHistory((prev) => prev.slice(0, -1));
-    setOverrides((prev) => ({ ...prev, [last]: { action: null, reason: null } }));
-    void send(last, null, null);
+    if (last.kind === "skip") {
+      setSkipped((prev) => prev.filter((id) => id !== last.id));
+      return;
+    }
+    setOverrides((prev) => ({ ...prev, [last.id]: { action: null, reason: null } }));
+    void send(last.id, null, null);
   }, [history, send]);
 
   const queue = useMemo(
-    () => scored.filter((deal) => !verdictOf(deal)).sort(byFit),
-    [scored, verdictOf],
+    () =>
+      scored
+        .filter((deal) => !verdictOf(deal) && !skipped.includes(deal.id))
+        .sort(byFit),
+    [scored, verdictOf, skipped],
   );
 
   const remaining = useMemo(() => {
@@ -211,6 +228,7 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
           total={deals.length}
           member={member}
           onCommit={commitSwipe}
+          onSkip={skipDeal}
           onUndo={undo}
           canUndo={history.length > 0}
           onBrowse={() => setMode("list")}
@@ -391,6 +409,7 @@ function SwipeDeck({
   total,
   member,
   onCommit,
+  onSkip,
   onUndo,
   canUndo,
   onBrowse,
@@ -399,6 +418,7 @@ function SwipeDeck({
   total: number;
   member: MemberId;
   onCommit: (deal: Deal, action: VerdictAction) => void;
+  onSkip: (deal: Deal) => void;
   onUndo: () => void;
   canUndo: boolean;
   onBrowse: () => void;
@@ -431,6 +451,24 @@ function SwipeDeck({
       }, 190);
     },
     [onCommit],
+  );
+
+  const skipAway = useCallback(
+    (deal: Deal) => {
+      const card = cardRef.current;
+      if (card) {
+        setFlying(true);
+        card.style.transition = "transform .28s ease, opacity .28s ease";
+        card.style.transform = "translateY(40px) scale(0.96)";
+        card.style.opacity = "0";
+      }
+      setTimeout(() => {
+        setFlying(false);
+        setIntent(null);
+        onSkip(deal);
+      }, 180);
+    },
+    [onSkip],
   );
 
   useEffect(() => {
@@ -558,6 +596,20 @@ function SwipeDeck({
                         <span />
                       )}
                       <div className="flex items-center gap-3">
+                        {isTop && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              skipAway(deal);
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            className="text-ink-faint hover:text-ink-dim text-[11.5px]"
+                            title="Skip for now — comes back later"
+                          >
+                            Skip
+                          </button>
+                        )}
                         <TrainAiButton deal={deal} member={member} compact />
                         <Link href={`/deals/${deal.id}`} className="text-ink-faint text-[11.5px]">
                           Details
@@ -599,6 +651,14 @@ function SwipeDeck({
       </div>
 
       <div className="flex items-center justify-center gap-4">
+        <button
+          type="button"
+          onClick={() => skipAway(top)}
+          className="text-ink-faint text-[12px] underline"
+          title="Skip for now — no verdict, comes back later"
+        >
+          Skip deal
+        </button>
         <button
           onClick={onUndo}
           disabled={!canUndo}
