@@ -29,6 +29,20 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-04 — `nm/web/train` — DONE
 
+**Scope:** Hotfix prod 500 — schema indexed `theme` before ALTER added the column  
+**Risk:** high (Neon boot / whole app)  
+**Coords:** none
+
+### Changed
+- `web/db/schema.sql` — `ALTER … theme` / `criteria_intent` before `ix_train_flags_theme`
+
+### Follow-ups
+- none
+
+---
+
+## 2026-08-04 — `nm/web/train` — DONE
+
 **Scope:** Train AI themes — listing error vs slim criteria  
 **Risk:** medium (schema theme columns; reason vocab change)  
 **Coords:** none

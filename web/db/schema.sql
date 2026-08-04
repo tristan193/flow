@@ -98,14 +98,15 @@ CREATE TABLE IF NOT EXISTS train_flags (
 );
 
 CREATE INDEX IF NOT EXISTS ix_train_flags_reason ON train_flags (reason);
-CREATE INDEX IF NOT EXISTS ix_train_flags_theme ON train_flags (theme);
 
--- Existing hosted DBs created before repertoire inspection / theme columns.
+-- Existing hosted DBs: add columns BEFORE indexes that reference them.
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS format_id TEXT;
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS inspection JSONB;
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS theme TEXT;
 ALTER TABLE train_flags ADD COLUMN IF NOT EXISTS criteria_intent TEXT;
 UPDATE train_flags SET theme = 'listing' WHERE theme IS NULL;
+
+CREATE INDEX IF NOT EXISTS ix_train_flags_theme ON train_flags (theme);
 
 -- Stage history. The board shows where a deal is now; this is how it got
 -- there, which matters when a deal has been sitting at NDA for two months.
