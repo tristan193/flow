@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Fit, type FitLevel, assessFit, byFit } from "@/lib/fit";
 import {
   type Deal,
+  isTeamShortlist,
   type MemberId,
   PASS_REASONS,
   type VerdictAction,
@@ -165,6 +166,12 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   const visible = useMemo(() => {
     const rows = scored.filter((deal) => {
       const verdict = verdictOf(deal);
+      const myAction = verdict?.action ?? null;
+
+      // Pass hides the deal from this member's views. It only resurfaces under
+      // Shortlisted when the other partner shortlists.
+      if (myAction === "pass" && filter !== "short") return false;
+
       switch (filter) {
         case "todo":
           return !verdict;
@@ -179,10 +186,11 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
         case "needs":
           return deal.needs_llm.length > 0;
         case "short":
-          return verdict?.action === "short";
+          // Either partner short, or both discuss.
+          return isTeamShortlist(deal, member, myAction);
         case "discuss":
           return (
-            verdict?.action === "discuss" ||
+            myAction === "discuss" ||
             deal.verdicts.tristan?.action === "discuss" ||
             deal.verdicts.partner?.action === "discuss"
           );
@@ -268,8 +276,9 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                         active={verdict?.action === "short"}
                         tone="short"
                         onClick={() => toggle(deal, "short")}
+                        title="Shortlist"
                       >
-                        Shortlist
+                        ✓
                       </ActionButton>
                       <ActionButton
                         active={verdict?.action === "discuss"}
@@ -380,11 +389,13 @@ function ActionButton({
   tone,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   tone: "short" | "discuss" | "pass";
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   const activeTone = {
     short: "border-short bg-short text-canvas",
@@ -392,11 +403,19 @@ function ActionButton({
     pass: "border-pass bg-pass text-canvas",
   }[tone];
 
+  const idleTone = {
+    short: "border-line bg-surface-raised text-short",
+    discuss: "border-line bg-surface-raised text-ink-dim",
+    pass: "border-line bg-surface-raised text-ink-dim",
+  }[tone];
+
   return (
     <button
       onClick={onClick}
+      title={title}
+      aria-label={title}
       className={`flex-1 rounded-lg border py-2 text-[12.5px] font-semibold transition-colors ${
-        active ? activeTone : "border-line bg-surface-raised text-ink-dim"
+        active ? activeTone : idleTone
       }`}
     >
       {children}
@@ -646,7 +665,7 @@ function SwipeDeck({
           onClick={() => fling(top, "short")}
           title="Shortlist (right arrow)"
         >
-          ♥
+          ✓
         </DeckButton>
       </div>
 

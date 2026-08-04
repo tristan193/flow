@@ -41,6 +41,27 @@ export const VERDICT_LABELS: Record<VerdictAction, string> = {
 };
 
 /**
+ * Shared shortlist membership for Review filters.
+ *
+ * - Either partner shortlists → in shortlist
+ * - Both mark discuss (?) → in shortlist
+ * - A partner who passed does not see the deal in their views unless the other
+ *   shortlisted (then it resurfaces under Shortlisted only)
+ */
+export function isTeamShortlist(
+  deal: Deal,
+  member: MemberId,
+  myAction?: VerdictAction | null,
+): boolean {
+  const mine =
+    myAction !== undefined ? myAction : (deal.verdicts[member]?.action ?? null);
+  const theirs = deal.verdicts[otherMember(member)]?.action ?? null;
+  if (mine === "short" || theirs === "short") return true;
+  if (mine === "discuss" && theirs === "discuss") return true;
+  return false;
+}
+
+/**
  * Why a deal was passed. Captured as a fixed list rather than free text so the
  * reasons can eventually be counted — that count is what a buy box gets tuned
  * against, which is why passing without a reason is allowed but discouraged.

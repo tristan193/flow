@@ -70,8 +70,9 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
           tone="short"
           disabled={busy}
           onClick={() => setAction("short")}
+          title="Shortlist"
         >
-          Shortlist
+          ✓
         </ActionButton>
         <ActionButton
           active={mine?.action === "discuss"}
@@ -143,12 +144,14 @@ function ActionButton({
   disabled,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   tone: "short" | "discuss" | "pass";
   disabled: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   const activeTone = {
     short: "border-short bg-short text-white",
@@ -156,12 +159,20 @@ function ActionButton({
     pass: "border-pass bg-pass text-white",
   }[tone];
 
+  const idleTone = {
+    short: "border-line bg-surface text-short",
+    discuss: "border-line bg-surface text-ink",
+    pass: "border-line bg-surface text-ink",
+  }[tone];
+
   return (
     <button
       disabled={disabled}
       onClick={onClick}
+      title={title}
+      aria-label={title}
       className={`flex-1 rounded-lg border py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-50 ${
-        active ? activeTone : "border-line bg-surface text-ink"
+        active ? activeTone : idleTone
       }`}
     >
       {children}
