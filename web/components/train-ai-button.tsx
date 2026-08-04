@@ -249,7 +249,7 @@ export function TrainAiButton({
                 {theme === "listing" && (
                   <>
                     <p className="text-ink-faint mb-2 text-[12px] leading-relaxed">
-                      What’s wrong with how this listing was captured?
+                      What’s wrong?
                     </p>
                     {existing?.theme === "listing" &&
                       existing.inspection &&
@@ -303,7 +303,7 @@ export function TrainAiButton({
                 {theme === "criteria" && (
                   <>
                     <p className="text-ink-faint mb-2 text-[12px] leading-relaxed">
-                      Hard rules are already in the buy box, and most have exceptions.
+                      What don’t you like?
                     </p>
                     <div className="mb-3 grid gap-2">
                       <button

@@ -29,6 +29,20 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-04 — `nm/web/train` — DONE
 
+**Scope:** Shorter Train AI reason labels / prompts  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- Listing reasons drop redundant “Wrong …” prefix; prompts **What’s wrong?** / **What don’t you like?**
+
+### Follow-ups
+- none
+
+---
+
+## 2026-08-04 — `nm/web/train` — DONE
+
 **Scope:** Hotfix prod 500 — schema indexed `theme` before ALTER added the column  
 **Risk:** high (Neon boot / whole app)  
 **Coords:** none

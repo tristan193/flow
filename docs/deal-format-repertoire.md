@@ -153,8 +153,8 @@ The Flow App **Train AI** button is not triage. It has two themes:
 
 ### Listing error → repertoire
 
-Wrong capture/parse. Reasons: Wrong EBITDA/Rev/Asking · Wrong Location · Wrong
-Blurb · Duplicate · Not a real deal · Other.
+Wrong capture/parse. Reasons: EBITDA/Rev/Asking · Location · Blurb · Duplicate ·
+Not a real deal · Other.
 
 ```text
 Human flags deal (theme=listing + reason + optional note)

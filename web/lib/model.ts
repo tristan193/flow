@@ -97,9 +97,9 @@ export function isTrainCriteriaIntent(value: unknown): value is TrainCriteriaInt
 }
 
 export const TRAIN_LISTING_REASONS = [
-  "Wrong EBITDA, Rev, Asking Price",
-  "Wrong Location",
-  "Wrong Blurb",
+  "EBITDA, Rev, Asking Price",
+  "Location",
+  "Blurb",
   "Duplicate listing",
   "Not a real deal",
   "Other",

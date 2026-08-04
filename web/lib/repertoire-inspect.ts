@@ -48,7 +48,7 @@ export type TrainInspection = {
 };
 
 const REASON_FIELDS: Record<TrainListingReason, string[]> = {
-  "Wrong EBITDA, Rev, Asking Price": [
+  "EBITDA, Rev, Asking Price": [
     "ebitda",
     "sde",
     "revenue",
@@ -56,8 +56,8 @@ const REASON_FIELDS: Record<TrainListingReason, string[]> = {
     "expected_fields.absent",
     "gotchas",
   ],
-  "Wrong Location": ["location", "city", "state", "county", "detect.body_open", "gotchas"],
-  "Wrong Blurb": ["title", "blurb", "detect.subject_patterns", "gotchas"],
+  Location: ["location", "city", "state", "county", "detect.body_open", "gotchas"],
+  Blurb: ["title", "blurb", "detect.subject_patterns", "gotchas"],
   "Duplicate listing": ["dedupe", "ext_id", "url"],
   "Not a real deal": ["email_type", "status", "split", "control"],
   Other: ["gotchas", "detect", "expected_fields"],
