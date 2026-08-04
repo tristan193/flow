@@ -99,8 +99,8 @@ jobs:
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-          # Cap Apify spend on backlog days; 0 / unset = all missing-earnings BBS.
-          BBS_ENRICH_LIMIT: "120"
+          # 0 = enrich every BBS candidate (missing earnings or thin blurb).
+          BBS_ENRICH_LIMIT: "0"
         run: |
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh
