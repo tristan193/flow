@@ -1,0 +1,153 @@
+# System map for agents (NM Deal Flow)
+
+Last reviewed: 2026-08-04 · Primary author this pass: `nm/bbs/enrich` + `nm/docs/handoff`
+
+## 1. Product in one paragraph
+
+Nails & Mercy deal flow: harvest broker/marketplace emails into structured deals, enrich where email is thin (BizBuySell via Apify), push a snapshot into the **Flow App** (Next.js on Vercel + Neon) where Tristan and partner review, shortlist, and move deals through a pipeline board.
+
+Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/ship-fully.mdc`).
+
+## 2. Runtime topology
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Vercel Cron → web/app/api/cron/harvest                      │
+│   workflow_dispatch → .github/workflows/daily-harvest.yml   │
+└────────────────────────────┬────────────────────────────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ pipeline/ (GitHub Actions ubuntu, cwd=pipeline)             │
+│  1. Restore artifact nm-deals-db-v2 → nm_deals.db           │
+│  2. harvest_gmail.py --days 3 --ingest                      │
+│  3. enrich_bizbuysell.py --backend apify --newest           │
+│  4. CSV snapshot artifact                                   │
+│  5. export_snapshot.py --post $FLOW_APP_URL /api/import     │
+│  6. Upload nm_deals.db artifact                             │
+└────────────────────────────┬────────────────────────────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Flow App (web/) Neon Postgres                               │
+│  Review · Shortlist · Pipeline · Train AI                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Not live:** Google Drive sync (legacy/optional). Local PGlite is for dummy/dev only.
+
+## 3. Attribution triad (everywhere)
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| `source` | Sender domain | `bizbuysell.com` |
+| `sub_source` | Sender email | `bizalert@bizbuysell.com` |
+| `nickname` | UI label | `BizBuySell` |
+
+Same names in SQLite, export JSON (`source` / `subSource` / `nickname`), and Neon.
+
+## 4. Email → deal (ingest)
+
+| Path | Role |
+|------|------|
+| `pipeline/harvest_gmail.py` | Gmail API → `RawEmail` |
+| `pipeline/ingest.py` | Route, split, extract, in-memory dedupe |
+| `pipeline/db.py` | Persistent upsert into `nm_deals.db` |
+| `pipeline/formats/repertoire.yaml` | Format catalog / sender → format id |
+| `pipeline/formats/catalog.py` | Runtime matcher for Train AI / survey |
+
+**BizBuySell email shapes** (repertoire):
+
+- `bizbuysell.bizalert_digest` — multi-listing digest (`bizalert@` / `alerts@`)
+- `bizbuysell.newbizopps_single` — one listing (`newbizopps@`)
+
+Email typically has: title, asking, location, **Profile URL**. Almost never SDE/EBITDA.
+
+URL hygiene: `norm_url` / `url_norm` strips `utm_*`, `gclid`, etc. BBS emails often still carry `j`, `bn`, `bd` trackers in stored `url_norm`; enrich **re-canonicalizes** before fetch.
+
+## 5. BizBuySell page enrich (required on harvest)
+
+| Path | Role |
+|------|------|
+| `pipeline/enrich_bizbuysell.py` | Select candidates → Apify → write money fields |
+| `pipeline/buybox.yaml` + `pipeline/score.py` | Headline exclusion check before Apify spend |
+| `pipeline/run_daily_harvest.sh` | Calls enrich after ingest; **fails if no `APIFY_TOKEN`** |
+| `.github/workflows/daily-harvest.yml` | Passes `secrets.APIFY_TOKEN`, `BBS_ENRICH_LIMIT=120` |
+
+### Behavior
+
+1. Candidates: `url_norm LIKE '%bizbuysell.com%'` AND `sde`/`ebitda` both NULL.
+2. **Buy-box skip:** if title/blurb hits excluded categories (restaurant, retail, franchise, …) and is not strategic → do **not** call Apify; stamp `rejected` / `reject_reason`.
+3. Else build actor URL:  
+   `https://www.bizbuysell.com/business-opportunity/{slugify(title)}/{listingId}/`  
+   (Not `Profile/?q=` — that returns empty dataset on the store actor.)
+4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`).
+5. Map: `cashFlow`→`sde`, `ebitda`→`ebitda`, `grossRevenue`→`revenue`, fill nulls; clear `needs_llm` earnings when page checked.
+
+### What failed in spikes (do not regress)
+
+| Approach | Result |
+|----------|--------|
+| DIY Playwright / CI Chromium | Akamai Access Denied |
+| Apify `playwright-scraper` + residential | Still Access Denied |
+| Apify BBS actor + `Profile/?q=` | SUCCEEDED, **0 items** |
+| Apify BBS actor + `/business-opportunity/{slug}/{id}/` | Works (~96% on 50-pack) |
+
+### Secrets / local token
+
+- CI: GitHub Actions secret `APIFY_TOKEN`
+- Local: env `APIFY_TOKEN` or `pipeline/credentials/apify_token.txt` (gitignored)
+- Needs Apify plan that can use **US residential** proxy (Starter+ in practice)
+
+## 6. Merge / dedupe
+
+`pipeline/db.py` `upsert`:
+
+1. Same `ext_id` (same email) → **re-parse overwrite** (`REPARSE` fields)
+2. Else same `url_norm`
+3. Else fingerprint + state
+4. Else fuzzy title + state
+
+Cross-source merge **backfills nulls only** (does not clobber existing earnings). Enrich follows the same “fill nulls” spirit for money fields.
+
+## 7. Flow App (`web/`)
+
+| Area | Paths |
+|------|--------|
+| Import API | `web/app/api/import/` · auth `FLOW_IMPORT_TOKEN` |
+| Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
+| Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
+| Review UI | `web/components/review-client.tsx`, `deal-card.tsx` |
+| Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |
+
+Local: `npm run dev` in `web/` with `.env.local` (passcodes + session secret). Restart required to re-seed PGlite from updated `seed-data.json`.
+
+## 8. Key commands
+
+```bash
+# Harvest + ingest only (local)
+cd pipeline && python harvest_gmail.py --days 2 --ingest
+
+# Enrich (local)
+python enrich_bizbuysell.py --backend apify --newest --limit 5
+python enrich_bizbuysell.py --backend apify --newest --dry-run
+
+# Export seed for local app
+python export_snapshot.py --db nm_deals.db --out ../web/db/seed-data.json
+
+# Trigger live harvest
+gh workflow run "Daily harvest" --ref main
+```
+
+## 9. Related docs (deeper / adjacent)
+
+- `docs/deal-aggregator-blueprint.md` — email-not-scrape discovery rationale
+- `docs/deal-format-repertoire.md` / `pipeline/formats/` — format catalog
+- `docs/Deal_Extraction_Format_Repertoire_Whitepaper.md` — extraction handoff
+- `pipeline/GMAIL_SETUP.md` — Gmail + Actions secrets
+- `docs/NM_Deal_Flow_Whitepaper.md` — product overview
+
+## 10. Operational gotchas
+
+- **SQLite artifact is the harvest memory.** Restored every CI run from `nm-deals-db-v2`. A bad local overwrite does not fix prod; CI artifact / Neon do.
+- **Anthropic/receipt mail** has appeared in digests — watch ingest keep filters so non-deal mail does not become deals.
+- **Another agent may own flush/purge** (`purge-bizbuysell.yml`, flush API). Coordinate via CHANGELOG; do not race Neon/SQLite wipes.
+- Harvest job timeout is **60 minutes** (Apify can run several minutes for ~100 URLs).

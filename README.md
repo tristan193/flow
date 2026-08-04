@@ -6,8 +6,9 @@ Deal review and pipeline for **Nails & Mercy**. Shared web app for Tristan and p
 
 ```
 dirk@tullyinvesting.com
-   │  GitHub Actions · Daily harvest (cron 11:00 UTC / manual)
+   │  GitHub Actions · Daily harvest (Vercel cron / manual)
    ├─ harvest_gmail.py → ingest.py → nm_deals.db
+   ├─ enrich_bizbuysell.py (Apify) → SDE/EBITDA on BizBuySell URLs
    └─ export_snapshot.py --post → Flow App /api/import
                                       │
                                       ▼
@@ -16,6 +17,8 @@ dirk@tullyinvesting.com
 ```
 
 **Google Drive is not part of the live path.** CSV artifacts from the harvest are kept on Actions for backup only.
+
+**Agents:** how the system works, naming, and change annotations — [`docs/agents/`](docs/agents/README.md).
 
 ### Deal attribution (organizational contract)
 

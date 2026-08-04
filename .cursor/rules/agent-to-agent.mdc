@@ -1,0 +1,24 @@
+---
+description: Agent identity, handoff docs, and changelog after production landings
+alwaysApply: true
+---
+
+# Agent-to-agent protocol
+
+Before non-trivial work on harvest, BizBuySell, ingest, or Flow App import/flush:
+
+1. Read `docs/agents/README.md` and `docs/agents/SYSTEM.md`.
+2. Pick a handle per `docs/agents/IDENTITY.md` (format `nm/<domain>/<role>`).
+3. Announce in chat: `Agent: nm/... · Scope: ...`
+4. If CHANGELOG shows another agent **IN PROGRESS** on the same paths, do not overwrite — ask Tristan.
+
+## When to update the agent docs
+
+**Required** after a change is **tested and implemented for production** (merged/pushed to `main`, and Vercel prod deploy if `web/` changed — see ship-fully):
+
+- Append `docs/agents/CHANGELOG.md` (newest first).
+- Update `docs/agents/SYSTEM.md` if behavior, paths, secrets, or topology changed.
+
+**Not required** during exploration, spikes, dry-runs, local-only experiments, or anything Tristan has not accepted as live yet. Do not spam CHANGELOG for failed attempts or WIP.
+
+Do not commit secrets under `pipeline/credentials/` (except README) or `.env*` files.
