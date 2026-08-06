@@ -240,9 +240,11 @@ visibility:
   central_tx_ebitda_min: 350000
   # Everywhere else (rest of TX, TOLA, national) — including Houston / DFW
   elsewhere_ebitda_min: 750000
-  # When earnings missing — best-case proxies as hard mins (derived once):
+  # When earnings missing — hard mins (derived once; no multiples in code):
   #   corridor asking  = 2.0 × 350K; elsewhere asking = 2.5 × 750K
   #   revenue          = earnings floor / 0.50 max margin
+  # Runtime: revenue-first. If revenue present, it alone decides (cheap asking
+  # OK). Asking floor only when revenue is absent. Neither → still show.
   central_tx_asking_min: 700000
   elsewhere_asking_min: 1875000
   central_tx_revenue_min: 700000

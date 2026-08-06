@@ -42,9 +42,9 @@ export default async function ReviewPage() {
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
           Review hides deals below the visibility floors in <code>pipeline/buybox.yaml</code>:{" "}
           $350K+ earnings in the Austin / SA / Waco corridor, $750K+ elsewhere (SDE at 85%). When
-          earnings are missing: $700K asking or $700K revenue in the corridor; $1.875M asking or
-          $1.5M revenue elsewhere. Water filtration / purification / legionella always surfaces.
-          The fit line is still a filter for attention, not a decision.
+          earnings are missing, revenue decides first at 50% best-case margin ($700K corridor /
+          $1.5M elsewhere); asking floors ($700K / $1.875M) apply only if revenue is absent. Water
+          filtration / purification / legionella always surfaces.
         </p>
       </main>
     </>

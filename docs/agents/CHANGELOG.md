@@ -29,6 +29,18 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-06 — `nm/web/fit` — DONE
 
+**Scope:** Revenue-first proxy when earnings missing (not OR/AND)  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/lib/fit.ts` / `pipeline/score.py` / `buybox.yaml` — if revenue present, it alone gates at 50% best case; asking floor only when revenue absent (so $1M rev / $600K asking in Austin still shows)
+
+### Follow-ups
+- none
+
+## 2026-08-06 — `nm/web/fit` — DONE
+
 **Scope:** Asking/revenue hard floors when earnings are missing  
 **Risk:** low  
 **Coords:** none

@@ -208,15 +208,18 @@ function moneyShort(n: number): string {
 
 /**
  * Visibility when EBITDA/SDE is missing.
- * Show if asking or revenue clears its hard min; if neither exists, still show.
+ * Revenue-first at 50% best-case margin: if revenue is present, it alone
+ * decides (cheap asking must not hide a passable deal). Asking floor only
+ * when revenue is absent. Neither → still show.
  */
 function clearsProxyVisibility(deal: DealRow, geoTier: Fit["geoTier"]): boolean {
-  const hasAsking = deal.asking != null;
-  const hasRevenue = deal.revenue != null;
-  if (!hasAsking && !hasRevenue) return true;
-  const askOk = hasAsking && deal.asking! >= askingMin(geoTier);
-  const revOk = hasRevenue && deal.revenue! >= revenueMin(geoTier);
-  return Boolean(askOk || revOk);
+  if (deal.revenue != null) {
+    return deal.revenue >= revenueMin(geoTier);
+  }
+  if (deal.asking != null) {
+    return deal.asking >= askingMin(geoTier);
+  }
+  return true;
 }
 
 /**
@@ -320,7 +323,7 @@ export function assessFit(deal: DealRow): Fit {
         surfaced: false,
         level: "low",
         headline: "Below floor",
-        detail: `${where} · needs ${moneyShort(askingMin(geo.tier))} asking or ${moneyShort(revenueMin(geo.tier))} revenue`,
+        detail: `${where} · needs ${moneyShort(revenueMin(geo.tier))} revenue (or ${moneyShort(askingMin(geo.tier))} asking if no revenue)`,
         disqualifier: "below asking/revenue visibility floor",
       };
     }

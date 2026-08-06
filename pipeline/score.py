@@ -226,17 +226,24 @@ def score(d: Deal) -> Result:
                 )
                 return r
         else:
-            has_ask = d.asking is not None
-            has_rev = d.revenue is not None
-            if has_ask or has_rev:
-                ask_ok = has_ask and d.asking >= ask_min
-                rev_ok = has_rev and d.revenue >= rev_min
-                if not (ask_ok or rev_ok):
+            # Revenue-first (50% best-case margin). Weak revenue → hide.
+            # Strong revenue → show even if asking is cheap. Asking floor
+            # only when revenue is absent.
+            if d.revenue is not None:
+                if d.revenue < rev_min:
                     r.rejected = True
                     r.reject_reason = (
-                        f"No earnings; asking/revenue below visibility mins "
-                        f"(need ${ask_min:,.0f} asking or ${rev_min:,.0f} revenue) "
+                        f"No earnings; revenue ${d.revenue:,.0f} below "
+                        f"${rev_min:,.0f} (50% best-case < earnings floor) "
                         f"for {CFG['geography'][geo]['label']}"
+                    )
+                    return r
+            elif d.asking is not None:
+                if d.asking < ask_min:
+                    r.rejected = True
+                    r.reject_reason = (
+                        f"No earnings/revenue; asking ${d.asking:,.0f} below "
+                        f"${ask_min:,.0f} for {CFG['geography'][geo]['label']}"
                     )
                     return r
             else:
