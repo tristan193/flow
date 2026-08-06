@@ -71,7 +71,10 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   }, []);
 
   const scored = useMemo<Scored[]>(
-    () => deals.map((deal) => ({ ...deal, fit: assessFit(deal) })),
+    () =>
+      deals
+        .map((deal) => ({ ...deal, fit: assessFit(deal) }))
+        .filter((deal) => deal.fit.surfaced),
     [deals],
   );
 

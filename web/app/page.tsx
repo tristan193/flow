@@ -3,6 +3,7 @@ import { ReviewClient } from "@/components/review-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { listDeals } from "@/lib/deals";
+import { assessFit } from "@/lib/fit";
 import { memberLabel } from "@/lib/model";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function ReviewPage() {
   await ensureReady();
   const member = await requireMember();
-  const deals = await listDeals();
+  const allDeals = await listDeals();
+  const deals = allDeals.filter((deal) => assessFit(deal).surfaced);
+  const hidden = allDeals.length - deals.length;
 
   return (
     <>
@@ -19,8 +22,9 @@ export default async function ReviewPage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Review</h1>
           <p className="text-ink-dim text-[12.5px]">
-            {deals.length} listings · best fit first · verdicts are shared with your partner as soon
-            as you make them
+            {deals.length} listings
+            {hidden > 0 ? ` · ${hidden} under floor hidden` : ""} · best fit first · verdicts are
+            shared with your partner as soon as you make them
           </p>
         </div>
 
@@ -36,11 +40,11 @@ export default async function ReviewPage() {
         )}
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          The fit line reads the buy box in <code>pipeline/buybox.yaml</code> — geography tier,
-          financial floor, excluded and strategic categories. It is a filter for attention, not a
-          decision. An asterisk on an earnings figure means it is SDE, not EBITDA: it includes owner
-          compensation, so the floor is compared against 85% of it. Deals flagged &ldquo;needs
-          info&rdquo; have gaps the parser refused to guess at rather than errors.
+          Review hides deals below the visibility floors in <code>pipeline/buybox.yaml</code>:{" "}
+          $350K+ in the Austin / San Antonio / Waco corridor, $750K+ everywhere else (SDE counted at
+          85%). Water filtration / purification / legionella always surfaces. The fit line is still a
+          filter for attention, not a decision. Deals flagged &ldquo;needs info&rdquo; have gaps the
+          parser refused to guess at rather than errors.
         </p>
       </main>
     </>

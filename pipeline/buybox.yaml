@@ -47,9 +47,10 @@ business_model_types:
 # ------------------------------------------------------------
 geography:
   G1_CENTRAL_TX:
-    label: "Central Texas — 1st priority"
+    label: "TX — Austin / San Antonio / Waco corridor"
+    # Listings almost never say "Central Texas"; match metros/counties below.
     score: 35
-    financial_floor: T3        # will accept weaker financials to buy local
+    financial_floor: T3        # visibility + in-box floor: $350K (see visibility:)
     counties_or_metros:
       - Austin
       - San Antonio
@@ -77,6 +78,54 @@ geography:
       - Brenham
       - Boerne
       - Kerrville
+      # Common suburbs / edge cities brokers actually write
+      - Dripping Springs
+      - Bee Cave
+      - Lakeway
+      - West Lake Hills
+      - Manor
+      - Elgin
+      - Hutto
+      - Taylor
+      - Liberty Hill
+      - Jarrell
+      - Salado
+      - Copperas Cove
+      - Gatesville
+      - Schertz
+      - Cibolo
+      - Converse
+      - Universal City
+      - Live Oak
+      - Selma
+      - Helotes
+      - Bulverde
+      - Canyon Lake
+      - Fair Oaks Ranch
+      - Alamo Heights
+      - Terrell Hills
+      - Windcrest
+      - Leon Valley
+      - Garden Ridge
+      - Cibolo
+      - Floresville
+      - Gonzales
+      - Lockhart
+      - Buda
+      - Uhland
+      - Niederwald
+      - Wimberley
+      - Canyon Lake
+      - Spring Branch
+      - Johnson City
+      - Blanco
+      - Burnet
+      - Lampasas
+      - Cameron
+      - Rockdale
+      - Hearne
+      - Caldwell
+      - Navasota
     counties:
       - Travis
       - Williamson
@@ -94,6 +143,22 @@ geography:
       - Brazos
       - Gillespie
       - Kendall
+      - Kerr
+      - Bandera
+      - Wilson
+      - Atascosa
+      - Medina
+      - Gonzales
+      - Lee
+      - Milam
+      - Falls
+      - Coryell
+      - Lampasas
+      - San Saba
+      - Mason
+      - Washington
+      - Burleson
+      - Robertson
 
   G2_TOLA:
     label: "TOLA — TX / OK / LA / AR"
@@ -135,9 +200,9 @@ financial_tiers:
     ebitda_min: 750000
     ebitda_margin_min: null
   T3:
-    label: "Tier 3 — $500K+ EBITDA"
+    label: "Tier 3 — $350K+ EBITDA (Austin / SA / Waco corridor)"
     score: 12
-    ebitda_min: 500000
+    ebitda_min: 350000
     ebitda_margin_min: null
   T4:
     label: "Below buy box"
@@ -164,6 +229,21 @@ financial_tiers:
     flag_in_ui: "No financials disclosed"
 
 # ------------------------------------------------------------
+# 3b. APP VISIBILITY FLOORS
+#     Harder than "below floor" labeling — deals under these do not
+#     appear in Review at all (still in Neon; open by direct URL).
+# ------------------------------------------------------------
+visibility:
+  # Water / filtration / purification / legionella — always show.
+  strategic_always_visible: true
+  # Austin–SA–Waco corridor (G1 metros/counties, not the phrase "Central Texas")
+  central_tx_ebitda_min: 350000
+  # Everywhere else (rest of TX, TOLA, national) — including Houston / DFW
+  elsewhere_ebitda_min: 750000
+  # No disclosed earnings: still surface (can't apply a floor)
+  unknown_financials: surface
+
+# ------------------------------------------------------------
 # 4. INDUSTRY
 # ------------------------------------------------------------
 industry:
@@ -181,6 +261,8 @@ industry:
         - water treatment, water purification, reverse osmosis
         - legionella, waterborne pathogen, water testing
         - water quality, potable water, water hygiene
+        - water safety, water purifying
+        - cooling tower water, water disinfection
         - backflow prevention, water management plan
       filtration_general:
         - industrial filtration, air filtration, membrane

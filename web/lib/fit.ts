@@ -1,10 +1,9 @@
 /**
- * The buy box, evaluated for display.
+ * The buy box, evaluated for display + visibility.
  *
- * The card leads with "keep reading?" — that answer is geography, financial
- * floor, and excluded/strategic categories from pipeline/buybox.yaml. The
- * pipeline already scores these rules but drops the result on export, so this
- * is a second reading of the box for the UI rather than a cache of the first.
+ * Visibility floors decide whether a deal appears in Review at all.
+ * Fit levels decide how it is labeled once it is shown.
+ * Rules live in pipeline/buybox.yaml — keep this file in sync.
  */
 
 import type { DealRow } from "./model";
@@ -15,7 +14,7 @@ export interface Fit {
   level: FitLevel;
   /** Two or three words, the same shape on every card. */
   headline: string;
-  /** Specifics behind the headline, e.g. "Central Texas · clears T2". */
+  /** Specifics behind the headline, e.g. "Austin / SA corridor · clears $350K". */
   detail: string;
   geoTier: "G1" | "G2" | "G3" | null;
   geoLabel: string | null;
@@ -26,24 +25,40 @@ export interface Fit {
   multiple: number | null;
   margin: number | null;
   strategic: boolean;
+  /** Passes the app visibility floor (or strategic / unknown). */
+  surfaced: boolean;
   disqualifier: string | null;
 }
 
 const TOLA = new Set(["TX", "OK", "LA", "AR"]);
 
-const CENTRAL_TX_COUNTIES = new Set([
-  "travis", "williamson", "hays", "bexar", "comal", "guadalupe", "bell",
-  "mclennan", "burnet", "llano", "blanco", "caldwell", "bastrop", "brazos",
-  "gillespie", "kendall",
-]);
-
-const CENTRAL_TX_METROS = new Set([
+/** Austin / San Antonio / Waco corridor — brokers rarely write "Central Texas". */
+const CORRIDOR_METROS = [
   "austin", "san antonio", "waco", "temple", "killeen", "harker heights",
   "belton", "georgetown", "round rock", "cedar park", "pflugerville",
   "leander", "kyle", "buda", "san marcos", "new braunfels", "seguin",
   "bastrop", "lockhart", "marble falls", "fredericksburg", "bryan",
   "college station", "brenham", "boerne", "kerrville",
+  "dripping springs", "bee cave", "lakeway", "west lake hills", "manor",
+  "elgin", "hutto", "taylor", "liberty hill", "jarrell", "salado",
+  "copperas cove", "gatesville", "schertz", "cibolo", "converse",
+  "universal city", "live oak", "selma", "helotes", "bulverde",
+  "canyon lake", "fair oaks ranch", "alamo heights", "terrell hills",
+  "windcrest", "leon valley", "garden ridge", "floresville", "gonzales",
+  "uhland", "niederwald", "wimberley", "spring branch", "johnson city",
+  "blanco", "burnet", "lampasas", "cameron", "rockdale", "hearne",
+  "caldwell", "navasota",
+];
+
+const CORRIDOR_COUNTIES = new Set([
+  "travis", "williamson", "hays", "bexar", "comal", "guadalupe", "bell",
+  "mclennan", "burnet", "llano", "blanco", "caldwell", "bastrop", "brazos",
+  "gillespie", "kendall", "kerr", "bandera", "wilson", "atascosa", "medina",
+  "gonzales", "lee", "milam", "falls", "coryell", "lampasas", "san saba",
+  "mason", "washington", "burleson", "robertson",
 ]);
+
+const CORRIDOR_LABEL = "Austin / SA / Waco";
 
 const EXCLUDED: Array<{ category: string; keywords: string[] }> = [
   {
@@ -85,10 +100,12 @@ const EXCLUDED: Array<{ category: string; keywords: string[] }> = [
   },
 ];
 
+/** Water / filtration / purification / legionella — always visible. */
 const STRATEGIC = [
   "water filtration", "water filter", "filtration system", "water treatment",
-  "water purification", "reverse osmosis", "legionella", "waterborne pathogen",
-  "water testing", "water quality", "potable water", "water hygiene",
+  "water purification", "water purifying", "reverse osmosis", "legionella",
+  "waterborne pathogen", "water testing", "water quality", "potable water",
+  "water hygiene", "water safety", "cooling tower water", "water disinfection",
   "backflow prevention", "water management plan", "industrial filtration",
   "air filtration", "membrane", "filter media", "cartridge filter",
   "filter service", "hospital facility management", "medical facility services",
@@ -101,14 +118,15 @@ const STRATEGIC = [
 
 const SDE_HAIRCUT = 0.85;
 
-const FLOOR_BY_GEO: Record<"G1" | "G2" | "G3", "T2" | "T3"> = {
-  G1: "T3",
-  G2: "T2",
-  G3: "T2",
-};
+/** App visibility floors (EBITDA; SDE is haircut first). */
+const VISIBILITY_FLOOR_CORRIDOR = 350_000;
+const VISIBILITY_FLOOR_ELSEWHERE = 750_000;
 
-const TIER_RANK: Record<"T1" | "T2" | "T3" | "T4", number> = {
-  T1: 4, T2: 3, T3: 2, T4: 1,
+const TIER_MIN: Record<"T1" | "T2" | "T3" | "T4", number> = {
+  T1: 1_000_000,
+  T2: 750_000,
+  T3: 350_000,
+  T4: 0,
 };
 
 function hit(haystack: string, needles: string[]): string | null {
@@ -118,17 +136,70 @@ function hit(haystack: string, needles: string[]): string | null {
   return null;
 }
 
+function cityLooksLikeCorridor(city: string): boolean {
+  if (!city) return false;
+  if (CORRIDOR_METROS.includes(city)) return true;
+  // "North Austin", "New Braunfels TX", "San Antonio Metro"
+  return CORRIDOR_METROS.some(
+    (metro) =>
+      city === metro ||
+      city.startsWith(`${metro} `) ||
+      city.endsWith(` ${metro}`) ||
+      city.includes(` ${metro} `),
+  );
+}
+
+function blobMentionsCorridor(blob: string): boolean {
+  return CORRIDOR_METROS.some((metro) => {
+    if (metro.length < 5) return blob.includes(metro); // short names still ok in city field path
+    return (
+      blob.includes(metro) ||
+      blob.includes(`${metro}, tx`) ||
+      blob.includes(`${metro} texas`) ||
+      blob.includes(`${metro} metro`) ||
+      blob.includes(`${metro} area`)
+    );
+  });
+}
+
 function geographyOf(deal: DealRow): { tier: Fit["geoTier"]; label: string | null } {
   const state = (deal.state || "").trim().toUpperCase();
   const city = (deal.city || "").trim().toLowerCase();
   const county = (deal.county || "").trim().toLowerCase().replace(/\s+county$/, "");
+  const placeBlob = `${city} ${county} ${deal.title ?? ""} ${deal.blurb ?? ""}`.toLowerCase();
 
-  if (state === "TX" && (CENTRAL_TX_METROS.has(city) || CENTRAL_TX_COUNTIES.has(county))) {
-    return { tier: "G1", label: "Central Texas" };
+  const inCorridor =
+    (state === "TX" || state === "") &&
+    (cityLooksLikeCorridor(city) ||
+      CORRIDOR_COUNTIES.has(county) ||
+      (state === "TX" && blobMentionsCorridor(placeBlob)));
+
+  if (inCorridor && (state === "TX" || state === "")) {
+    return { tier: "G1", label: CORRIDOR_LABEL };
   }
+  if (state === "TX") return { tier: "G2", label: "Texas" };
   if (TOLA.has(state)) return { tier: "G2", label: "TOLA" };
   if (state) return { tier: "G3", label: "National" };
   return { tier: null, label: null };
+}
+
+function visibilityFloor(geoTier: Fit["geoTier"]): number {
+  return geoTier === "G1" ? VISIBILITY_FLOOR_CORRIDOR : VISIBILITY_FLOOR_ELSEWHERE;
+}
+
+function moneyShort(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  return `$${Math.round(n / 1000)}K`;
+}
+
+/**
+ * Whether Review should show this deal at all.
+ * Strategic water lane: always. Unknown financials: still show.
+ * Else earnings (EBITDA, or SDE×0.85) must clear the geo visibility floor.
+ */
+export function isSurfaced(deal: DealRow, fit?: Fit): boolean {
+  const assessed = fit ?? assessFit(deal);
+  return assessed.surfaced;
 }
 
 export function assessFit(deal: DealRow): Fit {
@@ -154,9 +225,15 @@ export function assessFit(deal: DealRow): Fit {
   if (adjustedEarnings != null) {
     if (adjustedEarnings >= 1_000_000 && (margin == null || margin >= 0.15)) finTier = "T1";
     else if (adjustedEarnings >= 750_000) finTier = "T2";
-    else if (adjustedEarnings >= 500_000) finTier = "T3";
+    else if (adjustedEarnings >= 350_000) finTier = "T3";
     else finTier = "T4";
   }
+
+  const floor = visibilityFloor(geo.tier);
+  const clearsVisibility =
+    strategic ||
+    adjustedEarnings == null ||
+    adjustedEarnings >= floor;
 
   const base: Omit<Fit, "level" | "headline" | "detail"> = {
     geoTier: geo.tier,
@@ -166,6 +243,7 @@ export function assessFit(deal: DealRow): Fit {
     multiple,
     margin,
     strategic,
+    surfaced: clearsVisibility,
     disqualifier: null,
   };
 
@@ -174,6 +252,8 @@ export function assessFit(deal: DealRow): Fit {
       if (hit(text, group.keywords)) {
         return {
           ...base,
+          // Excluded categories still "surface" into Out of box unless
+          // they're also below the visibility floor (already in surfaced).
           level: "out",
           headline: "Out of box",
           detail: `Excluded category · ${group.category}`,
@@ -197,6 +277,7 @@ export function assessFit(deal: DealRow): Fit {
   if (strategic) {
     return {
       ...base,
+      surfaced: true,
       level: "priority",
       headline: "Priority",
       detail: `Strategic · ${strategicHit}`,
@@ -206,22 +287,23 @@ export function assessFit(deal: DealRow): Fit {
   if (finTier == null) {
     return {
       ...base,
+      surfaced: true,
       level: "unknown",
       headline: "No financials",
       detail: geo.label ? `${geo.label} · nothing disclosed` : "Nothing disclosed",
     };
   }
 
-  const floor = geo.tier ? FLOOR_BY_GEO[geo.tier] : "T2";
-  const clears = TIER_RANK[finTier] >= TIER_RANK[floor];
   const where = geo.label ?? "Location unknown";
 
-  if (!clears) {
+  if (!clearsVisibility) {
     return {
       ...base,
+      surfaced: false,
       level: "low",
       headline: "Below floor",
-      detail: `${where} · needs ${floor}`,
+      detail: `${where} · needs ${moneyShort(floor)} to show`,
+      disqualifier: `below visibility floor ${moneyShort(floor)}`,
     };
   }
 
@@ -230,7 +312,7 @@ export function assessFit(deal: DealRow): Fit {
       ...base,
       level: "priority",
       headline: "Priority",
-      detail: `${where} · clears ${finTier}`,
+      detail: `${where} · clears ${moneyShort(TIER_MIN[finTier])}+`,
     };
   }
 
@@ -238,7 +320,7 @@ export function assessFit(deal: DealRow): Fit {
     ...base,
     level: "fits",
     headline: "In the box",
-    detail: `${where} · clears ${finTier}`,
+    detail: `${where} · clears ${moneyShort(floor)}`,
   };
 }
 

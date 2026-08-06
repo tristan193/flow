@@ -188,13 +188,33 @@ def score(d: Deal) -> Result:
     floor = CFG["geography"][geo].get("financial_floor", "T2")
     undisclosed = d.ebitda is None
 
-    # Undisclosed financials in Central TX are a lead, not a reject.
+    # Undisclosed financials in the Austin/SA/Waco corridor are a lead, not a reject.
     # Brokers routinely withhold numbers pre-NDA; auto-rejecting these
     # would silently drop the highest-priority geography.
     if undisclosed and geo == "G1_CENTRAL_TX":
-        r.flags.append("Central TX, financials undisclosed — call the broker")
+        r.flags.append("Austin/SA/Waco corridor, financials undisclosed — call the broker")
         r.trace.append("Floor waived: G1 geography with undisclosed financials")
     elif not r.strategic:
+        vis = CFG.get("visibility", {})
+        eff = None
+        if d.ebitda is not None:
+            eff = d.ebitda * (
+                CFG["financial_tiers"].get("sde_to_ebitda_haircut", 0.85)
+                if d.ebitda_is_sde
+                else 1.0
+            )
+        floor_amt = (
+            vis.get("central_tx_ebitda_min", 350_000)
+            if geo == "G1_CENTRAL_TX"
+            else vis.get("elsewhere_ebitda_min", 750_000)
+        )
+        if eff is not None and eff < floor_amt:
+            r.rejected = True
+            r.reject_reason = (
+                f"Earnings ${eff:,.0f} below visibility floor ${floor_amt:,.0f} "
+                f"for {CFG['geography'][geo]['label']}"
+            )
+            return r
         if TIER_RANK[fin_tier] < TIER_RANK[floor]:
             r.rejected = True
             r.reject_reason = (

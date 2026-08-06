@@ -27,6 +27,21 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-06 — `nm/web/fit` — DONE
+
+**Scope:** Visibility floors — hide far-below-box deals from Review  
+**Risk:** low (UI filter; Neon unchanged)  
+**Coords:** none
+
+### Changed
+- `pipeline/buybox.yaml` — G1 = Austin/SA/Waco corridor; visibility $350K corridor / $750K elsewhere; water keywords; T3 = $350K
+- `web/lib/fit.ts` — `surfaced` gate + richer corridor geo matching
+- `web/app/page.tsx` / `review-client.tsx` — only surfaced deals in Review
+- `pipeline/score.py` — same visibility amounts when scoring rejects
+
+### Follow-ups
+- Confirm rest-of-TX (Houston/DFW) stays at $750K with “outside TX”
+
 ## 2026-08-06 — `nm/web/review` — DONE
 
 **Scope:** Note after short/discuss is a modal popup, not a persistent field  
