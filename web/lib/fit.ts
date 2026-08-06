@@ -122,6 +122,12 @@ const SDE_HAIRCUT = 0.85;
 const VISIBILITY_FLOOR_CORRIDOR = 350_000;
 const VISIBILITY_FLOOR_ELSEWHERE = 750_000;
 
+/** Hard mins when earnings missing (see buybox.yaml visibility:). */
+const ASKING_MIN_CORRIDOR = 700_000;
+const ASKING_MIN_ELSEWHERE = 1_875_000;
+const REVENUE_MIN_CORRIDOR = 700_000;
+const REVENUE_MIN_ELSEWHERE = 1_500_000;
+
 const TIER_MIN: Record<"T1" | "T2" | "T3" | "T4", number> = {
   T1: 1_000_000,
   T2: 750_000,
@@ -187,15 +193,37 @@ function visibilityFloor(geoTier: Fit["geoTier"]): number {
   return geoTier === "G1" ? VISIBILITY_FLOOR_CORRIDOR : VISIBILITY_FLOOR_ELSEWHERE;
 }
 
+function askingMin(geoTier: Fit["geoTier"]): number {
+  return geoTier === "G1" ? ASKING_MIN_CORRIDOR : ASKING_MIN_ELSEWHERE;
+}
+
+function revenueMin(geoTier: Fit["geoTier"]): number {
+  return geoTier === "G1" ? REVENUE_MIN_CORRIDOR : REVENUE_MIN_ELSEWHERE;
+}
+
 function moneyShort(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
   return `$${Math.round(n / 1000)}K`;
 }
 
 /**
+ * Visibility when EBITDA/SDE is missing.
+ * Show if asking or revenue clears its hard min; if neither exists, still show.
+ */
+function clearsProxyVisibility(deal: DealRow, geoTier: Fit["geoTier"]): boolean {
+  const hasAsking = deal.asking != null;
+  const hasRevenue = deal.revenue != null;
+  if (!hasAsking && !hasRevenue) return true;
+  const askOk = hasAsking && deal.asking! >= askingMin(geoTier);
+  const revOk = hasRevenue && deal.revenue! >= revenueMin(geoTier);
+  return Boolean(askOk || revOk);
+}
+
+/**
  * Whether Review should show this deal at all.
- * Strategic water lane: always. Unknown financials: still show.
- * Else earnings (EBITDA, or SDE×0.85) must clear the geo visibility floor.
+ * Strategic water lane: always.
+ * Earnings present: must clear geo earnings floor.
+ * Earnings missing: asking/revenue hard mins (or show if nothing to proxy).
  */
 export function isSurfaced(deal: DealRow, fit?: Fit): boolean {
   const assessed = fit ?? assessFit(deal);
@@ -230,10 +258,11 @@ export function assessFit(deal: DealRow): Fit {
   }
 
   const floor = visibilityFloor(geo.tier);
-  const clearsVisibility =
-    strategic ||
-    adjustedEarnings == null ||
-    adjustedEarnings >= floor;
+  const clearsVisibility = strategic
+    ? true
+    : adjustedEarnings != null
+      ? adjustedEarnings >= floor
+      : clearsProxyVisibility(deal, geo.tier);
 
   const base: Omit<Fit, "level" | "headline" | "detail"> = {
     geoTier: geo.tier,
@@ -252,8 +281,6 @@ export function assessFit(deal: DealRow): Fit {
       if (hit(text, group.keywords)) {
         return {
           ...base,
-          // Excluded categories still "surface" into Out of box unless
-          // they're also below the visibility floor (already in surfaced).
           level: "out",
           headline: "Out of box",
           detail: `Excluded category · ${group.category}`,
@@ -284,7 +311,19 @@ export function assessFit(deal: DealRow): Fit {
     };
   }
 
+  const where = geo.label ?? "Location unknown";
+
   if (finTier == null) {
+    if (!clearsVisibility) {
+      return {
+        ...base,
+        surfaced: false,
+        level: "low",
+        headline: "Below floor",
+        detail: `${where} · needs ${moneyShort(askingMin(geo.tier))} asking or ${moneyShort(revenueMin(geo.tier))} revenue`,
+        disqualifier: "below asking/revenue visibility floor",
+      };
+    }
     return {
       ...base,
       surfaced: true,
@@ -293,8 +332,6 @@ export function assessFit(deal: DealRow): Fit {
       detail: geo.label ? `${geo.label} · nothing disclosed` : "Nothing disclosed",
     };
   }
-
-  const where = geo.label ?? "Location unknown";
 
   if (!clearsVisibility) {
     return {

@@ -184,44 +184,64 @@ def score(d: Deal) -> Result:
     r.score += fin_score
     r.trace.append(f"Financials {fin_tier}: {fin_score:+d}")
 
-    # --- financial floor by geography, unless strategic ---
+    # --- visibility floors (earnings, or asking/revenue proxies) ---
     floor = CFG["geography"][geo].get("financial_floor", "T2")
-    undisclosed = d.ebitda is None
+    vis = CFG.get("visibility", {})
+    corridor = geo == "G1_CENTRAL_TX"
+    floor_amt = (
+        vis.get("central_tx_ebitda_min", 350_000)
+        if corridor
+        else vis.get("elsewhere_ebitda_min", 750_000)
+    )
+    ask_min = (
+        vis.get("central_tx_asking_min", 700_000)
+        if corridor
+        else vis.get("elsewhere_asking_min", 1_875_000)
+    )
+    rev_min = (
+        vis.get("central_tx_revenue_min", 700_000)
+        if corridor
+        else vis.get("elsewhere_revenue_min", 1_500_000)
+    )
 
-    # Undisclosed financials in the Austin/SA/Waco corridor are a lead, not a reject.
-    # Brokers routinely withhold numbers pre-NDA; auto-rejecting these
-    # would silently drop the highest-priority geography.
-    if undisclosed and geo == "G1_CENTRAL_TX":
-        r.flags.append("Austin/SA/Waco corridor, financials undisclosed — call the broker")
-        r.trace.append("Floor waived: G1 geography with undisclosed financials")
-    elif not r.strategic:
-        vis = CFG.get("visibility", {})
-        eff = None
+    if not r.strategic:
         if d.ebitda is not None:
             eff = d.ebitda * (
                 CFG["financial_tiers"].get("sde_to_ebitda_haircut", 0.85)
                 if d.ebitda_is_sde
                 else 1.0
             )
-        floor_amt = (
-            vis.get("central_tx_ebitda_min", 350_000)
-            if geo == "G1_CENTRAL_TX"
-            else vis.get("elsewhere_ebitda_min", 750_000)
-        )
-        if eff is not None and eff < floor_amt:
-            r.rejected = True
-            r.reject_reason = (
-                f"Earnings ${eff:,.0f} below visibility floor ${floor_amt:,.0f} "
-                f"for {CFG['geography'][geo]['label']}"
-            )
-            return r
-        if TIER_RANK[fin_tier] < TIER_RANK[floor]:
-            r.rejected = True
-            r.reject_reason = (
-                f"{fin_tier} financials below {floor} floor for "
-                f"{CFG['geography'][geo]['label']}"
-            )
-            return r
+            if eff < floor_amt:
+                r.rejected = True
+                r.reject_reason = (
+                    f"Earnings ${eff:,.0f} below visibility floor ${floor_amt:,.0f} "
+                    f"for {CFG['geography'][geo]['label']}"
+                )
+                return r
+            if TIER_RANK[fin_tier] < TIER_RANK[floor]:
+                r.rejected = True
+                r.reject_reason = (
+                    f"{fin_tier} financials below {floor} floor for "
+                    f"{CFG['geography'][geo]['label']}"
+                )
+                return r
+        else:
+            has_ask = d.asking is not None
+            has_rev = d.revenue is not None
+            if has_ask or has_rev:
+                ask_ok = has_ask and d.asking >= ask_min
+                rev_ok = has_rev and d.revenue >= rev_min
+                if not (ask_ok or rev_ok):
+                    r.rejected = True
+                    r.reject_reason = (
+                        f"No earnings; asking/revenue below visibility mins "
+                        f"(need ${ask_min:,.0f} asking or ${rev_min:,.0f} revenue) "
+                        f"for {CFG['geography'][geo]['label']}"
+                    )
+                    return r
+            else:
+                r.flags.append("Financials undisclosed — nothing to proxy")
+                r.trace.append("Visibility waived: no earnings, asking, or revenue")
     if r.strategic:
         sv = CFG["industry"]["strategic_verticals"]
         r.score += sv["score_bonus"]

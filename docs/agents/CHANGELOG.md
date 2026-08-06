@@ -29,6 +29,21 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-06 — `nm/web/fit` — DONE
 
+**Scope:** Asking/revenue hard floors when earnings are missing  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `pipeline/buybox.yaml` — corridor $700K asking / $700K rev; elsewhere $1.875M asking / $1.5M rev
+- `web/lib/fit.ts` — proxy visibility OR-gate; no multiples in runtime
+- `pipeline/score.py` — same hard mins
+- `web/app/page.tsx` — footer copy
+
+### Follow-ups
+- none
+
+## 2026-08-06 — `nm/web/fit` — DONE
+
 **Scope:** Visibility floors — hide far-below-box deals from Review  
 **Risk:** low (UI filter; Neon unchanged)  
 **Coords:** none
@@ -40,7 +55,7 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 - `pipeline/score.py` — same visibility amounts when scoring rejects
 
 ### Follow-ups
-- Confirm rest-of-TX (Houston/DFW) stays at $750K with “outside TX”
+- none (rest-of-TX confirmed at $750K national bar)
 
 ## 2026-08-06 — `nm/web/review` — DONE
 
