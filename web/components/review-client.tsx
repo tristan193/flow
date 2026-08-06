@@ -23,7 +23,7 @@ import {
 } from "./deal-card";
 import { BlurbText } from "./blurb-text";
 import { TrainAiButton } from "./train-ai-button";
-import { VerdictNoteField } from "./verdict-note";
+import { VerdictNotePrompt } from "./verdict-note";
 
 type Override = { action: VerdictAction | null; reason: string | null; note: string | null };
 type Scored = Deal & { fit: Fit };
@@ -126,14 +126,23 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
   const toggle = useCallback(
     (deal: Deal, action: VerdictAction) => {
       const current = verdictOf(deal);
-      if (current?.action === action) apply(deal, null);
-      else {
-        apply(
-          deal,
-          action,
-          action === "pass" ? (current?.reason ?? null) : null,
-          action === "pass" ? null : (current?.note ?? null),
-        );
+      if (current?.action === action) {
+        apply(deal, null);
+        setNotePrompt((prev) => (prev?.id === deal.id ? null : prev));
+        return;
+      }
+      apply(
+        deal,
+        action,
+        action === "pass" ? (current?.reason ?? null) : null,
+        action === "pass" ? null : (current?.note ?? null),
+      );
+      // List "To review" drops the card as soon as a verdict lands — surface the
+      // same post-action note prompt used in swipe so notes aren't lost.
+      if (action === "short" || action === "discuss") {
+        setNotePrompt({ id: deal.id, title: deal.title, action });
+      } else {
+        setNotePrompt(null);
       }
     },
     [apply, verdictOf],
@@ -271,41 +280,27 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
         </p>
       )}
 
+      {notePrompt && (
+        <VerdictNotePrompt
+          action={notePrompt.action}
+          title={notePrompt.title}
+          note={overrides[notePrompt.id]?.note ?? null}
+          onSave={savePromptNote}
+          onSkip={() => setNotePrompt(null)}
+        />
+      )}
+
       {mode === "swipe" ? (
-        <>
-          <SwipeDeck
-            queue={queue}
-            total={deals.length}
-            member={member}
-            onCommit={commitSwipe}
-            onSkip={skipDeal}
-            onUndo={undo}
-            canUndo={history.length > 0}
-            onBrowse={() => setMode("list")}
-          />
-          {notePrompt && (
-            <div className="border-line bg-surface space-y-2 rounded-xl border px-3.5 py-3">
-              <p className="text-ink-dim text-[13px]">
-                {notePrompt.action === "short" ? "Shortlisted" : "Marked to discuss"}:{" "}
-                <span className="text-ink font-semibold">{notePrompt.title}</span>
-              </p>
-              <VerdictNoteField
-                action={notePrompt.action}
-                note={overrides[notePrompt.id]?.note ?? null}
-                autofocus
-                compact
-                onSave={savePromptNote}
-              />
-              <button
-                type="button"
-                onClick={() => setNotePrompt(null)}
-                className="text-ink-faint hover:text-ink-dim text-[12px] underline"
-              >
-                Skip note
-              </button>
-            </div>
-          )}
-        </>
+        <SwipeDeck
+          queue={queue}
+          total={deals.length}
+          member={member}
+          onCommit={commitSwipe}
+          onSkip={skipDeal}
+          onUndo={undo}
+          canUndo={history.length > 0}
+          onBrowse={() => setMode("list")}
+        />
       ) : (
         <>
           <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
@@ -384,14 +379,6 @@ export function ReviewClient({ deals, member }: { deals: Deal[]; member: MemberI
                           ))}
                         </div>
                       </div>
-                    )}
-
-                    {(verdict?.action === "short" || verdict?.action === "discuss") && (
-                      <VerdictNoteField
-                        action={verdict.action}
-                        note={verdict.note}
-                        onSave={(next) => apply(deal, verdict.action!, null, next)}
-                      />
                     )}
 
                     <TrainAiButton deal={deal} member={member} />

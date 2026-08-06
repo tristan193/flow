@@ -27,6 +27,19 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-06 — `nm/web/review` — DONE
+
+**Scope:** Note after short/discuss is a modal popup, not a persistent field  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/verdict-note.tsx` — full-screen overlay prompt (Skip / Save)
+- `web/components/review-client.tsx` / `deal-actions.tsx` — popup on verdict; removed inline note boxes
+
+### Follow-ups
+- none
+
 ## 2026-08-04 — `nm/web/review` — DONE
 
 **Scope:** Stop labeling BizBuySell cards “no price” when asking exists but earnings don’t  

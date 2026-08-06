@@ -12,13 +12,14 @@ import {
   type VerdictAction,
 } from "@/lib/model";
 import { TrainAiButton } from "./train-ai-button";
-import { VerdictNoteField } from "./verdict-note";
+import { VerdictNotePrompt } from "./verdict-note";
 
 export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) {
   const router = useRouter();
   const mine = deal.verdicts[member];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notePrompt, setNotePrompt] = useState<"short" | "discuss" | null>(null);
 
   async function setAction(
     action: VerdictAction | null,
@@ -72,6 +73,17 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
     }
   }
 
+  function pickVerdict(action: VerdictAction) {
+    if (mine?.action === action) {
+      void setAction(null);
+      setNotePrompt(null);
+      return;
+    }
+    void setAction(action, action === "pass" ? (mine?.reason ?? null) : null);
+    if (action === "short" || action === "discuss") setNotePrompt(action);
+    else setNotePrompt(null);
+  }
+
   return (
     <div className="space-y-3">
       {error && <p className="bg-pass-bg text-pass rounded-lg px-3 py-2 text-xs">{error}</p>}
@@ -81,7 +93,7 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
           active={mine?.action === "short"}
           tone="short"
           disabled={busy}
-          onClick={() => setAction("short")}
+          onClick={() => pickVerdict("short")}
           title="Shortlist"
         >
           ✓
@@ -90,7 +102,7 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
           active={mine?.action === "discuss"}
           tone="discuss"
           disabled={busy}
-          onClick={() => setAction("discuss")}
+          onClick={() => pickVerdict("discuss")}
         >
           Discuss
         </ActionButton>
@@ -98,18 +110,22 @@ export function DealActions({ deal, member }: { deal: Deal; member: MemberId }) 
           active={mine?.action === "pass"}
           tone="pass"
           disabled={busy}
-          onClick={() => setAction("pass", mine?.reason ?? null)}
+          onClick={() => pickVerdict("pass")}
         >
           Pass
         </ActionButton>
       </div>
 
-      {(mine?.action === "short" || mine?.action === "discuss") && (
-        <VerdictNoteField
-          action={mine.action}
-          note={mine.note}
-          disabled={busy}
-          onSave={(next) => setAction(mine.action, null, next)}
+      {notePrompt && (
+        <VerdictNotePrompt
+          action={notePrompt}
+          title={deal.title}
+          note={mine?.note ?? null}
+          onSave={(next) => {
+            void setAction(notePrompt, null, next);
+            setNotePrompt(null);
+          }}
+          onSkip={() => setNotePrompt(null)}
         />
       )}
 
