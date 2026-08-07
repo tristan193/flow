@@ -44,7 +44,22 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ### Follow-ups
 - Chrome extension / batch Axial NDA (Phase 2)
-- Re-ingest may be needed for deals that already stored Pass URLs
+- Neon Pass→Pursue backfill runs on boot (`fixAxialPassUrls`); UI also rewrites on read
+
+## 2026-08-06 — `nm/bbs/axial-url` — DONE
+
+**Scope:** Never store/open Axial Pass links — Pursue only  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `pipeline/ingest.py` — `pick_listing_url` prefers pursue; forces Pass params → Pursue
+- `web/lib/playbooks.ts` / `deals.ts` / `import.ts` / `boot.ts` — rewrite on open, read, import, and boot UPDATE
+- `docs/deal-format-repertoire.md` / `SYSTEM.md` — gotcha documented
+- Seeds already use `action=pursue`
+
+### Follow-ups
+- none
 
 ## 2026-08-06 — `nm/web/fit` — DONE
 

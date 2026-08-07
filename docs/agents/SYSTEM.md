@@ -63,6 +63,8 @@ Email typically has: title, asking, location, **Profile URL**. Almost never SDE/
 
 URL hygiene: `norm_url` / `url_norm` strips `utm_*`, `gclid`, etc. BBS emails often still carry `j`, `bn`, `bd` trackers in stored `url_norm`; enrich **re-canonicalizes** before fetch.
 
+**Axial:** teaser emails list Pass (`action=decline`) before Pursue (`action=pursue`). Ingest `pick_listing_url` must store Pursue; Flow rewrites Pass→Pursue on read and on Open. Opening Pass archives the deal on Axial.
+
 ## 5. BizBuySell page enrich (required on harvest)
 
 | Path | Role |

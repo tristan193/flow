@@ -17,6 +17,7 @@ import {
   isOutreachOutcomeId,
   stageFromOutcomes,
 } from "./model";
+import { normalizeAxialHref } from "./playbooks";
 
 /**
  * Timestamps arrive as Date objects from one driver and strings from the other,
@@ -43,12 +44,15 @@ function toStringArray(value: unknown): string[] {
 }
 
 function normalizeDeal(row: Record<string, unknown>): DealRow {
+  const rawUrl = row.url == null ? null : String(row.url);
   return {
     ...(row as unknown as DealRow),
     needs_llm: toStringArray(row.needs_llm),
     first_seen: isoString(row.first_seen),
     last_seen: isoString(row.last_seen),
     stage_changed_at: row.stage_changed_at ? isoString(row.stage_changed_at) : null,
+    // Axial Pass/decline → Pursue so every UI link is safe even if Neon still has old URLs.
+    url: normalizeAxialHref(rawUrl) ?? rawUrl,
     cim_url: row.cim_url == null ? null : String(row.cim_url),
     earnings_is_sde: Boolean(row.earnings_is_sde),
   };

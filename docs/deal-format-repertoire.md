@@ -225,6 +225,9 @@ decides type after address match.
 - Ambiguous profit labels → **SDE**, not EBITDA
 - BizAlert missing earnings is normal (`needs_llm_ok: [earnings]`)
 - Never attribute forwarder domains as provider
+- **Axial URLs:** teasers list Pass (`action=decline`) before Pursue (`action=pursue`).
+  `pick_listing_url` must store Pursue. Same deal id — params only. Never open Pass
+  (archives the opportunity). Flow also rewrites Pass→Pursue on Open.
 
 ---
 

@@ -4,6 +4,7 @@ import { parse as parseCsv } from "csv-parse/sync";
 
 import { query } from "./db";
 import { isMemberId, isVerdictAction } from "./model";
+import { normalizeAxialHref } from "./playbooks";
 
 /**
  * Deals arrive from the Python pipeline, which owns extraction. Flow App never
@@ -161,7 +162,7 @@ export async function upsertDeals(deals: IncomingDeal[]): Promise<{
         toNumber(deal.asking),
         normalizeBusinessModel(deal.businessModelType),
         JSON.stringify(deal.needsLlm ?? []),
-        deal.url ?? null,
+        normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null,
         toTimestamp(deal.firstSeen),
         toTimestamp(deal.lastSeen),
         deal.timesSeen ?? 1,
