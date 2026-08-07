@@ -4,6 +4,8 @@ import {
   type DealRow,
   type MemberId,
   type NoteRow,
+  type OutreachEventRow,
+  type OutreachOutcomeId,
   type StageEventRow,
   type StageId,
   type TrainCriteriaIntent,
@@ -12,6 +14,8 @@ import {
   type TrainTheme,
   type VerdictAction,
   type VerdictRow,
+  isOutreachOutcomeId,
+  stageFromOutcomes,
 } from "./model";
 
 /**
@@ -45,6 +49,7 @@ function normalizeDeal(row: Record<string, unknown>): DealRow {
     first_seen: isoString(row.first_seen),
     last_seen: isoString(row.last_seen),
     stage_changed_at: row.stage_changed_at ? isoString(row.stage_changed_at) : null,
+    cim_url: row.cim_url == null ? null : String(row.cim_url),
     earnings_is_sde: Boolean(row.earnings_is_sde),
   };
 }
@@ -101,14 +106,36 @@ function normalizeTrainFlag(row: Record<string, unknown>): TrainFlagRow {
   };
 }
 
+function normalizeOutreach(row: Record<string, unknown>): OutreachEventRow {
+  const raw = row.outcomes;
+  let outcomes: OutreachOutcomeId[] = [];
+  if (Array.isArray(raw)) {
+    outcomes = raw.filter(isOutreachOutcomeId);
+  } else if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) outcomes = parsed.filter(isOutreachOutcomeId);
+    } catch {
+      outcomes = [];
+    }
+  }
+  return {
+    id: Number(row.id),
+    deal_id: Number(row.deal_id),
+    member: row.member as MemberId,
+    outcomes,
+    note: (row.note as string | null) ?? null,
+    cim_url: (row.cim_url as string | null) ?? null,
+    created_at: isoString(row.created_at),
+  };
+}
+
 async function attachExtras(rows: DealRow[]): Promise<Deal[]> {
   if (rows.length === 0) return [];
-  // Expanded placeholders rather than an array parameter: array binding differs
-  // between the two drivers, while numbered placeholders behave identically.
   const ids = rows.map((r) => r.id);
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
 
-  const [verdicts, flags] = await Promise.all([
+  const [verdicts, flags, outreach] = await Promise.all([
     query<Record<string, unknown>>(
       `SELECT * FROM verdicts WHERE deal_id IN (${placeholders})`,
       ids,
@@ -117,6 +144,13 @@ async function attachExtras(rows: DealRow[]): Promise<Deal[]> {
       `SELECT * FROM train_flags WHERE deal_id IN (${placeholders})`,
       ids,
     ),
+    query<Record<string, unknown>>(
+      `SELECT DISTINCT ON (deal_id) *
+       FROM outreach_events
+       WHERE deal_id IN (${placeholders})
+       ORDER BY deal_id, created_at DESC`,
+      ids,
+    ).catch(() => [] as Record<string, unknown>[]),
   ]);
 
   const verdictsByDeal = new Map<number, Deal["verdicts"]>();
@@ -135,10 +169,17 @@ async function attachExtras(rows: DealRow[]): Promise<Deal[]> {
     flagsByDeal.set(flag.deal_id, bucket);
   }
 
+  const outreachByDeal = new Map<number, OutreachEventRow>();
+  for (const raw of outreach) {
+    const event = normalizeOutreach(raw);
+    outreachByDeal.set(event.deal_id, event);
+  }
+
   return rows.map((row) => ({
     ...row,
     verdicts: verdictsByDeal.get(row.id) ?? {},
     trainFlags: flagsByDeal.get(row.id) ?? {},
+    latestOutreach: outreachByDeal.get(row.id) ?? null,
   }));
 }
 
@@ -344,6 +385,88 @@ export async function moveStage(
     `INSERT INTO stage_events (deal_id, from_stage, to_stage, member) VALUES ($1, $2, $3, $4)`,
     [dealId, current.stage, stage, member],
   );
+}
+
+/** Save action-deck debrief; advance stage from chips; store CIM link when provided. */
+export async function recordOutreach(
+  dealId: number,
+  member: MemberId,
+  outcomes: OutreachOutcomeId[],
+  note: string | null = null,
+  cimUrl: string | null = null,
+): Promise<void> {
+  const trimmedCim = cimUrl?.trim() || null;
+  const trimmedNote = note?.trim() || null;
+
+  await query(
+    `INSERT INTO outreach_events (deal_id, member, outcomes, note, cim_url)
+     VALUES ($1, $2, $3::jsonb, $4, $5)`,
+    [dealId, member, JSON.stringify(outcomes), trimmedNote, trimmedCim],
+  );
+
+  if (trimmedCim) {
+    await query(`UPDATE deals SET cim_url = $1, updated_at = now() WHERE id = $2`, [
+      trimmedCim,
+      dealId,
+    ]);
+  }
+
+  const nextStage = stageFromOutcomes(outcomes);
+  if (nextStage) {
+    await moveStage(dealId, member, nextStage);
+  }
+}
+
+const MAX_CIM_BYTES = 4 * 1024 * 1024; // Vercel request body ceiling
+
+/** Store an uploaded CIM and point deals.cim_url at the serve route. */
+export async function saveDealFile(
+  dealId: number,
+  member: MemberId,
+  file: { filename: string; contentType: string; bytes: Uint8Array },
+  kind: string = "cim",
+): Promise<{ id: number; url: string }> {
+  if (file.bytes.byteLength > MAX_CIM_BYTES) {
+    throw new Error(`File too large — max ${MAX_CIM_BYTES / (1024 * 1024)}MB`);
+  }
+  const rows = await query<{ id: number }>(
+    `INSERT INTO deal_files (deal_id, member, kind, filename, content_type, bytes)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [dealId, member, kind, file.filename, file.contentType, Buffer.from(file.bytes)],
+  );
+  const id = Number(rows[0]?.id);
+  if (!id) throw new Error("Could not store file");
+  const url = `/api/deal-files/${id}`;
+  await query(`UPDATE deals SET cim_url = $1, updated_at = now() WHERE id = $2`, [url, dealId]);
+  return { id, url };
+}
+
+export async function getDealFile(id: number): Promise<{
+  id: number;
+  deal_id: number;
+  filename: string;
+  content_type: string;
+  bytes: Uint8Array;
+} | null> {
+  const row = await queryOne<Record<string, unknown>>(
+    `SELECT id, deal_id, filename, content_type, bytes FROM deal_files WHERE id = $1`,
+    [id],
+  );
+  if (!row) return null;
+  const raw = row.bytes;
+  let bytes: Uint8Array;
+  if (raw instanceof Uint8Array) bytes = raw;
+  else if (Buffer.isBuffer(raw)) bytes = new Uint8Array(raw);
+  else if (typeof raw === "string") bytes = Buffer.from(raw, "base64");
+  else bytes = new Uint8Array(0);
+  return {
+    id: Number(row.id),
+    deal_id: Number(row.deal_id),
+    filename: String(row.filename),
+    content_type: String(row.content_type || "application/octet-stream"),
+    bytes,
+  };
 }
 
 export async function addNote(dealId: number, member: MemberId, body: string): Promise<void> {

@@ -178,3 +178,34 @@ SELECT
     ELSE NULL
   END AS margin
 FROM deals d;
+
+-- Latest CIM link (Drive / URL paste). Updated by outreach debrief.
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS cim_url TEXT;
+
+-- Post-shortlist debrief: what happened after Open on Axial (or other playbook).
+-- Prompting actions, not a status CRM — chips + optional note/CIM link.
+CREATE TABLE IF NOT EXISTS outreach_events (
+  id          SERIAL PRIMARY KEY,
+  deal_id     INTEGER NOT NULL REFERENCES deals (id) ON DELETE CASCADE,
+  member      TEXT NOT NULL,
+  outcomes    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  note        TEXT,
+  cim_url     TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_outreach_events_deal ON outreach_events (deal_id, created_at DESC);
+
+-- Uploaded CIMs / materials (shared between partners).
+CREATE TABLE IF NOT EXISTS deal_files (
+  id            SERIAL PRIMARY KEY,
+  deal_id       INTEGER NOT NULL REFERENCES deals (id) ON DELETE CASCADE,
+  member        TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'cim',
+  filename      TEXT NOT NULL,
+  content_type  TEXT NOT NULL,
+  bytes         BYTEA NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_deal_files_deal ON deal_files (deal_id, created_at DESC);

@@ -15,8 +15,10 @@ import {
   locationLabel,
   memberLabel,
   money,
+  OUTREACH_OUTCOMES,
   stageLabel,
 } from "@/lib/model";
+import { resolvePlaybook } from "@/lib/playbooks";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +71,49 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           <VerdictChips deal={deal} member={member} />
 
           <DealActions deal={deal} member={member} />
+
+          {(() => {
+            const playbook = resolvePlaybook(deal);
+            if (!playbook && !deal.cim_url) return null;
+            return (
+              <section className="border-line bg-surface space-y-2 rounded-xl border px-3.5 py-3">
+                <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">
+                  Next move
+                </p>
+                {playbook && (
+                  <>
+                    <a
+                      href={playbook.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-discuss text-canvas block rounded-lg px-3.5 py-3 text-center text-[14px] font-bold"
+                    >
+                      {playbook.ctaLabel}
+                    </a>
+                    <p className="text-ink-faint text-[12px]">{playbook.hint}</p>
+                  </>
+                )}
+                {deal.cim_url && (
+                  <a
+                    href={deal.cim_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-flag block text-[13px] font-medium"
+                  >
+                    Open CIM →
+                  </a>
+                )}
+                {deal.latestOutreach && (
+                  <p className="text-ink-faint text-[12px]">
+                    Last debrief:{" "}
+                    {deal.latestOutreach.outcomes
+                      .map((id) => OUTREACH_OUTCOMES.find((o) => o.id === id)?.label ?? id)
+                      .join(" · ")}
+                  </p>
+                )}
+              </section>
+            );
+          })()}
 
           <section className="border-line bg-surface rounded-xl border">
             <dl className="divide-line divide-y">

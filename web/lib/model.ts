@@ -164,7 +164,10 @@ export const STAGES = [
   { id: "contacted", label: "Contacted", hint: "Reached out to broker or seller", board: true },
   { id: "nda", label: "NDA", hint: "NDA signed, awaiting materials", board: true },
   { id: "cim", label: "CIM", hint: "Reviewing financials", board: true },
-  { id: "offer", label: "Offer", hint: "LOI or offer out", board: true },
+  { id: "call", label: "Call", hint: "Broker or seller call", board: true },
+  { id: "loi", label: "LOI", hint: "Letter of intent out", board: true },
+  { id: "diligence", label: "Due Diligence", hint: "Confirmatory diligence underway", board: true },
+  { id: "offer", label: "Offer", hint: "Definitive offer / PSA", board: true },
   { id: "closed", label: "Closed", hint: "Deal done", board: true },
   { id: "dead", label: "Dead", hint: "Went nowhere", board: true },
 ] as const;
@@ -172,6 +175,42 @@ export const STAGES = [
 export type StageId = (typeof STAGES)[number]["id"];
 
 export const BOARD_STAGES = STAGES.filter((s) => s.board);
+
+/** Outcomes from the post-link-out debrief (action deck). */
+export const OUTREACH_OUTCOMES = [
+  { id: "nda_signed", label: "Signed the NDA", stage: "nda" as StageId },
+  { id: "cim_received", label: "Downloaded CIM", stage: "cim" as StageId },
+  { id: "messaged", label: "Messaged advisor", stage: "contacted" as StageId },
+  { id: "waiting", label: "Waiting on reply", stage: "contacted" as StageId },
+  { id: "not_pursuing", label: "Passing on this", stage: "dead" as StageId },
+  { id: "unavailable", label: "No longer available", stage: "dead" as StageId },
+] as const;
+
+export type OutreachOutcomeId = (typeof OUTREACH_OUTCOMES)[number]["id"];
+
+export function isOutreachOutcomeId(value: unknown): value is OutreachOutcomeId {
+  return OUTREACH_OUTCOMES.some((o) => o.id === value);
+}
+
+/** Map debrief chips → furthest pipeline stage (dead wins; else CIM > NDA > contacted). */
+export function stageFromOutcomes(outcomes: OutreachOutcomeId[]): StageId | null {
+  if (outcomes.length === 0) return null;
+  if (outcomes.includes("not_pursuing") || outcomes.includes("unavailable")) return "dead";
+  if (outcomes.includes("cim_received")) return "cim";
+  if (outcomes.includes("nda_signed")) return "nda";
+  if (outcomes.includes("messaged") || outcomes.includes("waiting")) return "contacted";
+  return null;
+}
+
+export interface OutreachEventRow {
+  id: number;
+  deal_id: number;
+  member: MemberId;
+  outcomes: OutreachOutcomeId[];
+  note: string | null;
+  cim_url: string | null;
+  created_at: string;
+}
 
 export function isStageId(value: unknown): value is StageId {
   return STAGES.some((s) => s.id === value);
@@ -210,6 +249,8 @@ export interface DealRow {
   stage: StageId;
   stage_changed_at: string | null;
   stage_changed_by: string | null;
+  /** Latest CIM / materials link (Drive or paste). */
+  cim_url: string | null;
   earnings: number | null;
   earnings_basis: "EBITDA" | "SDE" | null;
   earnings_is_sde: boolean;
@@ -247,6 +288,8 @@ export interface StageEventRow {
 export interface Deal extends DealRow {
   verdicts: Partial<Record<MemberId, VerdictRow>>;
   trainFlags: Partial<Record<MemberId, TrainFlagRow>>;
+  /** Most recent outreach debrief, if any. */
+  latestOutreach: OutreachEventRow | null;
 }
 
 /**

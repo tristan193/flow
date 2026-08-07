@@ -1,5 +1,5 @@
 import { Nav } from "@/components/nav";
-import { PipelineBoard } from "@/components/pipeline-board";
+import { PipelineClient } from "@/components/pipeline-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { listBoardDeals } from "@/lib/deals";
@@ -19,7 +19,7 @@ export default async function PipelinePage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
           <p className="text-ink-dim text-[12.5px]">
-            Everything either of you shortlisted, and how far it has got
+            Act: pursue deals · Board: stage trail
           </p>
         </div>
 
@@ -31,7 +31,7 @@ export default async function PipelinePage() {
             </p>
           </div>
         ) : (
-          <PipelineBoard deals={deals} member={member} />
+          <PipelineClient deals={deals} member={member} />
         )}
       </main>
     </>

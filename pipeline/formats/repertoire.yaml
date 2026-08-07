@@ -411,6 +411,7 @@ formats:
       - "Geography: 'Western Midwest (IA, KS, …)' / 'Middle Atlantic (CT, DE, …)' — a census region, not City/ST. extract_location still files the first two states as city/state, which is wrong but load-bearing for dedupe"
       - "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M — normalize_axial_ltm_money + listing correction applied 2026-08-04"
       - "Body order is fixed — headline, greeting, table, seller prose, boilerplate — so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold."
+      - "Pass (action=decline) is listed before Pursue in the teaser — pick_listing_url must prefer action=pursue / teaser-share, never the Pass link (archives the deal)"
     subject_examples:
       - "Regional Restoration And Environmental Services Contractor"
       - "Asset-Light Environmental Services Platform Providing Recurring…"

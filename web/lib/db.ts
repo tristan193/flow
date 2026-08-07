@@ -56,9 +56,14 @@ const globalForDb = globalThis as unknown as { __flowDb?: Promise<Db> };
 async function connect(): Promise<Db> {
   const url = process.env.DATABASE_URL?.trim();
   const db = url ? await createPostgres(url) : await createPglite();
-  // Schema is multi-statement; query() rejects that, exec() does not.
-  await db.exec(readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8"));
+  await applySchema(db);
   return db;
+}
+
+/** Idempotent — safe to re-run after HMR when schema.sql gained new tables. */
+export async function applySchema(db?: Db): Promise<void> {
+  const conn = db ?? (await getDb());
+  await conn.exec(readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8"));
 }
 
 export function getDb(): Promise<Db> {

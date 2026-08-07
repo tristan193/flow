@@ -209,7 +209,7 @@ have exceptions**. Agents must:
 |-----------|------------|------|--------|
 | `bizbuysell.bizalert_digest` | `bizalert@` | digest | active |
 | `bizbuysell.newbizopps_single` | `newbizopps@` | single | **active** (`split_bizbuysell_newbizopps`) |
-| `axial.single_deal` | `newdeal@` | single | active (money provisional) |
+| `axial.single_deal` | `newdeal@` | single | active (money provisional; **URL = Pursue, never Pass**) |
 | `axial.action_summary` | `notifications@` | account_notice | control |
 | `smb_deal_hunter.daily_digest` | `helen@mail.smb…` | digest | active |
 | `smb_deal_hunter.editorial` | same mailbox | marketing | control |

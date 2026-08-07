@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-06 — `nm/web/pipeline` — DONE
+
+**Scope:** Pipeline Act/Board action deck, outreach debrief + CIM upload, stages Call/LOI/DD, nav tidy  
+**Risk:** medium (new tables `outreach_events` / `deal_files`; schema re-apply on boot)  
+**Coords:** none
+
+### Changed
+- `web/components/action-deck.tsx` / `pipeline-client.tsx` / `pipeline-board.tsx` — Act deck opens listing URLs then debriefs; Board with clickable stage filters
+- `web/lib/playbooks.ts` — Axial “Pursue” + other-source open CTAs; actionable only with listing URL in shortlist/contacted/nda
+- `web/lib/model.ts` — stages Call → LOI → Due Diligence after CIM; outreach outcomes; Offer = definitive/PSA
+- `web/app/api/outreach/` / `deal-files/` / `web/lib/deals.ts` / `schema.sql` — persist debrief, CIM BYTEA + serve URL; `cim_url` on deals
+- `web/lib/boot.ts` / `db.ts` — re-apply schema on ensureReady so new tables land in Neon/PGlite
+- `pipeline/ingest.py` / repertoire — never pick Axial Pass/decline as listing URL; prefer pursue/teaser
+- `web/components/nav.tsx` — top tabs Review + Pipeline; Data as small link under username
+
+### Follow-ups
+- Chrome extension / batch Axial NDA (Phase 2)
+- Re-ingest may be needed for deals that already stored Pass URLs
+
 ## 2026-08-06 — `nm/web/fit` — DONE
 
 **Scope:** Revenue-first proxy when earnings missing (not OR/AND)  

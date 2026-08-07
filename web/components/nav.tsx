@@ -6,11 +6,11 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "Review" },
   { href: "/pipeline", label: "Pipeline" },
-  { href: "/import", label: "Data" },
 ];
 
 export function Nav({ memberLabel }: { memberLabel: string }) {
   const pathname = usePathname();
+  const dataActive = pathname.startsWith("/import");
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -40,13 +40,23 @@ export function Nav({ memberLabel }: { memberLabel: string }) {
           })}
         </nav>
 
-        <button
-          onClick={signOut}
-          className="text-ink-faint hover:text-ink-dim text-xs"
-          title={`Signed in as ${memberLabel}`}
-        >
-          {memberLabel}
-        </button>
+        <div className="flex flex-col items-end gap-0.5">
+          <button
+            onClick={signOut}
+            className="text-ink-faint hover:text-ink-dim text-xs leading-none"
+            title={`Signed in as ${memberLabel} · click to sign out`}
+          >
+            {memberLabel}
+          </button>
+          <Link
+            href="/import"
+            className={`text-[11px] leading-none transition-colors ${
+              dataActive ? "text-ink font-medium" : "text-ink-faint hover:text-ink-dim"
+            }`}
+          >
+            Data
+          </Link>
+        </div>
       </div>
     </header>
   );

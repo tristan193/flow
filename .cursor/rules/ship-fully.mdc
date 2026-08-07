@@ -1,0 +1,18 @@
+---
+description: Ship means commit + push + Vercel prod deploy; test on live app
+alwaysApply: true
+---
+
+# Ship fully — live product is the test bed
+
+Tristan tests changes on the **live** Flow App, not a local-only stack.
+
+When he asks to **ship**, **commit**, **push**, **deploy**, or otherwise land work that should be usable in production:
+
+1. **Commit** relevant changes (skip unrelated untracked files / secrets).
+2. **Push** to `origin` (`main` unless told otherwise).
+3. **Deploy** the Flow App with `npx vercel --prod` from `web/`.
+
+Do not stop after a local commit or a push-only when the intent is to try the change in the product. Pipeline/parser fixes that affect harvest also need the push (GitHub Actions); app/API/UI/schema fixes need the Vercel prod deploy.
+
+Default assumption after a Train AI fix, parser fix, or app change he just validated in chat: he wants it **live** unless he explicitly says to keep it local.

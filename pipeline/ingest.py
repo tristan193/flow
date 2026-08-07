@@ -1422,6 +1422,82 @@ def extract_title(block: str, subject: str = "") -> str:
 
 _BLURB_URL = re.compile(r"<?(https?://[^\s<>\]]+)>?", re.I)
 
+_URL_FIND = re.compile(r"https?://[^\s\)>\]]+", re.I)
+
+
+def _scrub_url(u: str) -> str:
+    """Trim markdown/paren wrappers Axial put around Pass (https://...)."""
+    return (u or "").strip().rstrip(").,;]'\"")
+
+
+def pick_listing_url(block: str, format_family: str = "") -> str:
+    """Choose the listing / pursue URL — never Axial's Pass/decline link.
+
+    Axial teasers list Pass before Pursue in the body. Taking the first URL
+    archives the deal. Prefer pursue, then teaser-share / opportunity pages.
+    """
+    urls = [_scrub_url(u) for u in _URL_FIND.findall(block or "")]
+    urls = [u for u in urls if u]
+    if not urls:
+        return ""
+
+    def is_junk(u: str) -> bool:
+        low = u.lower()
+        return any(
+            x in low
+            for x in (
+                "elink",
+                "mail.smbdealhunter",
+                "download-app",
+                "notifications-settings",
+                "guide.axial.net",
+                "utm_content=pass",
+                "action=decline",
+            )
+        )
+
+    def is_axial_pass(u: str) -> bool:
+        low = u.lower()
+        return "axial.net" in low and (
+            "action=decline" in low or "utm_content=pass" in low
+        )
+
+    def is_axial_pursue(u: str) -> bool:
+        low = u.lower()
+        return "axial.net" in low and (
+            "action=pursue" in low or "utm_content=pursue" in low
+        )
+
+    def is_axial_deal_page(u: str) -> bool:
+        low = u.lower()
+        return "axial.net" in low and (
+            "/opportunity/" in low or "/teaser-share/" in low or "/received-deals/" in low
+        )
+
+    usable = [u for u in urls if not is_junk(u) and not is_axial_pass(u)]
+    for u in usable:
+        if is_axial_pursue(u):
+            return _force_axial_pursue(u)
+    for u in usable:
+        if "/teaser-share/" in u.lower() or "/opportunity/" in u.lower():
+            return _force_axial_pursue(u)
+    for u in usable:
+        if is_axial_deal_page(u):
+            return _force_axial_pursue(u)
+    for u in urls:
+        if not is_junk(u) and "elink" not in u.lower():
+            return _force_axial_pursue(u)
+    return _force_axial_pursue(urls[0])
+
+
+def _force_axial_pursue(url: str) -> str:
+    """Same deal id — swap Pass params to Pursue if a decline link slipped through."""
+    if "axial.net" not in (url or "").lower():
+        return url
+    u = re.sub(r"action=decline", "action=pursue", url, flags=re.I)
+    u = re.sub(r"utm_content=pass", "utm_content=pursue", u, flags=re.I)
+    return u
+
 
 def _url_core(u: str) -> str:
     """Loose identity for 'same destination as View original listing'."""
@@ -1474,12 +1550,9 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     city, state, county = extract_location(work)
     model, confident = classify_model(work)
     url_m = re.search(r"https?://[^\s\)>\]]+", work)
-    url = url_m.group(0) if url_m else ""
-    # Prefer a real listing URL over an elink wrapper when both appear.
-    for candidate in re.findall(r"https?://[^\s\)>\]]+", work):
-        if "elink" not in candidate.lower() and "mail.smbdealhunter" not in candidate.lower():
-            url = candidate
-            break
+    url = pick_listing_url(work, format_family)
+    if not url and url_m:
+        url = _scrub_url(url_m.group(0))
 
     domain = source or format_family
     title = extract_title(work, subject=subject)

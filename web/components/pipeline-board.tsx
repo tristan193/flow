@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import { BOARD_STAGES, type Deal, type MemberId, type StageId, stageLabel } from "@/lib/model";
+import { BOARD_STAGES, type Deal, type MemberId, type StageId, OUTREACH_OUTCOMES, memberLabel, stageLabel } from "@/lib/model";
+import { resolvePlaybook } from "@/lib/playbooks";
 import { Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
@@ -12,6 +13,9 @@ const STAGE_TONE: Record<string, string> = {
   contacted: "text-discuss",
   nda: "text-discuss",
   cim: "text-flag",
+  call: "text-discuss",
+  loi: "text-flag",
+  diligence: "text-flag",
   offer: "text-flag",
   closed: "text-short",
   dead: "text-ink-faint",
@@ -20,6 +24,7 @@ const STAGE_TONE: Record<string, string> = {
 export function PipelineBoard({ deals, member }: { deals: Deal[]; member: MemberId }) {
   const router = useRouter();
   const [stages, setStages] = useState<Record<number, StageId>>({});
+  const [filter, setFilter] = useState<StageId | "all">("all");
   const [error, setError] = useState<string | null>(null);
 
   const stageOf = useCallback(
@@ -54,6 +59,12 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
     }));
   }, [deals, stageOf]);
 
+  const visibleGroups = useMemo(() => {
+    const nonempty = grouped.filter(({ deals: staged }) => staged.length > 0);
+    if (filter === "all") return nonempty;
+    return nonempty.filter(({ stage }) => stage.id === filter);
+  }, [grouped, filter]);
+
   return (
     <div className="space-y-4">
       {error && (
@@ -61,30 +72,67 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
       )}
 
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
-        {grouped.map(({ stage, deals: staged }) => (
-          <div
-            key={stage.id}
-            className="border-line bg-surface shrink-0 rounded-lg border px-3 py-2 text-center"
-          >
-            <b className={`block text-base leading-tight ${STAGE_TONE[stage.id] ?? ""}`}>
-              {staged.length}
-            </b>
-            <span className="text-ink-faint text-[10.5px] tracking-wide uppercase">
-              {stage.label}
-            </span>
-          </div>
-        ))}
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={`shrink-0 rounded-lg border px-3 py-2 text-center transition-colors ${
+            filter === "all"
+              ? "border-ink bg-ink text-canvas"
+              : "border-line bg-surface text-ink-dim hover:border-line-bright"
+          }`}
+        >
+          <b className="block text-base leading-tight">{deals.length}</b>
+          <span className="text-[10.5px] tracking-wide uppercase opacity-80">All</span>
+        </button>
+        {grouped.map(({ stage, deals: staged }) => {
+          const active = filter === stage.id;
+          return (
+            <button
+              key={stage.id}
+              type="button"
+              onClick={() => setFilter(active ? "all" : stage.id)}
+              className={`shrink-0 rounded-lg border px-3 py-2 text-center transition-colors ${
+                active
+                  ? "border-ink bg-ink text-canvas"
+                  : "border-line bg-surface hover:border-line-bright"
+              }`}
+            >
+              <b
+                className={`block text-base leading-tight ${
+                  active ? "text-canvas" : STAGE_TONE[stage.id] ?? "text-ink"
+                }`}
+              >
+                {staged.length}
+              </b>
+              <span
+                className={`text-[10.5px] tracking-wide uppercase ${
+                  active ? "text-canvas/80" : "text-ink-faint"
+                }`}
+              >
+                {stage.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {grouped
-        .filter(({ deals: staged }) => staged.length > 0)
-        .map(({ stage, deals: staged }) => (
-          <section key={stage.id}>
+      {visibleGroups.length === 0 ? (
+        <p className="text-ink-faint py-10 text-center text-sm">
+          {filter === "all"
+            ? "Nothing on the board yet."
+            : `No deals in ${stageLabel(filter)}.`}
+        </p>
+      ) : (
+        visibleGroups.map(({ stage, deals: staged }) => (
+          <section key={stage.id} id={`stage-${stage.id}`}>
             <div className="mb-2 flex items-baseline gap-2">
-              <h2 className={`text-[13px] font-bold tracking-wide uppercase ${STAGE_TONE[stage.id] ?? ""}`}>
+              <h2
+                className={`text-[13px] font-bold tracking-wide uppercase ${STAGE_TONE[stage.id] ?? ""}`}
+              >
                 {stage.label}
               </h2>
               <span className="text-ink-faint text-[11.5px]">{stage.hint}</span>
+              <span className="text-ink-faint ms-auto text-[11.5px]">{staged.length}</span>
             </div>
 
             <div className="space-y-2">
@@ -107,6 +155,44 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
 
                   <VerdictChips deal={deal} member={member} />
 
+                  {deal.latestOutreach && (
+                    <p className="text-ink-faint mt-2 text-[11.5px]">
+                      {memberLabel(deal.latestOutreach.member)}:{" "}
+                      {deal.latestOutreach.outcomes
+                        .map((id) => OUTREACH_OUTCOMES.find((o) => o.id === id)?.label ?? id)
+                        .join(" · ")}
+                    </p>
+                  )}
+
+                  {(() => {
+                    const playbook = resolvePlaybook(deal);
+                    if (!playbook && !deal.cim_url) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+                        {playbook && (
+                          <a
+                            href={playbook.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-discuss font-medium"
+                          >
+                            {playbook.ctaLabel}
+                          </a>
+                        )}
+                        {deal.cim_url && (
+                          <a
+                            href={deal.cim_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-flag font-medium"
+                          >
+                            CIM →
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <label className="mt-3 block">
                     <span className="sr-only">Move {deal.title} to another stage</span>
                     <select
@@ -125,7 +211,8 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
               ))}
             </div>
           </section>
-        ))}
+        ))
+      )}
     </div>
   );
 }
