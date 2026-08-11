@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-10 — `nm/web/cim-intake` — IN PROGRESS
+
+**Scope:** Upload CIM PDF → LLM extract → review → create deal on Pipeline at stage `cim`  
+**Risk:** medium (AI Gateway + new `/api/cim/*`; 4MB PDF body)  
+**Coords:** none
+
+### Changed
+- `web/lib/cim-extract.ts` — PDF text via unpdf + `generateText`/`Output.object` over AI Gateway
+- `web/lib/deals.ts` — `createDealFromCim` (ext_id `cim:…`, stage `cim`, shortlist verdict, optional file)
+- `web/app/api/cim/extract` / `create` — multipart extract + create
+- `web/components/add-from-cim.tsx` + Pipeline header — “Add from CIM” review flow
+- deps: `ai`, `unpdf`, `zod`
+
+### Do not touch
+- Existing attach-CIM-to-deal path (`/api/deal-files`) — still for deals already on board
+
+### Follow-ups
+- OCR for scanned CIMs; Word docs; session-mode extension catch
+
+---
+
 ## 2026-08-06 — `nm/web/pipeline` — DONE
 
 **Scope:** Pipeline Act/Board action deck, outreach debrief + CIM upload, stages Call/LOI/DD, nav tidy  

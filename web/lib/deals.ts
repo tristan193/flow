@@ -423,6 +423,85 @@ export async function recordOutreach(
 
 const MAX_CIM_BYTES = 4 * 1024 * 1024; // Vercel request body ceiling
 
+export { MAX_CIM_BYTES };
+
+/** Create a pipeline deal from a reviewed CIM extract (lands at stage `cim`). */
+export async function createDealFromCim(
+  member: MemberId,
+  draft: {
+    title: string;
+    blurb: string | null;
+    city: string | null;
+    state: string | null;
+    revenue: number | null;
+    ebitda: number | null;
+    sde: number | null;
+    asking: number | null;
+    businessModelType: string | null;
+    url: string | null;
+  },
+  file?: { filename: string; contentType: string; bytes: Uint8Array },
+): Promise<Deal> {
+  const title = draft.title.trim();
+  if (!title) throw new Error("Title is required.");
+
+  const extId = `cim:${crypto.randomUUID()}`;
+  const needs: string[] = [];
+  if (draft.ebitda == null && draft.sde == null) needs.push("earnings");
+  if (!draft.state) needs.push("location");
+
+  const rows = await query<{ id: number }>(
+    `INSERT INTO deals (
+       ext_id, title, blurb, source, sub_source, nickname, sources,
+       city, state, county,
+       revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
+       stage, stage_changed_at, stage_changed_by,
+       first_seen, last_seen, times_seen
+     ) VALUES (
+       $1, $2, $3, 'manual', $4, 'CIM upload', 'manual',
+       $5, $6, NULL,
+       $7, $8, $9, $10, $11, $12::jsonb, $13,
+       'cim', now(), $14,
+       now(), now(), 1
+     )
+     RETURNING id`,
+    [
+      extId,
+      title,
+      draft.blurb?.trim() || null,
+      member,
+      draft.city?.trim() || null,
+      draft.state?.trim() || null,
+      draft.revenue,
+      draft.ebitda,
+      draft.sde,
+      draft.asking,
+      draft.businessModelType?.trim() || "",
+      JSON.stringify(needs),
+      normalizeAxialHref(draft.url) ?? (draft.url?.trim() || null),
+      member,
+    ],
+  );
+  const id = Number(rows[0]?.id);
+  if (!id) throw new Error("Could not create deal.");
+
+  await query(
+    `INSERT INTO stage_events (deal_id, from_stage, to_stage, member) VALUES ($1, NULL, 'cim', $2)`,
+    [id, member],
+  );
+  // Short so it shows as yours on the board; stage stays `cim` (setVerdict only
+  // promotes inbox → shortlist).
+  await setVerdict(id, member, "short", null, null);
+
+  if (file) {
+    await saveDealFile(id, member, file);
+  }
+
+  const deal = await getDeal(id);
+  if (!deal) throw new Error("Deal created but could not reload.");
+  return deal;
+}
+
 /** Store an uploaded CIM and point deals.cim_url at the serve route. */
 export async function saveDealFile(
   dealId: number,

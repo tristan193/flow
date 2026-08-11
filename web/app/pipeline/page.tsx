@@ -1,5 +1,6 @@
 import { Nav } from "@/components/nav";
 import { PipelineClient } from "@/components/pipeline-client";
+import { AddFromCim } from "@/components/add-from-cim";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { listBoardDeals } from "@/lib/deals";
@@ -16,18 +17,21 @@ export default async function PipelinePage() {
     <>
       <Nav memberLabel={memberLabel(member)} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">
-        <div className="mb-3">
-          <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
-          <p className="text-ink-dim text-[12.5px]">
-            Act: pursue deals · Board: stage trail
-          </p>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
+            <p className="text-ink-dim text-[12.5px]">
+              Act: pursue deals · Board: stage trail
+            </p>
+          </div>
+          <AddFromCim />
         </div>
 
         {deals.length === 0 ? (
           <div className="border-line bg-surface rounded-xl border p-4 text-sm">
             <p className="font-medium">Nothing in the pipeline yet</p>
             <p className="text-ink-dim mt-1.5 leading-relaxed">
-              Shortlisting a deal in Review puts it here automatically.
+              Shortlist a deal in Review, or upload a CIM to add one here directly.
             </p>
           </div>
         ) : (

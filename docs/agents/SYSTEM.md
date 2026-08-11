@@ -119,6 +119,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
 | Review UI | `web/components/review-client.tsx`, `deal-card.tsx` |
+| CIM → pipeline | Pipeline “Add from CIM” · `POST /api/cim/extract` + `/create` · AI Gateway + unpdf · lands at stage `cim` |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |
 | Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |
 
