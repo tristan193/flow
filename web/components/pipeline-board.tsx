@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { BOARD_STAGES, type Deal, type MemberId, type StageId, OUTREACH_OUTCOMES, memberLabel, stageLabel } from "@/lib/model";
 import { resolvePlaybook } from "@/lib/playbooks";
+import { AttachCim } from "./attach-cim";
 import { Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
@@ -166,9 +167,8 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
 
                   {(() => {
                     const playbook = resolvePlaybook(deal);
-                    if (!playbook && !deal.cim_url) return null;
                     return (
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
                         {playbook && (
                           <a
                             href={playbook.href}
@@ -179,16 +179,7 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
                             {playbook.ctaLabel}
                           </a>
                         )}
-                        {deal.cim_url && (
-                          <a
-                            href={deal.cim_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-flag font-medium"
-                          >
-                            CIM →
-                          </a>
-                        )}
+                        <AttachCim dealId={deal.id} cimUrl={deal.cim_url} compact />
                       </div>
                     );
                   })()}

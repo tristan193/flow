@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BlurbText } from "@/components/blurb-text";
+import { AttachCim } from "@/components/attach-cim";
 import { DealActions } from "@/components/deal-actions";
 import { NeedsTags, SourcePill, VerdictChips } from "@/components/deal-card";
 import { Nav } from "@/components/nav";
@@ -72,9 +73,11 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
 
           <DealActions deal={deal} member={member} />
 
+          <AttachCim dealId={deal.id} cimUrl={deal.cim_url} />
+
           {(() => {
             const playbook = resolvePlaybook(deal);
-            if (!playbook && !deal.cim_url) return null;
+            if (!playbook && !deal.latestOutreach) return null;
             return (
               <section className="border-line bg-surface space-y-2 rounded-xl border px-3.5 py-3">
                 <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">
@@ -92,16 +95,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                     </a>
                     <p className="text-ink-faint text-[12px]">{playbook.hint}</p>
                   </>
-                )}
-                {deal.cim_url && (
-                  <a
-                    href={deal.cim_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-flag block text-[13px] font-medium"
-                  >
-                    Open CIM →
-                  </a>
                 )}
                 {deal.latestOutreach && (
                   <p className="text-ink-faint text-[12px]">

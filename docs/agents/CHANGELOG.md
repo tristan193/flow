@@ -27,7 +27,21 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
-## 2026-08-10 — `nm/web/cim-intake` — IN PROGRESS
+## 2026-08-11 — `nm/web/pipeline` — DONE
+
+**Scope:** Attach CIM to existing pipeline deals without debrief or Create-from-CIM  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/components/attach-cim.tsx` — upload/replace via `/api/deal-files`
+- `web/app/deals/[id]/page.tsx` — always-on CIM section
+- `web/components/pipeline-board.tsx` — Attach/Replace CIM on every card
+
+### Follow-ups
+- none
+
+## 2026-08-11 — `nm/web/cim-intake` — DONE
 
 **Scope:** Upload CIM PDF → LLM extract → review → create deal on Pipeline at stage `cim`  
 **Risk:** medium (AI Gateway + new `/api/cim/*`; 4MB PDF body)  
