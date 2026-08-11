@@ -60,15 +60,17 @@ export function AttachCim({
   );
 
   if (compact) {
+    const buttonClass =
+      "inline-flex items-center rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50";
     return (
-      <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="inline-flex flex-wrap items-center gap-2">
         {fileInput}
         {openUrl ? (
           <a
             href={openUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-flag font-medium"
+            className={`${buttonClass} border-flag/40 bg-flag-bg text-flag hover:brightness-110`}
           >
             View CIM
           </a>
@@ -77,7 +79,7 @@ export function AttachCim({
             type="button"
             disabled={busy}
             onClick={() => fileRef.current?.click()}
-            className="text-ink-dim hover:text-ink text-[12px] font-medium disabled:opacity-50"
+            className={`${buttonClass} border-line bg-surface-raised text-ink-dim hover:border-line-bright hover:text-ink`}
           >
             {busy ? "Uploading…" : "Add CIM"}
           </button>

@@ -168,18 +168,18 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
                   {(() => {
                     const playbook = resolvePlaybook(deal);
                     return (
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <AttachCim dealId={deal.id} cimUrl={deal.cim_url} compact />
                         {playbook && (
                           <a
                             href={playbook.href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-discuss font-medium"
+                            className="border-line bg-surface-raised text-discuss hover:border-discuss inline-flex items-center rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors"
                           >
                             {playbook.ctaLabel}
                           </a>
                         )}
-                        <AttachCim dealId={deal.id} cimUrl={deal.cim_url} compact />
                       </div>
                     );
                   })()}
