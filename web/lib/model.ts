@@ -251,6 +251,10 @@ export interface DealRow {
   stage_changed_by: string | null;
   /** Latest CIM / materials link (Drive or paste). */
   cim_url: string | null;
+  /** E-sign or broker NDA URL when detected from mail. */
+  nda_url: string | null;
+  /** Gmail deep link to the pursuit thread. */
+  gmail_thread_url: string | null;
   earnings: number | null;
   earnings_basis: "EBITDA" | "SDE" | null;
   earnings_is_sde: boolean;

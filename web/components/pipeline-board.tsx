@@ -8,6 +8,7 @@ import { BOARD_STAGES, type Deal, type MemberId, type StageId, OUTREACH_OUTCOMES
 import { resolvePlaybook } from "@/lib/playbooks";
 import { AttachCim } from "./attach-cim";
 import { Earnings, SourcePill, VerdictChips } from "./deal-card";
+import { PursuitLinks } from "./pursuit-links";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -170,6 +171,11 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
                     return (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <AttachCim dealId={deal.id} cimUrl={deal.cim_url} compact />
+                        <PursuitLinks
+                          ndaUrl={deal.nda_url}
+                          gmailThreadUrl={deal.gmail_thread_url}
+                          compact
+                        />
                         {playbook && (
                           <a
                             href={playbook.href}

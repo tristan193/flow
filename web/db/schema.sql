@@ -182,6 +182,10 @@ FROM deals d;
 -- Latest CIM link (Drive / URL paste). Updated by outreach debrief.
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS cim_url TEXT;
 
+-- Pursuit lane: NDA sign URL and Gmail thread deep link (human signs; app links).
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS nda_url TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS gmail_thread_url TEXT;
+
 -- Post-shortlist debrief: what happened after Open on Axial (or other playbook).
 -- Prompting actions, not a status CRM — chips + optional note/CIM link.
 CREATE TABLE IF NOT EXISTS outreach_events (
@@ -209,3 +213,23 @@ CREATE TABLE IF NOT EXISTS deal_files (
 );
 
 CREATE INDEX IF NOT EXISTS ix_deal_files_deal ON deal_files (deal_id, created_at DESC);
+
+-- Machine-ingested pursuit signals (NDA available, CIM attached, etc.).
+-- Deduped on gmail_message_id so re-harvest is safe.
+CREATE TABLE IF NOT EXISTS crm_events (
+  id                SERIAL PRIMARY KEY,
+  gmail_message_id  TEXT UNIQUE NOT NULL,
+  gmail_thread_id   TEXT,
+  deal_id           INTEGER REFERENCES deals (id) ON DELETE SET NULL,
+  event_type        TEXT NOT NULL,
+  subject           TEXT,
+  from_address      TEXT,
+  nda_url           TEXT,
+  gmail_thread_url  TEXT,
+  payload           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status            TEXT NOT NULL DEFAULT 'applied',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_crm_events_deal ON crm_events (deal_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_crm_events_type ON crm_events (event_type, created_at DESC);

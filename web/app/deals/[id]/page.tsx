@@ -7,6 +7,7 @@ import { DealActions } from "@/components/deal-actions";
 import { NeedsTags, SourcePill, VerdictChips } from "@/components/deal-card";
 import { Nav } from "@/components/nav";
 import { NoteThread } from "@/components/note-thread";
+import { PursuitLinks } from "@/components/pursuit-links";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { getDeal, listNotes, listStageEvents } from "@/lib/deals";
@@ -74,6 +75,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           <DealActions deal={deal} member={member} />
 
           <AttachCim dealId={deal.id} cimUrl={deal.cim_url} />
+
+          <PursuitLinks ndaUrl={deal.nda_url} gmailThreadUrl={deal.gmail_thread_url} />
 
           {(() => {
             const playbook = resolvePlaybook(deal);

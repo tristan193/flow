@@ -27,6 +27,23 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-11 — `nm/web/crm-pursuit` — DONE
+
+**Scope:** Pursuit lane v1 — NDA links + auto CIM from dirk@ mail  
+**Risk:** medium (new `/api/crm/pursuit`, schema cols, harvest step)  
+**Coords:** none
+
+### Changed
+- `web/db/schema.sql` — `nda_url`, `gmail_thread_url`, `crm_events`
+- `web/lib/crm-pursuit.ts` + `POST /api/crm/pursuit` — match + apply (import token)
+- `pipeline/crm_pursuit.py` — classify non-discovery mail; wired into daily harvest
+- `pursuit-links.tsx` / board / deal page — Sign NDA + Open email
+- Act cards unchanged for human stage confirmation
+
+### Follow-ups
+- Improve match rate on Axial Messenger / VDR-only mail
+- Needs-attention queue for unmatched events
+
 ## 2026-08-11 — `nm/web/pipeline` — DONE
 
 **Scope:** Attach CIM to existing pipeline deals without debrief or Create-from-CIM  

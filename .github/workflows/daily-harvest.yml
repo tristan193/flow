@@ -135,6 +135,17 @@ jobs:
           echo "Pushing to ${URL}/api/import (token length ${#TOKEN})"
           python export_snapshot.py --db "$NM_LOCAL_DB" --post "$URL" --token "$TOKEN"
 
+      - name: Pursuit CRM (NDA links + CIM attach)
+        env:
+          DAYS: "3"
+          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(printf '%s' "$FLOW_APP_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          TOKEN="$(printf '%s' "$FLOW_IMPORT_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          python crm_pursuit.py --days "$DAYS" --post "$URL" --token "$TOKEN"
+
       - name: Upload SQLite db
         uses: actions/upload-artifact@v4
         with:
