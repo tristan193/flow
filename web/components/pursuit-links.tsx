@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeGmailThreadUrl } from "@/lib/gmail-thread";
+
 /** NDA / Gmail thread links from pursuit-lane mail (human signs; app links). */
 export function PursuitLinks({
   ndaUrl,
@@ -10,7 +12,8 @@ export function PursuitLinks({
   gmailThreadUrl: string | null;
   compact?: boolean;
 }) {
-  if (!ndaUrl && !gmailThreadUrl) return null;
+  const threadHref = normalizeGmailThreadUrl(gmailThreadUrl);
+  if (!ndaUrl && !threadHref) return null;
 
   const buttonClass =
     "inline-flex items-center rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors";
@@ -28,14 +31,14 @@ export function PursuitLinks({
             Sign NDA
           </a>
         )}
-        {gmailThreadUrl && (
+        {threadHref && (
           <a
-            href={gmailThreadUrl}
+            href={threadHref}
             target="_blank"
             rel="noopener noreferrer"
             className={`${buttonClass} border-line bg-surface-raised text-ink-dim hover:border-line-bright hover:text-ink`}
           >
-            Open email
+            Open in Dirk
           </a>
         )}
       </span>
@@ -56,19 +59,20 @@ export function PursuitLinks({
             Sign NDA
           </a>
         )}
-        {gmailThreadUrl && (
+        {threadHref && (
           <a
-            href={gmailThreadUrl}
+            href={threadHref}
             target="_blank"
             rel="noopener noreferrer"
             className={`${buttonClass} border-line bg-surface-raised text-ink-dim hover:border-line-bright hover:text-ink`}
           >
-            Open email thread
+            Open in Dirk
           </a>
         )}
       </div>
       <p className="text-ink-faint text-[12px]">
-        Detected from broker mail. Signing happens outside Flow; use Act cards when done.
+        Opens dirk@ in Gmail (you must be signed into that account). Signing happens outside
+        Flow; use Act cards when done.
       </p>
     </section>
   );

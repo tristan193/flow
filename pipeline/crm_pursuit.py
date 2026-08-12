@@ -279,7 +279,12 @@ def build_events(days: int) -> list[dict]:
         event: dict[str, Any] = {
             "gmailMessageId": mid,
             "gmailThreadId": thread_id,
-            "gmailThreadUrl": f"https://mail.google.com/mail/u/0/#all/{thread_id}"
+            # authuser=dirk — /u/0 opens Tristan's default browser account
+            "gmailThreadUrl": (
+                "https://mail.google.com/mail/?authuser="
+                "dirk%40tullyinvesting.com"
+                f"#all/{thread_id}"
+            )
             if thread_id
             else None,
             "subject": subject,

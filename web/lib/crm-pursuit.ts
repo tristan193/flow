@@ -5,6 +5,7 @@
 
 import { query, queryOne } from "./db";
 import { getDeal, moveStage, saveDealFile } from "./deals";
+import { gmailCatcherThreadUrl, normalizeGmailThreadUrl } from "./gmail-thread";
 import type { DealRow, MemberId, StageId } from "./model";
 
 export type CrmEventType =
@@ -151,8 +152,8 @@ export function matchDeal(
 }
 
 function gmailThreadLink(threadId: string | null | undefined): string | null {
-  if (!threadId) return null;
-  return `https://mail.google.com/mail/u/0/#all/${threadId}`;
+  if (!threadId?.trim()) return null;
+  return gmailCatcherThreadUrl(threadId);
 }
 
 export async function applyPursuitEvent(input: PursuitEventInput): Promise<PursuitApplyResult> {
@@ -189,7 +190,9 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
   );
 
   const threadUrl =
-    input.gmailThreadUrl?.trim() || gmailThreadLink(input.gmailThreadId) || null;
+    normalizeGmailThreadUrl(input.gmailThreadUrl) ||
+    gmailThreadLink(input.gmailThreadId) ||
+    null;
   const ndaUrl = input.ndaUrl?.trim() || null;
 
   if (!matched) {
