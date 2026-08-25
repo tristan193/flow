@@ -9,7 +9,13 @@ import { SESSION_COOKIE, readSession } from "./lib/session";
  * it is called by the Python pipeline rather than a browser. /api/cron is the
  * same idea for Vercel Cron, which checks CRON_SECRET inside the route.
  */
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/import", "/api/cron", "/api/crm"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/login",
+  "/api/import",
+  "/api/cron",
+  "/api/crm/pursuit", // machine harvest token; /api/crm/attention stays session-gated
+];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
