@@ -65,6 +65,10 @@ URL hygiene: `norm_url` / `url_norm` strips `utm_*`, `gclid`, etc. BBS emails of
 
 **Axial:** teaser emails list Pass (`action=decline`) before Pursue (`action=pursue`). Ingest `pick_listing_url` must store Pursue; Flow rewrites Pass→Pursue on read and on Open. Opening Pass archives the deal on Axial.
 
+**Rejigg** (`rejigg.search_digest`): multi-lead digest from `info@notifications.rejigg.com` — split on `Added:` cards; Revenue/EBITDA/Located + `rejigg.com/app/businesses/{id}`. Subject (`and N other new leads`) is never the listing title.
+
+**WebsiteClosers** (`websiteclosers.new_deal_alert`): Mailchimp single from `info@websiteclosers.com` — Asking Price / Sales→revenue / Earnings→SDE; listing URL under `/businesses/.../{id}/` (ignore mailchi + buyers-club).
+
 ## 5. BizBuySell page enrich (required on harvest)
 
 | Path | Role |

@@ -1,6 +1,6 @@
 {
-  "version": 4,
-  "updated": "2026-08-04",
+  "version": 5,
+  "updated": "2026-08-24",
   "repertoire_path": "pipeline/formats/repertoire.yaml",
   "playbook_path": "docs/deal-format-repertoire.md",
   "formats": [
@@ -114,7 +114,8 @@
         "Multi-year tables are ascending left to right (2023 2024 2025); take the LAST column. Vocational Education read $6.5M/$2.1M (2023) instead of $5.0M/$2.0M (2025)",
         "Geography: 'Western Midwest (IA, KS, \u2026)' / 'Middle Atlantic (CT, DE, \u2026)' \u2014 a census region, not City/ST. extract_location still files the first two states as city/state, which is wrong but load-bearing for dedupe",
         "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M \u2014 normalize_axial_ltm_money + listing correction applied 2026-08-04",
-        "Body order is fixed \u2014 headline, greeting, table, seller prose, boilerplate \u2014 so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold."
+        "Body order is fixed \u2014 headline, greeting, table, seller prose, boilerplate \u2014 so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold.",
+        "Pass (action=decline) is listed before Pursue in the teaser \u2014 pick_listing_url must prefer action=pursue / teaser-share, never the Pass link (archives the deal)"
       ],
       "parser_notes": []
     },
@@ -427,6 +428,62 @@
         "Train AI deal 2434 \u2014 promo prose ingested as a listing"
       ],
       "parser_notes": []
+    },
+    {
+      "id": "rejigg.search_digest",
+      "format_family": "rejigg",
+      "source": "notifications.rejigg.com",
+      "sub_source": "info@notifications.rejigg.com",
+      "provider_subcategory": "notifications",
+      "nickname": "Rejigg",
+      "email_type": "daily_digest",
+      "status": "active",
+      "split": "rejigg",
+      "expected_fields": {
+        "present": [
+          "title",
+          "revenue",
+          "location",
+          "url"
+        ],
+        "needs_llm_ok": [
+          "earnings"
+        ]
+      },
+      "gotchas": [
+        "Subject is digest teaser \u2014 never use as listing title",
+        "One email \u2192 many cards; generic newsletter splitter mashed them",
+        "Negative EBITDA like ($23K) may not parse \u2014 leave null"
+      ],
+      "parser_notes": []
+    },
+    {
+      "id": "websiteclosers.new_deal_alert",
+      "format_family": "websiteclosers",
+      "source": "websiteclosers.com",
+      "sub_source": "info@websiteclosers.com",
+      "provider_subcategory": "alerts",
+      "nickname": "WebsiteClosers",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "websiteclosers",
+      "expected_fields": {
+        "present": [
+          "title",
+          "asking",
+          "revenue",
+          "url"
+        ],
+        "needs_llm_ok": [
+          "location"
+        ]
+      },
+      "gotchas": [
+        "Sales: \u2192 revenue; Earnings: \u2192 SDE (ambiguous label rule)",
+        "Ignore mailchi.mp + /buyers-club/ URLs; keep /businesses/.../{id}/",
+        "Often digital agencies / ecommerce \u2014 buy-box may still reject"
+      ],
+      "parser_notes": []
     }
   ],
   "subcategories": [
@@ -609,6 +666,33 @@
       "default_format": "dealstream.alert",
       "label": "Alerts",
       "purpose": "Marketplace alerts (needs samples)"
+    },
+    {
+      "id": "notifications",
+      "email": "info@notifications.rejigg.com",
+      "provider_domain": "rejigg.com",
+      "provider_nickname": "Rejigg",
+      "default_format": "rejigg.search_digest",
+      "label": "Search-match digest",
+      "purpose": "Multi-lead \"and N other new leads\" digest with Revenue/EBITDA cards"
+    },
+    {
+      "id": "notifications",
+      "email": "info@notifications.rejigg.com",
+      "provider_domain": "notifications.rejigg.com",
+      "provider_nickname": "Rejigg",
+      "default_format": "rejigg.search_digest",
+      "label": "Search-match digest",
+      "purpose": "Same product; From: uses notifications.rejigg.com"
+    },
+    {
+      "id": "alerts",
+      "email": "info@websiteclosers.com",
+      "provider_domain": "websiteclosers.com",
+      "provider_nickname": "WebsiteClosers",
+      "default_format": "websiteclosers.new_deal_alert",
+      "label": "New Deal Alert",
+      "purpose": "Mailchimp single-listing teaser (Asking / Sales / Earnings)"
     }
   ],
   "by_email": {
@@ -621,7 +705,9 @@
     "inquiries@gatewayma.com": "gateway.single_listing",
     "inquiries@businessexits.com": "businessexits.single_listing",
     "invoice+statements@mail.anthropic.com": "anthropic.receipt",
-    "agencyequity@strategicagencies.com": "agencyequity.marketing"
+    "agencyequity@strategicagencies.com": "agencyequity.marketing",
+    "info@notifications.rejigg.com": "rejigg.search_digest",
+    "info@websiteclosers.com": "websiteclosers.new_deal_alert"
   },
   "by_domain": {
     "bizbuysell.com": [
@@ -673,6 +759,12 @@
     ],
     "strategicagencies.com": [
       "agencyequity.marketing"
+    ],
+    "notifications.rejigg.com": [
+      "rejigg.search_digest"
+    ],
+    "websiteclosers.com": [
+      "websiteclosers.new_deal_alert"
     ]
   }
 }

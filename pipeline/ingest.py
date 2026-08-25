@@ -193,6 +193,8 @@ FORMAT_FAMILY_RULES = [
     ("businessexits", [r"businessexits\.com"]),
     # benchmarkintl.com + regional affiliates (benchmarktennessee.com, …)
     ("benchmark",  [r"benchmark[a-z0-9]*\.com"]),
+    ("rejigg",     [r"rejigg\.com", r"notifications\.rejigg\.com"]),
+    ("websiteclosers", [r"websiteclosers\.com"]),
 ]
 
 # SOURCE_RULES kept as an alias so older call sites / docs snippets still grep.
@@ -215,6 +217,8 @@ NICKNAME_RULES = [
     (r"axial\.(net|com)", "Axial"),
     (r"bizquest\.com", "BizQuest"),
     (r"dealstream\.com", "DealStream"),
+    (r"rejigg\.com", "Rejigg"),
+    (r"websiteclosers\.com", "WebsiteClosers"),
 ]
 
 # Personal / catcher inboxes used to forward deals into dirk@. Never treat
@@ -989,6 +993,96 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
             out.append(block)
     return out
 
+
+def _rejigg_title_before(text: str, added_pos: int) -> str:
+    """Last real headline line immediately above an `Added:` marker."""
+    before = text[:added_pos]
+    for line in reversed(before.strip().split("\n")):
+        s = line.strip().strip("*").strip()
+        if not s:
+            continue
+        if re.match(
+            r"(?i)^(matched your search|view details|located:|revenue:|"
+            r"ebitda:|sde:|•|added:)",
+            s,
+        ):
+            continue
+        if _DIGEST_SUBJECT.search(s):
+            continue
+        # Digest header like "Western North Carolina, NC · $877K revenue"
+        if re.search(r"·\s*\$", s) and re.search(r"\brevenue\b", s, re.I):
+            continue
+        if len(s) < 6 or len(s) > 140:
+            continue
+        return s
+    return ""
+
+
+def split_rejigg(body: str) -> List[str]:
+    """One card per Rejigg lead: title + Added: … through View details URL."""
+    text = _strip_forward_chrome(body or "").replace("\r\n", "\n")
+    added = list(re.finditer(r"(?m)^Added:\s*", text))
+    if not added:
+        return []
+
+    blocks: List[str] = []
+    for i, m in enumerate(added):
+        title = _rejigg_title_before(text, m.start())
+        if i + 1 < len(added):
+            between = text[m.start() : added[i + 1].start()]
+        else:
+            between = text[m.start() :]
+        vd = re.search(r"(?im)^View details\b.*$", between)
+        chunk = between[: vd.end()] if vd else between.rstrip()
+        if not vd:
+            # Drop trailing lines that are the next card's title.
+            lines = chunk.split("\n")
+            while lines:
+                last = lines[-1].strip()
+                if not last:
+                    lines.pop()
+                    continue
+                if re.match(
+                    r"(?i)^(•|located:|revenue:|ebitda:|sde:|view details|added:)",
+                    last,
+                ):
+                    break
+                if len(lines) > 4:
+                    lines.pop()
+                    continue
+                break
+            chunk = "\n".join(lines)
+
+        block = f"{title}\n\n{chunk}".strip() if title else chunk.strip()
+        if not re.search(r"(?i)(?:Revenue|EBITDA|SDE)\s*:", block):
+            continue
+        if not (
+            re.search(r"rejigg\.com/app/businesses/\d+", block, re.I)
+            or re.search(r"(?i)^Located\s*:", block, re.M)
+        ):
+            continue
+        blocks.append(block)
+    return blocks
+
+
+def split_websiteclosers(body: str) -> List[str]:
+    """Single Mailchimp New Deal Alert — Asking Price / Sales / Earnings."""
+    text = _strip_forward_chrome(body or "").replace("\r\n", "\n")
+    text = re.split(r"(?i)\n\s*Copyright\s*©|\n\s*\*{0,2}\s*Like Us!", text)[0]
+    if not re.search(r"(?i)Asking\s*Price\s*:", text):
+        return []
+    # Prefer from the ** headline or Asking Price line (drop browser/view chrome).
+    m = re.search(
+        r"^\*{0,2}\s*[^\n]{10,200}\n-{4,}|"
+        r"^Asking\s*Price\s*:",
+        text,
+        re.I | re.M,
+    )
+    if m:
+        text = text[m.start() :]
+    return [text.strip()] if len(text.strip()) >= 80 else []
+
+
 SPLITTERS = {
     "bizbuysell": split_bizbuysell,
     "bizbuysell_newbizopps": split_bizbuysell_newbizopps,
@@ -998,6 +1092,8 @@ SPLITTERS = {
     "businessexits": split_newsletter,
     "benchmark": split_newsletter,
     "newsletter": split_newsletter,
+    "rejigg": split_rejigg,
+    "websiteclosers": split_websiteclosers,
 }
 
 
@@ -1027,6 +1123,14 @@ def blocks_for_email(
         return split_bizbuysell_newbizopps(em.body)
     if "newbizopps@" in email:
         return split_bizbuysell_newbizopps(em.body)
+    if matched and matched.split == "rejigg":
+        return split_rejigg(em.body)
+    if matched and matched.split == "websiteclosers":
+        return split_websiteclosers(em.body)
+    if fam == "rejigg":
+        return split_rejigg(em.body)
+    if fam == "websiteclosers":
+        return split_websiteclosers(em.body)
     if fam in ("newsletter", "dealstream", "businessexits", "benchmark"):
         return split_newsletter(em.body, sender=em.sender)
     splitter = SPLITTERS.get(fam, split_newsletter)
@@ -1090,10 +1194,17 @@ SDE_PATS = [
     # never guess it into the EBITDA column. Bounded so it doesn't eat
     # "net profit margin" commentary elsewhere in a blurb.
     r"\bprofit\b(?!\s+margin)",
+    # WebsiteClosers Mailchimp teasers: line label "Earnings: $537,072"
+    # (ambiguous → SDE). Use lookbehind so the newline is NOT consumed — a
+    # consuming (?:^|\n) let "$811,882\n\nEarnings" bind Sales' dollars to the
+    # Earnings label via backward search.
+    r"(?:^|(?<=\n))earnings\s*:",
 ]
 
 REVENUE_PATS = [r"total\s+revenue", r"gross\s+revenue", r"annual\s+revenue",
-                r"\brevenue\b", r"gross\s+sales", r"annual\s+sales", r"\bsales\b"]
+                r"\brevenue\b", r"gross\s+sales", r"annual\s+sales",
+                # WebsiteClosers uses bare "Sales: $811,882" (not "gross sales")
+                r"(?:^|(?<=\n))sales\s*:", r"\bsales\b"]
 
 ASKING_PATS = [r"asking\s+price", r"\basking\b", r"purchase\s+price",
                r"list\s+price", r"\bprice\b"]
@@ -1311,7 +1422,9 @@ def classify_model(text: str) -> Tuple[str, bool]:
 NOISE_LINE = re.compile(
     r"^(view image|follow image link|caption|sign nda|sign up|podcast|"
     r"work with me|-{3,}|see the revenue|sponsored|\||new listing|"
+    r"new business listing!?|"
     r"sba eligible|partially sba eligible|"
+    r"matched your search|"
     r"this highly|i am contacting|i'm contacting|we are representing|"
     r"i thought you might|thank you,?$|tristan,?$)",
     re.I,
@@ -1367,7 +1480,17 @@ def extract_title(block: str, subject: str = "") -> str:
         re.match(r"(?i)^(?:fwd:\s*)?business for sale:", subject or "")
     )
     subject_is_digest = bool(_DIGEST_SUBJECT.search(subject or ""))
-    usable_subject = bool(subject) and not subject_is_bbs_category and not subject_is_digest
+    # WebsiteClosers subjects are pipe-marketing ("New Deal Alert: A | B | C");
+    # the real headline is the ** line in the body.
+    subject_is_wc_alert = bool(
+        re.match(r"(?i)^(?:fwd:\s*)?new deal alert\s*:", subject or "")
+    )
+    usable_subject = (
+        bool(subject)
+        and not subject_is_bbs_category
+        and not subject_is_digest
+        and not subject_is_wc_alert
+    )
 
     for line in block.strip().split("\n"):
         s = line.strip()
@@ -1388,13 +1511,20 @@ def extract_title(block: str, subject: str = "") -> str:
         if m:
             s = m.group(1)
         s = re.sub(r"^\W+", "", s)
+        # WebsiteClosers pipe-headline: keep full marketing title (useful) but
+        # drop a leading empty remnant after ** strip.
+        if s.startswith("|"):
+            continue
         # Skip broker prose openers; prefer a real headline / subject below.
         if re.match(
             r"^(this|i am|we are|i'm|dear|hello|hi\b|tristan\b|"
-            r"i thought|interested in|similar businesses)\b",
+            r"i thought|interested in|similar businesses|"
+            r"websiteclosers)\b",
             s,
             re.I,
         ):
+            continue
+        if re.match(r"(?i)^(asking price|sales|earnings|located|revenue|ebitda)\s*:", s):
             continue
         if len(s) > 6:
             # Long sentence-like lines are broker prose, not listing names.
@@ -1453,6 +1583,11 @@ def pick_listing_url(block: str, format_family: str = "") -> str:
                 "guide.axial.net",
                 "utm_content=pass",
                 "action=decline",
+                "mailchi.mp",
+                "buyers-club",
+                "facebook.com",
+                "refer-a-business",
+                "list-manage.com",
             )
         )
 
@@ -1475,6 +1610,12 @@ def pick_listing_url(block: str, format_family: str = "") -> str:
         )
 
     usable = [u for u in urls if not is_junk(u) and not is_axial_pass(u)]
+    for u in usable:
+        if "rejigg.com/app/businesses/" in u.lower():
+            return u
+    for u in usable:
+        if "websiteclosers.com/businesses/" in u.lower():
+            return u
     for u in usable:
         if is_axial_pursue(u):
             return _force_axial_pursue(u)

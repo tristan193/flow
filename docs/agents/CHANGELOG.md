@@ -27,6 +27,45 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-24 — `nm/pipeline/formats` — DONE
+
+**Scope:** Rejigg + WebsiteClosers format reading (stop generic-newsletter mash)  
+**Risk:** medium (ingest money/title for two live senders)  
+**Coords:** none
+
+### Changed
+- `pipeline/formats/repertoire.yaml` — providers + `rejigg.search_digest` + `websiteclosers.new_deal_alert`
+- `pipeline/ingest.py` — `split_rejigg` / `split_websiteclosers`; Sales→revenue, Earnings→SDE; WC title from body not subject
+- `pipeline/formats/fixtures/` — regression fixtures; live proof on dirk@ (8 Rejigg cards / 1 WC)
+
+### Do not touch
+- Apify BBS enrich path
+
+### Follow-ups
+- Next harvest re-parses new mail; old mashed Neon rows may need a re-import or correct pass
+- Rejigg negative / projected EBITDA edge cases still fuzzy
+
+---
+
+## 2026-08-12 — `nm/web/crm-pursuit` — DONE
+
+**Scope:** Pursuit “Open email” must open Dirk’s mailbox, not Tristan’s default Gmail  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/lib/gmail-thread.ts` — `authuser=dirk@…` deep links + rewrite legacy `/u/0/` URLs
+- `pursuit-links.tsx` — label **Open in Dirk**; normalize href at display
+- `crm-pursuit.ts` / `pipeline/crm_pursuit.py` — write Dirk-scoped URLs going forward
+
+### Do not touch
+- Gmail OAuth token / catcher account wiring
+
+### Follow-ups
+- Tristan must be signed into `dirk@` in the same browser for the link to land on the thread
+
+---
+
 ## 2026-08-11 — `nm/web/crm-pursuit` — DONE
 
 **Scope:** Pursuit lane v1 — NDA links + auto CIM from dirk@ mail  

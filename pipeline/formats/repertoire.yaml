@@ -11,8 +11,8 @@
 #   nickname   = human-facing label     e.g. BizBuySell
 # format_family = internal splitter key (NOT stored as source)
 #
-version: 4
-updated: 2026-08-04
+version: 5
+updated: 2026-08-24
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -260,6 +260,36 @@ providers:
         purpose: Marketplace alerts (needs samples)
         typical_email_type: daily_digest
         default_format: dealstream.alert
+
+  - domain: rejigg.com
+    nickname: Rejigg
+    subcategories:
+      - id: notifications
+        email: info@notifications.rejigg.com
+        label: Search-match digest
+        purpose: Multi-lead "and N other new leads" digest with Revenue/EBITDA cards
+        typical_email_type: daily_digest
+        default_format: rejigg.search_digest
+
+  - domain: notifications.rejigg.com
+    nickname: Rejigg
+    subcategories:
+      - id: notifications
+        email: info@notifications.rejigg.com
+        label: Search-match digest
+        purpose: "Same product; From: uses notifications.rejigg.com"
+        typical_email_type: daily_digest
+        default_format: rejigg.search_digest
+
+  - domain: websiteclosers.com
+    nickname: WebsiteClosers
+    subcategories:
+      - id: alerts
+        email: info@websiteclosers.com
+        label: New Deal Alert
+        purpose: Mailchimp single-listing teaser (Asking / Sales / Earnings)
+        typical_email_type: single_listing
+        default_format: websiteclosers.new_deal_alert
 
 formats:
 
@@ -825,6 +855,78 @@ formats:
     split: drop
     gotchas:
       - "Train AI deal 2434 — promo prose ingested as a listing"
+
+  # =========================================================================
+  # Rejigg — multi-lead search digest
+  # =========================================================================
+
+  - id: rejigg.search_digest
+    format_family: rejigg
+    source: notifications.rejigg.com
+    sub_source: info@notifications.rejigg.com
+    provider_subcategory: notifications
+    nickname: Rejigg
+    email_type: daily_digest
+    confidence: verified
+    status: active
+    description: >
+      "X and N other new leads" digest. Each card: title, Added:, prose,
+      Located: / Revenue: / EBITDA:, View details → rejigg.com/app/businesses/{id}.
+    detect:
+      sender_addresses: ["info@notifications.rejigg.com"]
+      sender_domains: ["notifications.rejigg.com", "rejigg.com"]
+      subject_patterns:
+        - '(?i)\band\s+\d+\s+other(?:\s+new)?\s+leads?\b'
+        - '(?i)\b\d+\s+new\s+leads?\b'
+      body_open_patterns:
+        - '(?i)matched your search'
+        - '(?i)view details'
+      body_markers:
+        - '(?i)rejigg\.com/app/businesses/\d+'
+    expected_fields:
+      present: [title, revenue, location, url]
+      needs_llm_ok: [earnings]
+    split: rejigg
+    gotchas:
+      - "Subject is digest teaser — never use as listing title"
+      - "One email → many cards; generic newsletter splitter mashed them"
+      - "Negative EBITDA like ($23K) may not parse — leave null"
+
+  # =========================================================================
+  # WebsiteClosers — Mailchimp New Deal Alert
+  # =========================================================================
+
+  - id: websiteclosers.new_deal_alert
+    format_family: websiteclosers
+    source: websiteclosers.com
+    sub_source: info@websiteclosers.com
+    provider_subcategory: alerts
+    nickname: WebsiteClosers
+    email_type: single_listing
+    confidence: verified
+    status: active
+    description: >
+      Single listing. Asking Price / Sales / Earnings labels; listing URL under
+      /businesses/.../{id}/. Subject is pipe-marketing; title from ** headline.
+    detect:
+      sender_addresses: ["info@websiteclosers.com"]
+      sender_domains: ["websiteclosers.com"]
+      subject_patterns:
+        - '(?i)^new deal alert:'
+      body_open_patterns:
+        - '(?i)new business listing'
+        - '(?i)websiteclosers'
+      body_markers:
+        - '(?i)asking\s*price\s*:'
+        - '(?i)websiteclosers\.com/businesses/'
+    expected_fields:
+      present: [title, asking, revenue, url]
+      needs_llm_ok: [location]
+    split: websiteclosers
+    gotchas:
+      - "Sales: → revenue; Earnings: → SDE (ambiguous label rule)"
+      - "Ignore mailchi.mp + /buyers-club/ URLs; keep /businesses/.../{id}/"
+      - "Often digital agencies / ecommerce — buy-box may still reject"
 
 shared_markers:
   broker_teaser:
