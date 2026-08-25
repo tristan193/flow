@@ -9,6 +9,14 @@ export function gmailCatcherThreadUrl(threadId: string): string {
   return `https://mail.google.com/mail/?authuser=${auth}#all/${id}`;
 }
 
+/** Search Dirk's mailbox (authuser) — used when we have a title but no thread yet. */
+export function gmailCatcherSearchUrl(query: string): string {
+  const q = query.trim();
+  const auth = encodeURIComponent(CATCHER_GMAIL);
+  if (!q) return `https://mail.google.com/mail/?authuser=${auth}#inbox`;
+  return `https://mail.google.com/mail/?authuser=${auth}#search/${encodeURIComponent(q)}`;
+}
+
 /**
  * Rewrite legacy `/mail/u/0/#all/…` links (opens Tristan's default account)
  * to Dirk authuser links. Pass-through if already authuser-scoped or unknown.
@@ -34,4 +42,17 @@ export function normalizeGmailThreadUrl(url: string | null | undefined): string 
   }
 
   return raw;
+}
+
+/**
+ * Best Dirk Gmail href for a watch/review row: known thread, else title search.
+ * Always authuser=dirk@ so Tristan's default inbox is not used.
+ */
+export function dirkMailHref(opts: {
+  gmailThreadUrl?: string | null;
+  searchQuery?: string | null;
+}): string {
+  const thread = normalizeGmailThreadUrl(opts.gmailThreadUrl);
+  if (thread) return thread;
+  return gmailCatcherSearchUrl(opts.searchQuery?.trim() || "");
 }

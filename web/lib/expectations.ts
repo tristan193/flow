@@ -22,6 +22,8 @@ export interface DealExpectation {
   title?: string;
   nickname?: string | null;
   stage?: string;
+  gmail_thread_url?: string | null;
+  nda_url?: string | null;
 }
 
 const DEFAULT_DUE_DAYS = 14;
@@ -127,7 +129,8 @@ export async function syncExpectationsFromOutreach(
 export async function listOpenExpectations(): Promise<DealExpectation[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT e.id, e.deal_id, e.kind, e.status, e.armed_by, e.armed_at, e.due_at,
-            e.fulfilled_at, e.note, d.title, d.nickname, d.stage
+            e.fulfilled_at, e.note, d.title, d.nickname, d.stage,
+            d.gmail_thread_url, d.nda_url
        FROM deal_expectations e
        JOIN deals d ON d.id = e.deal_id
       WHERE e.status = 'open'
@@ -147,6 +150,8 @@ export async function listOpenExpectations(): Promise<DealExpectation[]> {
     title: String(r.title),
     nickname: r.nickname == null ? null : String(r.nickname),
     stage: String(r.stage),
+    gmail_thread_url: r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+    nda_url: r.nda_url == null ? null : String(r.nda_url),
   }));
 }
 

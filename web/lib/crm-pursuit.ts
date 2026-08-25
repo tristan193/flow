@@ -495,12 +495,14 @@ export async function listCrmAttention(): Promise<{
     status: string;
     created_at: string;
     proposed_title: string | null;
+    gmail_thread_url: string | null;
+    nda_url: string | null;
   }>;
 }> {
   const expectations = await listOpenExpectations();
   const rows = await query<Record<string, unknown>>(
     `SELECT e.id, e.deal_id, e.event_type, e.subject, e.from_address, e.status, e.created_at,
-            d.title AS proposed_title
+            e.gmail_thread_url, e.nda_url, d.title AS proposed_title
        FROM crm_events e
        LEFT JOIN deals d ON d.id = e.deal_id
       WHERE e.status IN ('needs_review', 'unmatched')
@@ -518,6 +520,8 @@ export async function listCrmAttention(): Promise<{
       status: String(r.status),
       created_at: String(r.created_at),
       proposed_title: r.proposed_title == null ? null : String(r.proposed_title),
+      gmail_thread_url: r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+      nda_url: r.nda_url == null ? null : String(r.nda_url),
     })),
   };
 }
