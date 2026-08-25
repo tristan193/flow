@@ -33,6 +33,7 @@ const eventSchema = z.object({
     .object({
       dealNumber: z.string().nullable().optional(),
       titleCue: z.string().nullable().optional(),
+      listingIds: z.array(z.string()).nullable().optional(),
     })
     .optional(),
   fileBase64: z.string().nullable().optional(),

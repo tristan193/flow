@@ -1,12 +1,13 @@
 /**
  * Per-source next-step playbooks.
- * Shared pipeline: shortlist → prompted action → link-out → debrief.
- * Any deal with a listing URL is actionable; Axial gets pursue-link rewrite.
+ * Axial: pursue URL is the action. Others: inbox artifacts when present,
+ * else listing open (discovery bookmark, not a pursue portal).
  */
 
 import type { DealRow } from "./model";
+import { normalizeGmailThreadUrl } from "./gmail-thread";
 
-export type PlaybookId = "axial" | "listing";
+export type PlaybookId = "axial" | "inbox" | "listing";
 
 export interface Playbook {
   id: PlaybookId;
@@ -46,16 +47,15 @@ function listingHref(deal: Pick<DealRow, "source" | "nickname" | "url">): string
 }
 
 export function resolvePlaybook(
-  deal: Pick<DealRow, "source" | "nickname" | "url">,
+  deal: Pick<DealRow, "source" | "nickname" | "url" | "nda_url" | "gmail_thread_url">,
 ): Playbook | null {
-  const href = listingHref(deal);
-  if (!href) return null;
-
   const source = (deal.source || "").toLowerCase();
   const nick = (deal.nickname || "").toLowerCase();
   const isAxial = source.includes("axial") || nick === "axial";
 
   if (isAxial) {
+    const href = normalizeAxialHref(deal.url);
+    if (!href) return null;
     return {
       id: "axial",
       ctaLabel: "Pursue on Axial →",
@@ -64,21 +64,43 @@ export function resolvePlaybook(
     };
   }
 
+  // Non-Axial: inbox artifact is the real next step when we have one.
+  if (deal.nda_url?.trim()) {
+    return {
+      id: "inbox",
+      ctaLabel: "Sign NDA →",
+      href: deal.nda_url.trim(),
+      hint: "From Dirk mail — signing happens outside Flow",
+    };
+  }
+  const thread = normalizeGmailThreadUrl(deal.gmail_thread_url);
+  if (thread) {
+    return {
+      id: "inbox",
+      ctaLabel: "Open in Dirk →",
+      href: thread,
+      hint: "Broker thread in the catcher inbox — log what you did after",
+    };
+  }
+
+  const href = listingHref(deal);
+  if (!href) return null;
+
   const label = deal.nickname?.trim() || "listing";
   return {
     id: "listing",
     ctaLabel: `Open ${label} →`,
     href,
-    hint: "Open the listing to request info, NDA, or materials",
+    hint: "Listing bookmark — after you act, Flow watches Dirk for the reply",
   };
 }
 
 /** Early pipeline stages that still need an action prompt. */
 export const ACTIONABLE_STAGES = new Set(["shortlist", "contacted", "nda"]);
 
-/** On the Act deck when shortlisted (etc.) and a real listing URL exists. */
+/** On the Act deck when shortlisted (etc.) and a real next-step exists. */
 export function isActionableDeal(
-  deal: Pick<DealRow, "stage" | "source" | "nickname" | "url">,
+  deal: Pick<DealRow, "stage" | "source" | "nickname" | "url" | "nda_url" | "gmail_thread_url">,
 ): boolean {
   return ACTIONABLE_STAGES.has(deal.stage) && resolvePlaybook(deal) != null;
 }

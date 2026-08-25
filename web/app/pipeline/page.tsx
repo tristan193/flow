@@ -1,8 +1,10 @@
 import { Nav } from "@/components/nav";
 import { PipelineClient } from "@/components/pipeline-client";
 import { AddFromCim } from "@/components/add-from-cim";
+import { AttentionPanel } from "@/components/attention-panel";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
+import { listCrmAttention } from "@/lib/crm-pursuit";
 import { listBoardDeals } from "@/lib/deals";
 import { memberLabel } from "@/lib/model";
 
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function PipelinePage() {
   await ensureReady();
   const member = await requireMember();
-  const deals = await listBoardDeals();
+  const [deals, attention] = await Promise.all([listBoardDeals(), listCrmAttention()]);
 
   return (
     <>
@@ -21,10 +23,17 @@ export default async function PipelinePage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
             <p className="text-ink-dim text-[12.5px]">
-              Act: pursue deals · Board: stage trail
+              Act: pursue deals · Board: stage trail · Inbox watches after Act
             </p>
           </div>
           <AddFromCim />
+        </div>
+
+        <div className="mb-3">
+          <AttentionPanel
+            expectations={attention.expectations}
+            reviews={attention.reviews}
+          />
         </div>
 
         {deals.length === 0 ? (

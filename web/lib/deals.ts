@@ -17,6 +17,7 @@ import {
   isOutreachOutcomeId,
   stageFromOutcomes,
 } from "./model";
+import { syncExpectationsFromOutreach } from "./expectations";
 import { normalizeAxialHref } from "./playbooks";
 
 /**
@@ -421,6 +422,9 @@ export async function recordOutreach(
   if (nextStage) {
     await moveStage(dealId, member, nextStage);
   }
+
+  // Arm / fulfill inbox watches — shortlist alone does not; Act does.
+  await syncExpectationsFromOutreach(dealId, member, outcomes, trimmedNote);
 }
 
 const MAX_CIM_BYTES = 4 * 1024 * 1024; // Vercel request body ceiling

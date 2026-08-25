@@ -233,3 +233,25 @@ CREATE TABLE IF NOT EXISTS crm_events (
 
 CREATE INDEX IF NOT EXISTS ix_crm_events_deal ON crm_events (deal_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_crm_events_type ON crm_events (event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_crm_events_status ON crm_events (status, created_at DESC);
+
+-- Armed watches: shortlist alone is not enough — Act/debrief opens an expectation
+-- that inbox pursuit mail should fulfill (NDA / CIM / broker reply).
+CREATE TABLE IF NOT EXISTS deal_expectations (
+  id              SERIAL PRIMARY KEY,
+  deal_id         INTEGER NOT NULL REFERENCES deals (id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'open',
+  armed_by        TEXT NOT NULL,
+  armed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  due_at          TIMESTAMPTZ,
+  fulfilled_at    TIMESTAMPTZ,
+  crm_event_id    INTEGER REFERENCES crm_events (id) ON DELETE SET NULL,
+  note            TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_deal_expectations_open
+  ON deal_expectations (status, kind, due_at)
+  WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS ix_deal_expectations_deal
+  ON deal_expectations (deal_id, status, armed_at DESC);

@@ -27,7 +27,28 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
-## 2026-08-24 — `nm/pipeline/formats` — DONE
+## 2026-08-25 — `nm/web/crm-pursuit` — DONE
+
+**Scope:** Whole-pipeline pursuit loop — Act arms expectations; inbox hard-match; agentic review  
+**Risk:** medium (new table, match policy change, Act CTA priority)  
+**Coords:** none
+
+### Changed
+- `web/db/schema.sql` — `deal_expectations` (open watches after Act/debrief)
+- `web/lib/expectations.ts` — arm/fulfill from outreach outcomes
+- `web/lib/crm-pursuit.ts` — auto-apply only listing-id / verbatim title; fuzzy → `needs_review`
+- `web/lib/playbooks.ts` — non-Axial: Sign NDA / Open in Dirk before listing bookmark
+- `AttentionPanel` + `GET/POST /api/crm/attention` on Pipeline
+- `pipeline/crm_pursuit.py` — pass `listingIds` in matchHints
+
+### Do not touch
+- Discovery ingest / Apify enrich
+
+### Follow-ups
+- LLM type classifier for leftover mail (still rules-first)
+- Stale expectation nudges on Act deck ordering
+
+---
 
 **Scope:** Rejigg + WebsiteClosers format reading (stop generic-newsletter mash)  
 **Risk:** medium (ingest money/title for two live senders)  

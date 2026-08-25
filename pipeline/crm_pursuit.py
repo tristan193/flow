@@ -62,6 +62,26 @@ NDA_URL_RE = re.compile(
 )
 ANY_HTTPS_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
 DEAL_NUM_RE = re.compile(r"\bdeal\s*#?\s*(\d{5,})", re.I)
+LISTING_ID_RES = [
+    re.compile(r"bizbuysell\.com/[^?\s]*[?&]q=(\d{5,})", re.I),
+    re.compile(r"/business-opportunity/[^/\s]+/(\d{5,})", re.I),
+    re.compile(r"rejigg\.com/app/businesses/(\d+)", re.I),
+    re.compile(r"websiteclosers\.com/businesses/[^/\s]+/(\d+)", re.I),
+    re.compile(r"axial\.net/[^\s]*opportunity/([a-f0-9-]{8,})", re.I),
+]
+
+
+def extract_listing_ids(*parts: str) -> list[str]:
+    hay = "\n".join(p for p in parts if p)
+    found: list[str] = []
+    for cre in LISTING_ID_RES:
+        found.extend(cre.findall(hay))
+    # de-dupe, preserve order
+    out: list[str] = []
+    for x in found:
+        if x not in out:
+            out.append(x)
+    return out
 
 
 def _attachments_meta(payload: dict) -> list[dict]:
@@ -295,6 +315,7 @@ def build_events(days: int) -> list[dict]:
             "matchHints": {
                 "dealNumber": hit.get("dealNumber"),
                 "titleCue": hit.get("titleCue"),
+                "listingIds": extract_listing_ids(subject, body, hit.get("titleCue") or ""),
             },
         }
 

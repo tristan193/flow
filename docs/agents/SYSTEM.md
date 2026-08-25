@@ -69,6 +69,21 @@ URL hygiene: `norm_url` / `url_norm` strips `utm_*`, `gclid`, etc. BBS emails of
 
 **WebsiteClosers** (`websiteclosers.new_deal_alert`): Mailchimp single from `info@websiteclosers.com` — Asking Price / Sales→revenue / Earnings→SDE; listing URL under `/businesses/.../{id}/` (ignore mailchi + buyers-club).
 
+## 4b. Pursuit loop (post-shortlist)
+
+Axial’s pursue URL is the action key for life. Other sources use **Dirk inbox** as the action key after you Act.
+
+```
+Shortlist → interested (no watch)
+Act / debrief → arm deal_expectations (nda | cim | broker_reply)
+crm_pursuit harvest → type event → hard match (listing id | verbatim title)
+  → applied: attach NDA/thread/CIM + fulfill expectation
+  → needs_review: Attention panel (confirm / dismiss)
+  → unmatched: Attention panel
+```
+
+Fuzzy title match never auto-applies unless an expectation is open (and even then only as `needs_review`).
+
 ## 5. BizBuySell page enrich (required on harvest)
 
 | Path | Role |
