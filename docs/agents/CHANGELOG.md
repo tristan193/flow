@@ -29,6 +29,22 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-08-25 — `nm/web/crm-pursuit` — DONE
 
+**Scope:** Inbox watches open Dirk Gmail on click (not Tristan default)  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/lib/gmail-thread.ts` — `dirkMailHref` / search-by-title when no thread yet
+- `web/components/attention-panel.tsx` — title + **Open in Dirk** → `authuser=dirk@`
+- `web/lib/expectations.ts`, `web/lib/crm-pursuit.ts` — pass `gmail_thread_url` / `nda_url` into panel
+
+### Follow-ups
+- Browser must already be signed into `dirk@` for authuser to stick
+
+---
+
+## 2026-08-25 — `nm/web/crm-pursuit` — DONE
+
 **Scope:** Whole-pipeline pursuit loop — Act arms expectations; inbox hard-match; agentic review  
 **Risk:** medium (new table, match policy change, Act CTA priority)  
 **Coords:** none
