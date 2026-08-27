@@ -131,7 +131,7 @@ export function AttentionPanel({
                 </div>
                 <ActionRow
                   mailHref={mailHref}
-                  ndaUrl={e.nda_url}
+                  ndaUrl={e.kind === "nda" ? e.nda_url : null}
                   dealId={e.deal_id}
                   busy={busy}
                   onDismiss={() => resolve({ expectationId: e.id, action: "dismiss" })}
@@ -173,7 +173,6 @@ export function AttentionPanel({
                   </div>
                   <ActionRow
                     mailHref={mailHref}
-                    ndaUrl={r.nda_url}
                     dealId={r.deal_id}
                     busy={busy}
                     onConfirm={
