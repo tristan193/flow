@@ -27,6 +27,20 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-27 — `nm/web/crm` — DONE
+
+**Scope:** Dismiss button on Inbox watches (armed expectations)  
+**Risk:** low  
+**Coords:** none
+
+### Changed
+- `web/lib/expectations.ts` — `cancelExpectation(id)`
+- `web/app/api/crm/attention/route.ts` — dismiss via `expectationId`
+- `web/components/attention-panel.tsx` — Dismiss on watch cards (reviews already had it)
+
+### Follow-ups
+- none
+
 ## 2026-08-25 — `nm/web/cim-web` — DONE
 
 **Scope:** Web CIM — broker landing page (+ optional access/password note) alongside file upload  
