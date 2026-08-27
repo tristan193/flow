@@ -63,6 +63,18 @@ export async function cancelOpenExpectations(dealId: number): Promise<void> {
   );
 }
 
+/** Dismiss one open watch from the Inbox watches panel. */
+export async function cancelExpectation(id: number): Promise<boolean> {
+  const rows = await query<{ id: number }>(
+    `UPDATE deal_expectations
+        SET status = 'cancelled', fulfilled_at = coalesce(fulfilled_at, now())
+      WHERE id = $1 AND status = 'open'
+      RETURNING id`,
+    [id],
+  );
+  return rows.length > 0;
+}
+
 export async function fulfillExpectations(
   dealId: number,
   kinds: ExpectationKind[],

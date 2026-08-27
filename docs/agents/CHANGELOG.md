@@ -27,6 +27,23 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-08-25 — `nm/web/cim-web` — DONE
+
+**Scope:** Web CIM — broker landing page (+ optional access/password note) alongside file upload  
+**Risk:** low (new nullable column; UI + `/api/cim/link`)  
+**Coords:** none
+
+### Changed
+- `web/db/schema.sql` — `cim_access_note`
+- `web/lib/cim-url.ts`, `web/lib/deals.ts` — `saveDealCimLink` / file vs web helpers
+- `web/app/api/cim/link/route.ts` — save Web CIM
+- `web/components/attach-cim.tsx`, `action-deck.tsx` — File CIM + Web CIM
+
+### Follow-ups
+- Access note is partner-visible plain text (not a secrets vault)
+
+---
+
 ## 2026-08-25 — `nm/web/crm-pursuit` — DONE
 
 **Scope:** Inbox watches open Dirk Gmail on click (not Tristan default)  

@@ -8,6 +8,7 @@ import {
   dismissCrmReview,
   listCrmAttention,
 } from "@/lib/crm-pursuit";
+import { cancelExpectation } from "@/lib/expectations";
 
 export const runtime = "nodejs";
 
@@ -19,13 +20,18 @@ export async function GET() {
   return NextResponse.json(data);
 }
 
-const resolveSchema = z.object({
-  eventId: z.number().int().positive(),
-  action: z.enum(["confirm", "dismiss"]),
-  dealId: z.number().int().positive().optional(),
-});
+const resolveSchema = z
+  .object({
+    action: z.enum(["confirm", "dismiss"]),
+    eventId: z.number().int().positive().optional(),
+    expectationId: z.number().int().positive().optional(),
+    dealId: z.number().int().positive().optional(),
+  })
+  .refine((v) => v.eventId != null || v.expectationId != null, {
+    message: "eventId or expectationId required",
+  });
 
-/** Confirm a proposed match or dismiss noise. */
+/** Confirm a proposed match, or dismiss a review / inbox watch. */
 export async function POST(request: NextRequest) {
   await ensureReady();
   await requireMember();
@@ -35,12 +41,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid attention resolve." }, { status: 400 });
   }
 
-  const { eventId, action, dealId } = parsed.data;
+  const { eventId, expectationId, action, dealId } = parsed.data;
+
   if (action === "dismiss") {
-    await dismissCrmReview(eventId);
+    if (expectationId != null) {
+      const ok = await cancelExpectation(expectationId);
+      if (!ok) {
+        return NextResponse.json({ error: "Watch not found or already closed." }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+    await dismissCrmReview(eventId!);
     return NextResponse.json({ ok: true });
   }
 
+  if (eventId == null) {
+    return NextResponse.json({ error: "eventId required to confirm." }, { status: 400 });
+  }
   if (!dealId) {
     return NextResponse.json({ error: "dealId required to confirm." }, { status: 400 });
   }

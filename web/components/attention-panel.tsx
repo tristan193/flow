@@ -51,18 +51,25 @@ export function AttentionPanel({
   reviews: Review[];
 }) {
   const router = useRouter();
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const resolve = useCallback(
-    async (eventId: number, action: "confirm" | "dismiss", dealId?: number) => {
-      setBusyId(eventId);
+    async (
+      payload: { eventId: number; action: "confirm" | "dismiss"; dealId?: number } | {
+        expectationId: number;
+        action: "dismiss";
+      },
+    ) => {
+      const busyKey =
+        "expectationId" in payload ? `e-${payload.expectationId}` : `r-${payload.eventId}`;
+      setBusyId(busyKey);
       setError(null);
       try {
         const res = await fetch("/api/crm/attention", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ eventId, action, dealId }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => null);
@@ -148,6 +155,14 @@ export function AttentionPanel({
                   >
                     Deal →
                   </Link>
+                  <button
+                    type="button"
+                    disabled={busyId === `e-${e.id}`}
+                    onClick={() => resolve({ expectationId: e.id, action: "dismiss" })}
+                    className="border-line bg-surface-raised text-ink-dim hover:text-ink rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </li>
             );
@@ -199,8 +214,10 @@ export function AttentionPanel({
                     {r.deal_id != null && (
                       <button
                         type="button"
-                        disabled={busyId === r.id}
-                        onClick={() => resolve(r.id, "confirm", r.deal_id!)}
+                        disabled={busyId === `r-${r.id}`}
+                        onClick={() =>
+                          resolve({ eventId: r.id, action: "confirm", dealId: r.deal_id! })
+                        }
                         className="border-discuss/40 bg-discuss-bg text-discuss rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
                       >
                         Confirm match
@@ -208,8 +225,8 @@ export function AttentionPanel({
                     )}
                     <button
                       type="button"
-                      disabled={busyId === r.id}
-                      onClick={() => resolve(r.id, "dismiss")}
+                      disabled={busyId === `r-${r.id}`}
+                      onClick={() => resolve({ eventId: r.id, action: "dismiss" })}
                       className="border-line bg-surface-raised text-ink-dim hover:text-ink rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
                     >
                       Dismiss
