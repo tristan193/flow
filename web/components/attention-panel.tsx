@@ -36,8 +36,10 @@ const KIND_LABEL: Record<string, string> = {
   broker_reply: "waiting on reply",
 };
 
-const mailBtn =
-  "inline-flex items-center rounded-lg border border-line bg-surface-raised px-2.5 py-1 text-[12px] font-semibold text-ink-dim transition-colors hover:border-line-bright hover:text-ink";
+const btn =
+  "inline-flex items-center rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors disabled:opacity-50";
+const btnNeutral = `${btn} border-line bg-surface-raised text-ink-dim hover:border-line-bright hover:text-ink`;
+const btnDiscuss = `${btn} border-discuss/40 bg-discuss-bg text-discuss hover:brightness-110`;
 
 /**
  * Inbox watches + agentic review for pursuit mail that didn't hard-match.
@@ -56,10 +58,9 @@ export function AttentionPanel({
 
   const resolve = useCallback(
     async (
-      payload: { eventId: number; action: "confirm" | "dismiss"; dealId?: number } | {
-        expectationId: number;
-        action: "dismiss";
-      },
+      payload:
+        | { eventId: number; action: "confirm" | "dismiss"; dealId?: number }
+        | { expectationId: number; action: "dismiss" },
     ) => {
       const busyKey =
         "expectationId" in payload ? `e-${payload.expectationId}` : `r-${payload.eventId}`;
@@ -109,61 +110,32 @@ export function AttentionPanel({
               searchQuery: e.title,
             });
             const hasThread = Boolean(e.gmail_thread_url?.trim());
+            const busy = busyId === `e-${e.id}`;
             return (
-              <li
-                key={e.id}
-                className="border-line flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-2"
-              >
-                <div className="min-w-0 flex-1">
+              <li key={e.id} className="border-line space-y-2 rounded-lg border px-2.5 py-2">
+                <div>
                   <a
                     href={mailHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-ink hover:text-accent block truncate text-[13px] font-semibold"
+                    className="text-ink hover:text-accent text-[13px] font-semibold leading-snug"
                     title="Open in Dirk’s Gmail"
                   >
                     {e.title || `Deal ${e.deal_id}`}
                   </a>
                   <p className="text-ink-faint text-[11px]">
-                    {e.nickname || "Listing"} · {KIND_LABEL[e.kind] || e.kind}
+                    Watch · {e.nickname || "Listing"} · {KIND_LABEL[e.kind] || e.kind}
                     {overdue ? " · overdue" : ""}
                     {hasThread ? " · thread" : " · search"}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {e.nda_url?.trim() && (
-                    <a
-                      href={e.nda_url.trim()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="border-discuss/40 bg-discuss-bg text-discuss inline-flex items-center rounded-lg border px-2.5 py-1 text-[12px] font-semibold"
-                    >
-                      Sign NDA
-                    </a>
-                  )}
-                  <a
-                    href={mailHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={mailBtn}
-                  >
-                    Open in Dirk
-                  </a>
-                  <Link
-                    href={`/deals/${e.deal_id}`}
-                    className="text-ink-dim hover:text-ink text-[12px] font-semibold"
-                  >
-                    Deal →
-                  </Link>
-                  <button
-                    type="button"
-                    disabled={busyId === `e-${e.id}`}
-                    onClick={() => resolve({ expectationId: e.id, action: "dismiss" })}
-                    className="border-line bg-surface-raised text-ink-dim hover:text-ink rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
-                  >
-                    Dismiss
-                  </button>
-                </div>
+                <ActionRow
+                  mailHref={mailHref}
+                  ndaUrl={e.nda_url}
+                  dealId={e.deal_id}
+                  busy={busy}
+                  onDismiss={() => resolve({ expectationId: e.id, action: "dismiss" })}
+                />
               </li>
             );
           })}
@@ -181,11 +153,9 @@ export function AttentionPanel({
                 gmailThreadUrl: r.gmail_thread_url,
                 searchQuery: r.subject || r.proposed_title,
               });
+              const busy = busyId === `r-${r.id}`;
               return (
-                <li
-                  key={r.id}
-                  className="border-line space-y-2 rounded-lg border px-2.5 py-2"
-                >
+                <li key={r.id} className="border-line space-y-2 rounded-lg border px-2.5 py-2">
                   <div>
                     <a
                       href={mailHref}
@@ -197,49 +167,27 @@ export function AttentionPanel({
                       {r.subject || "(no subject)"}
                     </a>
                     <p className="text-ink-faint text-[11px]">
-                      {r.event_type.replace(/_/g, " ")} · {r.from_address || "unknown"} ·{" "}
-                      {r.status}
+                      Review · {r.event_type.replace(/_/g, " ")} · {r.from_address || "unknown"}
                       {r.proposed_title ? ` · suggest: ${r.proposed_title}` : ""}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href={mailHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={mailBtn}
-                    >
-                      Open in Dirk
-                    </a>
-                    {r.deal_id != null && (
-                      <button
-                        type="button"
-                        disabled={busyId === `r-${r.id}`}
-                        onClick={() =>
-                          resolve({ eventId: r.id, action: "confirm", dealId: r.deal_id! })
-                        }
-                        className="border-discuss/40 bg-discuss-bg text-discuss rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
-                      >
-                        Confirm match
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busyId === `r-${r.id}`}
-                      onClick={() => resolve({ eventId: r.id, action: "dismiss" })}
-                      className="border-line bg-surface-raised text-ink-dim hover:text-ink rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
-                    >
-                      Dismiss
-                    </button>
-                    {r.deal_id != null && (
-                      <Link
-                        href={`/deals/${r.deal_id}`}
-                        className="text-ink-dim hover:text-ink self-center text-[12px] font-semibold"
-                      >
-                        Deal →
-                      </Link>
-                    )}
-                  </div>
+                  <ActionRow
+                    mailHref={mailHref}
+                    ndaUrl={r.nda_url}
+                    dealId={r.deal_id}
+                    busy={busy}
+                    onConfirm={
+                      r.deal_id != null
+                        ? () =>
+                            resolve({
+                              eventId: r.id,
+                              action: "confirm",
+                              dealId: r.deal_id!,
+                            })
+                        : undefined
+                    }
+                    onDismiss={() => resolve({ eventId: r.id, action: "dismiss" })}
+                  />
                 </li>
               );
             })}
@@ -249,5 +197,48 @@ export function AttentionPanel({
 
       {error && <p className="text-pass text-[12px]">{error}</p>}
     </section>
+  );
+}
+
+/** Shared actions: Sign NDA → Open in Dirk → Confirm (review only) → Deal → Dismiss */
+function ActionRow({
+  mailHref,
+  ndaUrl,
+  dealId,
+  busy,
+  onConfirm,
+  onDismiss,
+}: {
+  mailHref: string;
+  ndaUrl?: string | null;
+  dealId: number | null;
+  busy: boolean;
+  onConfirm?: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {ndaUrl?.trim() && (
+        <a href={ndaUrl.trim()} target="_blank" rel="noopener noreferrer" className={btnDiscuss}>
+          Sign NDA
+        </a>
+      )}
+      <a href={mailHref} target="_blank" rel="noopener noreferrer" className={btnNeutral}>
+        Open in Dirk
+      </a>
+      {onConfirm && (
+        <button type="button" disabled={busy} onClick={onConfirm} className={btnDiscuss}>
+          Confirm match
+        </button>
+      )}
+      {dealId != null && (
+        <Link href={`/deals/${dealId}`} className={btnNeutral}>
+          Deal →
+        </Link>
+      )}
+      <button type="button" disabled={busy} onClick={onDismiss} className={btnNeutral}>
+        Dismiss
+      </button>
+    </div>
   );
 }
