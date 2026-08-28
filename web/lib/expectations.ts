@@ -63,7 +63,7 @@ export async function cancelOpenExpectations(dealId: number): Promise<void> {
   );
 }
 
-/** Dismiss one open watch from the Inbox watches panel. */
+/** Archive one watch. Other open watches on the same deal stay put. */
 export async function cancelExpectation(id: number): Promise<boolean> {
   const rows = await query<{ id: number }>(
     `UPDATE deal_expectations
@@ -95,6 +95,10 @@ export async function fulfillExpectations(
   return rows.length;
 }
 
+/**
+ * Arm watches for a deal. Never resurrects a kind the human already dismissed
+ * (cancelled) — otherwise Act/debrief re-saves recreate the Inbox watch cards.
+ */
 export async function armExpectations(
   dealId: number,
   member: MemberId,
@@ -103,13 +107,15 @@ export async function armExpectations(
   dueDays: number = DEFAULT_DUE_DAYS,
 ): Promise<void> {
   for (const kind of kinds) {
-    const existing = await queryOne<{ id: number }>(
-      `SELECT id FROM deal_expectations
-        WHERE deal_id = $1 AND kind = $2 AND status = 'open'
+    const existing = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM deal_expectations
+        WHERE deal_id = $1 AND kind = $2 AND status IN ('open', 'cancelled')
+        ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, id DESC
         LIMIT 1`,
       [dealId, kind],
     );
-    if (existing) continue;
+    if (existing?.status === "open") continue;
+    if (existing?.status === "cancelled") continue;
     await query(
       `INSERT INTO deal_expectations (deal_id, kind, status, armed_by, due_at, note)
        VALUES ($1, $2, 'open', $3, now() + ($4 || ' days')::interval, $5)`,
