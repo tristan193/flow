@@ -46,6 +46,8 @@ export function expectationPlanFromOutcomes(outcomes: OutreachOutcomeId[]): {
   } else if (outcomes.includes("nda_signed")) {
     fulfill.push("nda", "broker_reply");
     arm.push("cim");
+  } else if (outcomes.includes("nda_sent")) {
+    arm.push("nda");
   } else if (outcomes.includes("messaged") || outcomes.includes("waiting")) {
     // Acted: expect broker reply and/or NDA path from inbox.
     arm.push("broker_reply", "nda");

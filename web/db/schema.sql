@@ -4,13 +4,21 @@
 -- the hosted Postgres in production, so there is no dialect gap between the two.
 -- Every statement is idempotent: this file is applied on every boot.
 --
--- Deal identity is ext_id, minted by the Python pipeline and stable across
--- runs. Imports upsert on it, which is what makes re-importing the same
--- snapshot safe.
+-- Deal identity: every row gets a durable TLY-NNN on first touch. Imports
+-- join on deal_number, then source_deal_id / source_ids, then fingerprint —
+-- never on broker name or a single Gmail thread.
 
 CREATE TABLE IF NOT EXISTS deals (
   id                  SERIAL PRIMARY KEY,
   ext_id              TEXT UNIQUE NOT NULL,
+  deal_number         TEXT UNIQUE,
+  source_deal_id      TEXT,
+  source_ids          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  alias_names         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  gmail_thread_ids    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  broker_firm         TEXT,
+  fingerprint         TEXT,
+  next_action         TEXT,
 
   title               TEXT NOT NULL,
   blurb               TEXT,
@@ -56,10 +64,30 @@ CREATE TABLE IF NOT EXISTS deals (
 CREATE INDEX IF NOT EXISTS ix_deals_state ON deals (state);
 CREATE INDEX IF NOT EXISTS ix_deals_stage ON deals (stage);
 CREATE INDEX IF NOT EXISTS ix_deals_last_seen ON deals (last_seen DESC);
+CREATE INDEX IF NOT EXISTS ix_deals_fingerprint ON deals (fingerprint);
+CREATE INDEX IF NOT EXISTS ix_deals_source_deal_id ON deals (source_deal_id);
+
+CREATE TABLE IF NOT EXISTS deal_counters (
+  key     TEXT PRIMARY KEY,
+  next_n  INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO deal_counters (key, next_n) VALUES ('tly', 1) ON CONFLICT (key) DO NOTHING;
 
 -- Existing hosted DBs were created before the attribution triad — add columns.
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS nickname TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_number TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_deal_id TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_ids JSONB;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS alias_names JSONB;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS gmail_thread_ids JSONB;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS broker_firm TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS fingerprint TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS next_action TEXT;
+UPDATE deals SET source_ids = '[]'::jsonb WHERE source_ids IS NULL;
+UPDATE deals SET alias_names = '[]'::jsonb WHERE alias_names IS NULL;
+UPDATE deals SET gmail_thread_ids = '[]'::jsonb WHERE gmail_thread_ids IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_deals_deal_number ON deals (deal_number) WHERE deal_number IS NOT NULL;
 
 -- Per-member triage. Disagreement is preserved rather than averaged into a
 -- consensus neither partner holds, so the primary key is (deal, member) and

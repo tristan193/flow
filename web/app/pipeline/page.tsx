@@ -23,7 +23,7 @@ export default async function PipelinePage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
             <p className="text-ink-dim text-[12.5px]">
-              Act: pursue deals · Board: stage trail · Inbox watches after Act
+              Shortlist a card and it lands here. Board holds state through NDA / CIM / reply.
             </p>
           </div>
           <AddFromCim />

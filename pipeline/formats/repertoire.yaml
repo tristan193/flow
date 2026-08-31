@@ -11,8 +11,8 @@
 #   nickname   = human-facing label     e.g. BizBuySell
 # format_family = internal splitter key (NOT stored as source)
 #
-version: 5
-updated: 2026-08-24
+version: 6
+updated: 2026-08-31
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -927,6 +927,40 @@ formats:
       - "Sales: → revenue; Earnings: → SDE (ambiguous label rule)"
       - "Ignore mailchi.mp + /buyers-club/ URLs; keep /businesses/.../{id}/"
       - "Often digital agencies / ecommerce — buy-box may still reject"
+
+  # =========================================================================
+  # Marketing blasts — one email ≠ one deal; skip until a real splitter exists
+  # =========================================================================
+
+  - id: ahc.marketing_blast
+    format_family: newsletter
+    source: ahc
+    nickname: AHC (skip marketing)
+    email_type: newsletter_marketing
+    confidence: provisional
+    status: control
+    description: >
+      AHC / American Healthcare Capital (and similar) blast newsletters.
+      One email is not one deal — do not mint a listing from the digest.
+    detect:
+      sender_domains: ["ahcpartners.com", "ahccapital.com", "ahc.com"]
+      subject_patterns:
+        - '(?i)\bahc\b'
+    split: drop
+
+  - id: baton.marketing_blast
+    format_family: newsletter
+    source: baton
+    nickname: Baton (skip marketing)
+    email_type: newsletter_marketing
+    confidence: provisional
+    status: control
+    description: Baton marketplace weekly/digest blasts. One email ≠ one deal.
+    detect:
+      sender_domains: ["batonmarket.com", "baton.com", "joinbaton.com"]
+      subject_patterns:
+        - '(?i)\bbaton\b'
+    split: drop
 
 shared_markers:
   broker_teaser:

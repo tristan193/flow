@@ -32,11 +32,17 @@ export async function POST(request: NextRequest) {
         verdicts,
         stage_events,
         notes,
+        outreach_events,
+        deal_files,
+        deal_expectations,
+        crm_events,
         deals,
         import_runs,
-        drive_files_seen
+        drive_files_seen,
+        deal_counters
       RESTART IDENTITY CASCADE
     `);
+    await query(`INSERT INTO deal_counters (key, next_n) VALUES ('tly', 1) ON CONFLICT (key) DO NOTHING`);
     const [{ count }] = await query<{ count: string }>(
       "SELECT COUNT(*)::text AS count FROM deals",
     );

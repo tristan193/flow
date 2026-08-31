@@ -18,9 +18,10 @@ export function AttachCim({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justUploaded, setJustUploaded] = useState<string | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 
   const hasCim = Boolean(cimUrl || justUploaded);
-  const openUrl = cimUrl;
+  const openUrl = uploadedUrl || cimUrl;
 
   async function upload(file: File) {
     setBusy(true);
@@ -37,6 +38,7 @@ export function AttachCim({
       };
       if (!response.ok) throw new Error(data.error || "Upload failed.");
       setJustUploaded(data.filename || file.name);
+      if (data.url) setUploadedUrl(data.url);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");

@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/api/auth/login",
   "/api/import",
+  "/api/dirk",
   "/api/cron",
   "/api/crm/pursuit", // machine harvest token; /api/crm/attention stays session-gated
 ];

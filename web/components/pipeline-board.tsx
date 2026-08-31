@@ -12,13 +12,12 @@ import { PursuitLinks } from "./pursuit-links";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
-  contacted: "text-discuss",
+  pof: "text-discuss",
+  nda_to_sign: "text-discuss",
   nda: "text-discuss",
   cim: "text-flag",
-  call: "text-discuss",
-  loi: "text-flag",
-  diligence: "text-flag",
-  offer: "text-flag",
+  awaiting_reply: "text-discuss",
+  active: "text-flag",
   closed: "text-short",
   dead: "text-ink-faint",
 };
@@ -146,6 +145,11 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
                       href={`/deals/${deal.id}`}
                       className="min-w-0 flex-1 text-[15px] leading-snug font-semibold hover:underline"
                     >
+                      {deal.deal_number ? (
+                        <span className="text-ink-faint me-1.5 tabular text-[12px] font-semibold">
+                          {deal.deal_number}
+                        </span>
+                      ) : null}
                       {deal.title}
                     </Link>
                     <Earnings deal={deal} />

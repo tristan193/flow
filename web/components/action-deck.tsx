@@ -306,13 +306,12 @@ export function ActionDeck({ deals, member }: { deals: Deal[]; member: MemberId 
 function StageBadge({ stage }: { stage: string }) {
   const tone: Record<string, string> = {
     shortlist: "bg-short-bg text-short border-short/40",
-    contacted: "bg-discuss-bg text-discuss border-discuss/40",
+    pof: "bg-discuss-bg text-discuss border-discuss/40",
+    nda_to_sign: "bg-discuss-bg text-discuss border-discuss/40",
     nda: "bg-discuss-bg text-discuss border-discuss/40",
     cim: "bg-flag-bg text-flag border-flag/40",
-    call: "bg-discuss-bg text-discuss border-discuss/40",
-    loi: "bg-flag-bg text-flag border-flag/40",
-    diligence: "bg-flag-bg text-flag border-flag/40",
-    offer: "bg-flag-bg text-flag border-flag/40",
+    awaiting_reply: "bg-discuss-bg text-discuss border-discuss/40",
+    active: "bg-flag-bg text-flag border-flag/40",
     closed: "bg-short-bg text-short border-short/40",
     dead: "bg-surface-raised text-ink-faint border-line",
   };

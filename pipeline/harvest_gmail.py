@@ -124,6 +124,8 @@ def fetch_raw_emails(
                 subject=subject,
                 received=date,
                 body=body,
+                html=html or "",
+                thread_id=msg.get("threadId") or "",
             )
         )
     return out

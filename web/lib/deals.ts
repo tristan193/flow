@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db";
+import { allocateDealNumber } from "./deal-number";
 import {
   type Deal,
   type DealRow,
@@ -14,7 +15,10 @@ import {
   type TrainTheme,
   type VerdictAction,
   type VerdictRow,
+  coerceStage,
+  defaultNextAction,
   isOutreachOutcomeId,
+  isTeamShortlist,
   stageFromOutcomes,
 } from "./model";
 import { syncExpectationsFromOutreach } from "./expectations";
@@ -44,13 +48,50 @@ function toStringArray(value: unknown): string[] {
   return [];
 }
 
+function parseSourceIds(
+  value: unknown,
+): Array<{ kind: string; value: string; canonical: string }> {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? (() => {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+  const out: Array<{ kind: string; value: string; canonical: string }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const kind = String(rec.kind || "");
+    const val = String(rec.value || "");
+    const canonical = String(rec.canonical || (kind && val ? `${kind}:${val}` : ""));
+    if (kind && val) out.push({ kind, value: val, canonical });
+  }
+  return out;
+}
+
 function normalizeDeal(row: Record<string, unknown>): DealRow {
   const rawUrl = row.url == null ? null : String(row.url);
+  const stage = coerceStage(row.stage == null ? null : String(row.stage));
   return {
     ...(row as unknown as DealRow),
+    deal_number: row.deal_number == null ? null : String(row.deal_number),
+    source_deal_id: row.source_deal_id == null ? null : String(row.source_deal_id),
+    source_ids: parseSourceIds(row.source_ids),
+    alias_names: toStringArray(row.alias_names),
+    gmail_thread_ids: toStringArray(row.gmail_thread_ids),
+    broker_firm: row.broker_firm == null ? null : String(row.broker_firm),
+    fingerprint: row.fingerprint == null ? null : String(row.fingerprint),
+    next_action: row.next_action == null ? defaultNextAction(stage) : String(row.next_action),
     needs_llm: toStringArray(row.needs_llm),
     first_seen: isoString(row.first_seen),
     last_seen: isoString(row.last_seen),
+    stage,
     stage_changed_at: row.stage_changed_at ? isoString(row.stage_changed_at) : null,
     // Axial Pass/decline → Pursue so every UI link is safe even if Neon still has old URLs.
     url: normalizeAxialHref(rawUrl) ?? rawUrl,
@@ -243,6 +284,17 @@ export async function setVerdict(
 
   if (action === "short") {
     await moveStage(dealId, member, "shortlist", { onlyFrom: "inbox" });
+    await query(
+      `UPDATE deals SET next_action = COALESCE(next_action, $1), updated_at = now() WHERE id = $2`,
+      [defaultNextAction("shortlist"), dealId],
+    );
+  } else if (action === "pass") {
+    await moveStage(dealId, member, "dead", { onlyFrom: "inbox" });
+  }
+
+  const deal = await getDeal(dealId);
+  if (deal && deal.stage === "inbox" && isTeamShortlist(deal, member, action)) {
+    await moveStage(dealId, member, "shortlist", { onlyFrom: "inbox" });
   }
 }
 
@@ -384,9 +436,13 @@ export async function moveStage(
 
   await query(
     `UPDATE deals
-        SET stage = $1, stage_changed_at = now(), stage_changed_by = $2, updated_at = now()
-      WHERE id = $3`,
-    [stage, member, dealId],
+        SET stage = $1,
+            stage_changed_at = now(),
+            stage_changed_by = $2,
+            next_action = $3,
+            updated_at = now()
+      WHERE id = $4`,
+    [stage, member, defaultNextAction(stage), dealId],
   );
   await query(
     `INSERT INTO stage_events (deal_id, from_stage, to_stage, member) VALUES ($1, $2, $3, $4)`,
@@ -452,27 +508,30 @@ export async function createDealFromCim(
   if (!title) throw new Error("Title is required.");
 
   const extId = `cim:${crypto.randomUUID()}`;
+  const dealNumber = await allocateDealNumber();
   const needs: string[] = [];
   if (draft.ebitda == null && draft.sde == null) needs.push("earnings");
   if (!draft.state) needs.push("location");
 
   const rows = await query<{ id: number }>(
     `INSERT INTO deals (
-       ext_id, title, blurb, source, sub_source, nickname, sources,
+       ext_id, deal_number, alias_names, title, blurb, source, sub_source, nickname, sources,
        city, state, county,
        revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
-       stage, stage_changed_at, stage_changed_by,
+       stage, stage_changed_at, stage_changed_by, next_action,
        first_seen, last_seen, times_seen
      ) VALUES (
-       $1, $2, $3, 'manual', $4, 'CIM upload', 'manual',
-       $5, $6, NULL,
-       $7, $8, $9, $10, $11, $12::jsonb, $13,
-       'cim', now(), $14,
+       $1, $2, $3::jsonb, $4, $5, 'manual', $6, 'CIM upload', 'manual',
+       $7, $8, NULL,
+       $9, $10, $11, $12, $13, $14::jsonb, $15,
+       'cim', now(), $16, $17,
        now(), now(), 1
      )
      RETURNING id`,
     [
       extId,
+      dealNumber,
+      JSON.stringify([title]),
       title,
       draft.blurb?.trim() || null,
       member,
@@ -486,6 +545,7 @@ export async function createDealFromCim(
       JSON.stringify(needs),
       normalizeAxialHref(draft.url) ?? (draft.url?.trim() || null),
       member,
+      defaultNextAction("cim"),
     ],
   );
   const id = Number(rows[0]?.id);
@@ -528,6 +588,15 @@ export async function saveDealFile(
   if (!id) throw new Error("Could not store file");
   const url = `/api/deal-files/${id}`;
   await query(`UPDATE deals SET cim_url = $1, updated_at = now() WHERE id = $2`, [url, dealId]);
+  const current = await queryOne<{ stage: string }>("SELECT stage FROM deals WHERE id = $1", [dealId]);
+  const stage = current?.stage ? coerceStage(current.stage) : "inbox";
+  if (kind === "cim" && stage !== "closed") {
+    await moveStage(dealId, member, "cim");
+    await query(
+      `UPDATE deals SET next_action = $1, updated_at = now() WHERE id = $2`,
+      [defaultNextAction("cim"), dealId],
+    );
+  }
   return { id, url };
 }
 

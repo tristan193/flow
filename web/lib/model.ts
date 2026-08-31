@@ -155,33 +155,42 @@ export interface TrainFlagRow {
 }
 
 /**
- * The deal pipeline. `inbox` is pre-triage and is not shown on the board;
- * everything from `shortlist` onward is live work.
+ * Real process board. `inbox` is inbound review (cards) and is not a column;
+ * everything from `shortlist` onward holds state.
  */
 export const STAGES = [
-  { id: "inbox", label: "Inbox", hint: "Not yet triaged", board: false },
-  { id: "shortlist", label: "Shortlisted", hint: "Worth pursuing, no outreach yet", board: true },
-  { id: "contacted", label: "Contacted", hint: "Reached out to broker or seller", board: true },
-  { id: "nda", label: "NDA", hint: "NDA signed, awaiting materials", board: true },
-  { id: "cim", label: "CIM", hint: "Reviewing financials", board: true },
-  { id: "call", label: "Call", hint: "Broker or seller call", board: true },
-  { id: "loi", label: "LOI", hint: "Letter of intent out", board: true },
-  { id: "diligence", label: "Due Diligence", hint: "Confirmatory diligence underway", board: true },
-  { id: "offer", label: "Offer", hint: "Definitive offer / PSA", board: true },
+  { id: "inbox", label: "Inbound", hint: "Waiting on a card verdict", board: false },
+  { id: "shortlist", label: "Shortlisted", hint: "Worth pursuing", board: true },
+  { id: "pof", label: "POF", hint: "Proof of funds — rare", board: true },
+  { id: "nda_to_sign", label: "NDA to sign", hint: "NDA out, not signed yet", board: true },
+  { id: "nda", label: "NDA signed", hint: "NDA done, awaiting CIM", board: true },
+  { id: "cim", label: "CIM / data room", hint: "Reviewing materials", board: true },
+  { id: "awaiting_reply", label: "Awaiting reply", hint: "Waiting on banker or seller", board: true },
+  { id: "active", label: "Active review", hint: "Live work past CIM", board: true },
   { id: "closed", label: "Closed", hint: "Deal done", board: true },
-  { id: "dead", label: "Dead", hint: "Went nowhere", board: true },
+  { id: "dead", label: "Pass / dead", hint: "Passed or went nowhere", board: true },
 ] as const;
 
 export type StageId = (typeof STAGES)[number]["id"];
+
+/** Old board ids → current process. Applied on read and once on boot. */
+export const LEGACY_STAGE: Record<string, StageId> = {
+  contacted: "awaiting_reply",
+  call: "active",
+  loi: "active",
+  diligence: "active",
+  offer: "active",
+};
 
 export const BOARD_STAGES = STAGES.filter((s) => s.board);
 
 /** Outcomes from the post-link-out debrief (action deck). */
 export const OUTREACH_OUTCOMES = [
+  { id: "nda_sent", label: "Sent the NDA", stage: "nda_to_sign" as StageId },
   { id: "nda_signed", label: "Signed the NDA", stage: "nda" as StageId },
   { id: "cim_received", label: "Downloaded CIM", stage: "cim" as StageId },
-  { id: "messaged", label: "Messaged advisor", stage: "contacted" as StageId },
-  { id: "waiting", label: "Waiting on reply", stage: "contacted" as StageId },
+  { id: "messaged", label: "Messaged advisor", stage: "awaiting_reply" as StageId },
+  { id: "waiting", label: "Waiting on reply", stage: "awaiting_reply" as StageId },
   { id: "not_pursuing", label: "Passing on this", stage: "dead" as StageId },
   { id: "unavailable", label: "No longer available", stage: "dead" as StageId },
 ] as const;
@@ -192,13 +201,14 @@ export function isOutreachOutcomeId(value: unknown): value is OutreachOutcomeId 
   return OUTREACH_OUTCOMES.some((o) => o.id === value);
 }
 
-/** Map debrief chips → furthest pipeline stage (dead wins; else CIM > NDA > contacted). */
+/** Map debrief chips → furthest pipeline stage (dead wins; else CIM > NDA > waiting). */
 export function stageFromOutcomes(outcomes: OutreachOutcomeId[]): StageId | null {
   if (outcomes.length === 0) return null;
   if (outcomes.includes("not_pursuing") || outcomes.includes("unavailable")) return "dead";
   if (outcomes.includes("cim_received")) return "cim";
   if (outcomes.includes("nda_signed")) return "nda";
-  if (outcomes.includes("messaged") || outcomes.includes("waiting")) return "contacted";
+  if (outcomes.includes("nda_sent")) return "nda_to_sign";
+  if (outcomes.includes("messaged") || outcomes.includes("waiting")) return "awaiting_reply";
   return null;
 }
 
@@ -216,13 +226,56 @@ export function isStageId(value: unknown): value is StageId {
   return STAGES.some((s) => s.id === value);
 }
 
+export function coerceStage(value: string | null | undefined): StageId {
+  if (value && isStageId(value)) return value;
+  if (value && LEGACY_STAGE[value]) return LEGACY_STAGE[value];
+  return "inbox";
+}
+
 export function stageLabel(id: string): string {
-  return STAGES.find((s) => s.id === id)?.label ?? id;
+  const mapped = LEGACY_STAGE[id] ?? id;
+  return STAGES.find((s) => s.id === mapped)?.label ?? id;
+}
+
+/** Suggested next action from stage — Dirk can override via import. */
+export function defaultNextAction(stage: StageId): string | null {
+  switch (stage) {
+    case "inbox":
+      return "Review on cards";
+    case "shortlist":
+      return "Pursue / send NDA";
+    case "pof":
+      return "Send proof of funds";
+    case "nda_to_sign":
+      return "Sign NDA";
+    case "nda":
+      return "Request CIM";
+    case "cim":
+      return "Review CIM vs buy box";
+    case "awaiting_reply":
+      return "Follow up with broker";
+    case "active":
+      return "Active review";
+    case "closed":
+      return null;
+    case "dead":
+      return null;
+    default:
+      return null;
+  }
 }
 
 export interface DealRow {
   id: number;
   ext_id: string;
+  deal_number: string | null;
+  source_deal_id: string | null;
+  source_ids: Array<{ kind: string; value: string; canonical: string }>;
+  alias_names: string[];
+  gmail_thread_ids: string[];
+  broker_firm: string | null;
+  fingerprint: string | null;
+  next_action: string | null;
   title: string;
   blurb: string | null;
   /** Sender domain, e.g. bizbuysell.com */
