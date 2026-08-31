@@ -45,6 +45,7 @@ Rules:
 - Keep EBITDA and SDE separate. If the doc says "cash flow" or "seller discretionary", use sde not ebitda.
 - Money as plain USD numbers (350000 not "$350K").
 - If a field is missing or unclear, null — do not invent.
+- Do not invent buy-box dislikes, hard-nos, exclusions, or pass reasons. Those live in the draft buy box and stay empty until Tristan edits them.
 - Title should be the business name, not "Confidential Information Memorandum".
 - Blurb: crisp operator-facing summary, not marketing fluff.`;
 

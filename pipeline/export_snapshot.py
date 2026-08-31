@@ -30,13 +30,29 @@ def export(db_path: str) -> dict:
 
     deals = []
     for r in con.execute("SELECT * FROM v_deals ORDER BY earnings DESC"):
+        keys = r.keys()
+        def col(name, default=None):
+            return r[name] if name in keys else default
+
+        def load_json(name, default):
+            raw = col(name)
+            if raw is None:
+                return default
+            if isinstance(raw, (list, dict)):
+                return raw
+            try:
+                return json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                return default
+
         deals.append({
             "extId": r["ext_id"] or f"deal-{r['id']}",
+            "dealNumber": col("deal_number"),
             "title": r["title"],
             "blurb": r["blurb"] or None,
-            "source": r["source"] if "source" in r.keys() else None,
+            "source": col("source"),
             "subSource": r["sub_source"] or None,
-            "nickname": r["nickname"] if "nickname" in r.keys() else None,
+            "nickname": col("nickname"),
             "sources": r["sources"] or None,
             "city": r["city"] or None,
             "state": r["state"] or None,
@@ -56,6 +72,12 @@ def export(db_path: str) -> dict:
             "firstSeen": r["first_seen"],
             "lastSeen": r["last_seen"],
             "timesSeen": r["times_seen"] or 1,
+            "brokerFirm": col("broker_firm"),
+            "aliasNames": load_json("alias_names", []),
+            "gmailThreadIds": load_json("gmail_thread_ids", []),
+            "sourceDealId": col("source_deal_id"),
+            "sourceIds": load_json("source_ids", []),
+            "fingerprint": col("fingerprint"),
         })
 
     # Verdicts are keyed by ext_id rather than the local integer id: Flow App's

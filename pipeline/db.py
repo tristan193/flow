@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from typing import Optional, List
 from difflib import SequenceMatcher
 
+import identity as ident
+
 SCHEMA = """
 -- NOTE: WAL is faster but unsupported on network/mounted filesystems.
 -- Enable it explicitly (see connect()) only on local disk.
@@ -28,6 +30,12 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS deals (
   id              INTEGER PRIMARY KEY,
   ext_id          TEXT UNIQUE NOT NULL,
+  deal_number     TEXT UNIQUE,
+  source_deal_id  TEXT,
+  source_ids      TEXT DEFAULT '[]',
+  alias_names     TEXT DEFAULT '[]',
+  gmail_thread_ids TEXT DEFAULT '[]',
+  broker_firm     TEXT,
   fingerprint     TEXT,
   url_norm        TEXT,
 
@@ -68,6 +76,12 @@ CREATE INDEX IF NOT EXISTS ix_deals_fp     ON deals(fingerprint);
 CREATE INDEX IF NOT EXISTS ix_deals_url    ON deals(url_norm);
 CREATE INDEX IF NOT EXISTS ix_deals_state  ON deals(state);
 CREATE INDEX IF NOT EXISTS ix_deals_bucket ON deals(bucket);
+CREATE INDEX IF NOT EXISTS ix_deals_sid    ON deals(source_deal_id);
+CREATE TABLE IF NOT EXISTS deal_counters (
+  key    TEXT PRIMARY KEY,
+  next_n INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO deal_counters (key, next_n) VALUES ('tly', 1);
 
 -- Every provider domain that mentioned a given deal. Seeing the same deal
 -- across five newsletters is signal: it has been shopped hard and may be stale.
@@ -160,16 +174,60 @@ def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
         except sqlite3.OperationalError: pass
     con.executescript(SCHEMA)
     _ensure_attribution_columns(con)
+    _backfill_deal_numbers(con)
     return con
 
 
 def _ensure_attribution_columns(con: sqlite3.Connection) -> None:
     """Add source/nickname on DBs created before the attribution triad."""
     cols = {r[1] for r in con.execute("PRAGMA table_info(deals)")}
-    if "source" not in cols:
-        con.execute("ALTER TABLE deals ADD COLUMN source TEXT")
-    if "nickname" not in cols:
-        con.execute("ALTER TABLE deals ADD COLUMN nickname TEXT")
+    extras = {
+        "source": "TEXT",
+        "nickname": "TEXT",
+        "deal_number": "TEXT",
+        "source_deal_id": "TEXT",
+        "source_ids": "TEXT DEFAULT '[]'",
+        "alias_names": "TEXT DEFAULT '[]'",
+        "gmail_thread_ids": "TEXT DEFAULT '[]'",
+        "broker_firm": "TEXT",
+    }
+    for name, spec in extras.items():
+        if name not in cols:
+            con.execute(f"ALTER TABLE deals ADD COLUMN {name} {spec}")
+    con.execute(
+        "INSERT OR IGNORE INTO deal_counters (key, next_n) VALUES ('tly', 1)"
+    )
+
+
+def _next_deal_number(con: sqlite3.Connection) -> str:
+    row = con.execute(
+        "UPDATE deal_counters SET next_n = next_n + 1 WHERE key = 'tly' RETURNING next_n - 1"
+    ).fetchone()
+    n = int(row[0]) if row else 1
+    return ident.format_deal_number(n if n > 0 else 1)
+
+
+def _json_list(value) -> list:
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
+def _backfill_deal_numbers(con: sqlite3.Connection) -> None:
+    missing = con.execute(
+        "SELECT id FROM deals WHERE deal_number IS NULL OR deal_number = '' ORDER BY id"
+    ).fetchall()
+    for row in missing:
+        con.execute(
+            "UPDATE deals SET deal_number = ? WHERE id = ?",
+            (_next_deal_number(con), row["id"]),
+        )
 
 
 # ------------------------------------------------------------------
@@ -230,22 +288,58 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     ts = now()
     un = norm_url(l.url)
     fp = l.fingerprint()
+    incoming_ids = getattr(l, "source_ids", None) or []
+    incoming_sid = getattr(l, "source_deal_id", "") or ""
+    if not incoming_sid and incoming_ids:
+        incoming_sid = ident.pick_canonical_source_id(incoming_ids) or ""
 
     row = con.execute("SELECT id FROM deals WHERE ext_id=?", (l.ext_id,)).fetchone()
     same_email = row is not None
     mode = "repeat"
+
+    if not row:
+        cands = []
+        for r in con.execute(
+            "SELECT id, deal_number, source_deal_id, source_ids, fingerprint, "
+            "title, alias_names, broker_firm, city, state FROM deals"
+        ):
+            cands.append({
+                "id": r["id"],
+                "deal_number": r["deal_number"] if "deal_number" in r.keys() else None,
+                "source_deal_id": r["source_deal_id"] if "source_deal_id" in r.keys() else None,
+                "source_ids": _json_list(r["source_ids"] if "source_ids" in r.keys() else None),
+                "fingerprint": r["fingerprint"],
+                "title": r["title"],
+                "alias_names": _json_list(r["alias_names"] if "alias_names" in r.keys() else None),
+                "broker_firm": r["broker_firm"] if "broker_firm" in r.keys() else None,
+                "city": r["city"],
+                "state": r["state"],
+            })
+        hit = ident.find_identity_match(
+            {
+                "title": l.title,
+                "broker_firm": getattr(l, "broker_firm", None),
+                "city": l.city,
+                "state": l.state,
+                "ebitda": l.ebitda,
+                "sde": l.sde,
+                "url": l.url,
+                "source": l.source,
+                "nickname": getattr(l, "nickname", None),
+                "source_ids": incoming_ids,
+                "source_deal_id": incoming_sid,
+                "alias_names": getattr(l, "alias_names", None),
+                "gmail_thread_ids": getattr(l, "gmail_thread_ids", None),
+            },
+            cands,
+        )
+        if hit:
+            row = {"id": hit[0]["id"]}
+            mode = "merged"
+
     if not row and un:
         row = con.execute("SELECT id FROM deals WHERE url_norm=? AND url_norm<>''", (un,)).fetchone()
         if row: mode = "merged"
-    if not row and l.earnings and l.state:
-        row = con.execute("SELECT id FROM deals WHERE fingerprint=? AND state=?", (fp, l.state)).fetchone()
-        if row: mode = "merged"
-    if not row and l.state:
-        for cand in con.execute("SELECT id, title FROM deals WHERE state=?", (l.state,)):
-            if _titles_match(l.title, cand["title"]):
-                row = cand
-                mode = "merged"
-                break
 
     if row:
         did = row["id"]
@@ -278,19 +372,56 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
         if not cur["url_norm"] and un:
             updates["url_norm"] = un
 
+        keys = cur.keys()
+        if "alias_names" in keys:
+            aliases = ident.merge_alias_names(
+                _json_list(cur["alias_names"]),
+                l.title,
+                cur["title"],
+                getattr(l, "alias_names", None),
+            )
+            updates["alias_names"] = json.dumps(aliases)
+        if "gmail_thread_ids" in keys:
+            updates["gmail_thread_ids"] = json.dumps(
+                ident.merge_thread_ids(
+                    _json_list(cur["gmail_thread_ids"]),
+                    getattr(l, "gmail_thread_ids", None),
+                )
+            )
+        if "source_ids" in keys:
+            prior = _json_list(cur["source_ids"])
+            merged = list(prior)
+            for s in incoming_ids:
+                if s.get("canonical") not in {p.get("canonical") for p in merged if isinstance(p, dict)}:
+                    merged.append(s)
+            updates["source_ids"] = json.dumps(merged)
+        if "source_deal_id" in keys and not cur["source_deal_id"] and incoming_sid:
+            updates["source_deal_id"] = incoming_sid
+        if "broker_firm" in keys and not cur["broker_firm"] and getattr(l, "broker_firm", None):
+            updates["broker_firm"] = l.broker_firm
+        if fp and (not cur["fingerprint"] or (same_email and fp != cur["fingerprint"])):
+            updates["fingerprint"] = fp
+
         sets = [f"{f}=?" for f in updates] + ["last_seen=?", "times_seen=times_seen+1"]
         vals = list(updates.values()) + [ts, did]
         con.execute(f"UPDATE deals SET {', '.join(sets)} WHERE id=?", vals)
     else:
         mode = "new"
+        number = _next_deal_number(con)
         cur = con.execute("""
-          INSERT INTO deals (ext_id,fingerprint,url_norm,title,blurb,
+          INSERT INTO deals (ext_id,deal_number,source_deal_id,source_ids,alias_names,
+                             gmail_thread_ids,broker_firm,
+                             fingerprint,url_norm,title,blurb,
                              source,sub_source,nickname,
                              city,state,county,
                              revenue,ebitda,sde,asking,business_model_type,needs_llm,
                              first_seen,last_seen)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-          (l.ext_id, fp, un, l.title, l.blurb,
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+          (l.ext_id, number, incoming_sid or None, json.dumps(incoming_ids),
+           json.dumps(getattr(l, "alias_names", None) or [l.title]),
+           json.dumps(getattr(l, "gmail_thread_ids", None) or []),
+           getattr(l, "broker_firm", None) or None,
+           fp, un, l.title, l.blurb,
            getattr(l, "source", None) or None,
            getattr(l, "sub_source", None) or None,
            getattr(l, "nickname", None) or None,

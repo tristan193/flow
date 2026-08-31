@@ -5,11 +5,8 @@ import { importTokenValid } from "@/lib/import-auth";
 import { importSnapshot } from "@/lib/import";
 
 /**
- * Machine endpoint for the Python pipeline.
- *
- * Authenticated with a bearer token rather than a session cookie, because the
- * caller is `pipeline/export_snapshot.py --post`, not a browser. Middleware lets
- * this path through for that reason.
+ * Dirk (or harvest backup) upsert. Bearer FLOW_IMPORT_TOKEN.
+ * Idempotent on deal number + source_deal_id / fingerprint.
  */
 
 export async function POST(request: NextRequest) {

@@ -1,8 +1,10 @@
 ---
 # ============================================================
-#  NAILS & MERCY — BUY BOX CONFIG  v1.0
+#  NAILS & MERCY — BUY BOX CONFIG  v1.0  · DRAFT / INFERRED
 #  Single source of truth for filtering + scoring.
 #  Edit this file; the pipeline reads it every run.
+#  learned.penalties / boosts stay empty until Tristan writes them.
+#  Do not invent dislikes or hard-nos.
 # ============================================================
 
 meta:

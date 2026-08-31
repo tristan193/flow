@@ -56,13 +56,12 @@ const SYSTEM_MEMBER: MemberId = "tristan";
 const BOARD_OR_ACTIVE: StageId[] = [
   "inbox",
   "shortlist",
-  "contacted",
+  "pof",
+  "nda_to_sign",
   "nda",
   "cim",
-  "call",
-  "loi",
-  "diligence",
-  "offer",
+  "awaiting_reply",
+  "active",
 ];
 
 function norm(s: string): string {
@@ -387,15 +386,15 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
   if (deal) {
     const stage = deal.stage;
     if (input.eventType === "cim_received" && input.file) {
-      if (stage === "inbox" || stage === "shortlist" || stage === "contacted" || stage === "nda") {
+      if (stage === "inbox" || stage === "shortlist" || stage === "nda_to_sign" || stage === "nda" || stage === "awaiting_reply") {
         await moveStage(dealId, SYSTEM_MEMBER, "cim");
       }
     } else if (input.eventType === "nda_available") {
       if (stage === "inbox" || stage === "shortlist") {
-        await moveStage(dealId, SYSTEM_MEMBER, "contacted");
+        await moveStage(dealId, SYSTEM_MEMBER, "nda_to_sign");
       }
     } else if (input.eventType === "nda_signed") {
-      if (stage === "inbox" || stage === "shortlist" || stage === "contacted") {
+      if (stage === "inbox" || stage === "shortlist" || stage === "nda_to_sign" || stage === "awaiting_reply") {
         await moveStage(dealId, SYSTEM_MEMBER, "nda");
       }
     }

@@ -217,6 +217,9 @@ export function VerdictChips({ deal, member }: { deal: Deal; member: MemberId })
 export function CardFooter({ deal }: { deal: Deal }) {
   return (
     <div className="text-ink-faint flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+      {deal.deal_number && (
+        <span className="tabular font-semibold tracking-wide">{deal.deal_number}</span>
+      )}
       <SourcePill deal={deal} />
       {deal.times_seen > 1 && <span>seen {deal.times_seen}×</span>}
       <NeedsTags deal={deal} />

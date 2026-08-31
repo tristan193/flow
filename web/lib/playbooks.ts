@@ -96,7 +96,13 @@ export function resolvePlaybook(
 }
 
 /** Early pipeline stages that still need an action prompt. */
-export const ACTIONABLE_STAGES = new Set(["shortlist", "contacted", "nda"]);
+export const ACTIONABLE_STAGES = new Set([
+  "shortlist",
+  "pof",
+  "nda_to_sign",
+  "nda",
+  "awaiting_reply",
+]);
 
 /** On the Act deck when shortlisted (etc.) and a real next-step exists. */
 export function isActionableDeal(

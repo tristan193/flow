@@ -40,6 +40,8 @@ from typing import Optional, List, Dict, Tuple
 from difflib import SequenceMatcher
 from html import unescape
 
+import identity as ident
+
 
 def strip_html(html: str) -> str:
     """Stdlib-only HTML->text. Required in production: real BizBuySell
@@ -105,6 +107,8 @@ class RawEmail:
     subject: str
     received: str
     body: str = ""     # HTML already stripped to text
+    html: str = ""     # raw HTML — Axial hex / listing IDs live here
+    thread_id: str = ""
 
 @dataclass
 class Listing:
@@ -145,6 +149,11 @@ class Listing:
     # (source_domain, msg_id, url) for EVERY email that mentioned this deal.
     refs: List[tuple] = field(default_factory=list)
     dupe_of: Optional[str] = None
+    source_deal_id: str = ""
+    source_ids: List[dict] = field(default_factory=list)
+    alias_names: List[str] = field(default_factory=list)
+    gmail_thread_ids: List[str] = field(default_factory=list)
+    broker_firm: str = ""
 
     @property
     def earnings(self) -> Optional[float]:
@@ -163,12 +172,17 @@ class Listing:
         return f"${v:,.0f}" + ("*" if self.earnings_basis == "SDE" else "")
 
     def fingerprint(self) -> str:
-        """Deliberately lossy. Same economics + same state = same deal,
-        even when four newsletters give it four different headlines."""
-        def band(v, step):
-            return int(v / step) if v else -1
-        raw = f"{self.state}|{band(self.revenue,250_000)}|{band(self.earnings,100_000)}"
-        return hashlib.md5(raw.encode()).hexdigest()[:12]
+        """Teaser + broker + rounded EBITDA + geo. Incomplete → empty string
+        (never a join key). Legacy band hash is gone — it collided on state."""
+        fp, complete = ident.compute_fingerprint(
+            title=self.title,
+            broker_firm=self.broker_firm or None,
+            ebitda=self.ebitda,
+            sde=self.sde,
+            city=self.city,
+            state=self.state,
+        )
+        return fp if complete and fp else ""
 
 
 # =====================================================================
@@ -1683,7 +1697,8 @@ def clean_blurb(block: str, listing_url: str = "") -> str:
 
 def extract(block: str, format_family: str, msg_id: str, idx: int,
             source: str = "", sub_source: str = "", nickname: str = "",
-            subject: str = "", format_id: str = "", email_type: str = "") -> Listing:
+            subject: str = "", format_id: str = "", email_type: str = "",
+            html: str = "", thread_id: str = "", extra_text: str = "") -> Listing:
     work = block
     if format_id == "axial.single_deal" or format_family == "axial":
         work = normalize_axial_ltm_money(work)
@@ -1692,6 +1707,10 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     model, confident = classify_model(work)
     url_m = re.search(r"https?://[^\s\)>\]]+", work)
     url = pick_listing_url(work, format_family)
+    if not url and html:
+        url = pick_listing_url(html, format_family)
+    if not url and extra_text:
+        url = pick_listing_url(extra_text, format_family)
     if not url and url_m:
         url = _scrub_url(url_m.group(0))
 
@@ -1705,6 +1724,20 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         if len(prose) >= 40:
             blurb = clean_blurb(prose, url)
 
+    built = ident.build_identity(
+        title=title,
+        city=city,
+        state=state,
+        ebitda=money.get("ebitda"),
+        sde=money.get("sde"),
+        url=url,
+        html=html,
+        body="\n".join(p for p in (work, extra_text, html) if p),
+        subject=subject,
+        source=domain,
+        nickname=nickname,
+        gmail_thread_ids=[thread_id] if thread_id else [],
+    )
     lst = Listing(
         # ext_id keeps format_family prefix for stable upsert identity across
         # remodel of source→domain.
@@ -1727,6 +1760,11 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         business_model_type=model,
         seen_in=[domain],
         refs=[(domain, msg_id, url)],
+        source_deal_id=built.get("source_deal_id") or "",
+        source_ids=built.get("source_ids") or [],
+        alias_names=built.get("alias_names") or [],
+        gmail_thread_ids=built.get("gmail_thread_ids") or [],
+        broker_firm=built.get("broker_firm") or "",
     )
     if lst.earnings is None: lst.needs_llm.append("earnings")
     if lst.state is None:    lst.needs_llm.append("location")
@@ -1941,6 +1979,15 @@ def ingest(emails: List[RawEmail]):
         fmt_id = matched.format_id if matched else ""
         em_type = matched.email_type if matched else ""
 
+        if ident.is_non_deal_mail(
+            subject=em.subject,
+            sender=em.sender,
+            source=domain,
+            nickname=nick,
+            format_id=fmt_id,
+        ):
+            continue
+
         blocks = blocks_for_email(
             em, matched=matched, family=family, email_addr=email_addr,
         )
@@ -1960,6 +2007,9 @@ def ingest(emails: List[RawEmail]):
                 b, family, em.msg_id, i,
                 source=domain, sub_source=email_addr, nickname=nick,
                 subject=em.subject, format_id=fmt_id, email_type=em_type,
+                html=getattr(em, "html", "") or "",
+                thread_id=getattr(em, "thread_id", "") or "",
+                extra_text=em.body or "",
             )
             if _is_junk_title(listing.title):
                 continue
