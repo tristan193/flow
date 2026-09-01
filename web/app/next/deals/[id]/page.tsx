@@ -5,7 +5,8 @@ import { BlurbText } from "@/components/blurb-text";
 import { NextAttachCim } from "@/components/next/attach-cim";
 import { NextBuyboxReview } from "@/components/next/buybox-review";
 import { NextDealActions } from "@/components/next/deal-actions";
-import { NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
+import { DealTitleStack, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
+import { listingIdLabel, sourceDisplayName } from "@/lib/next/display";
 import { NextNav } from "@/components/next/nav";
 import { NextNotes } from "@/components/next/notes";
 import { requireMember } from "@/lib/auth";
@@ -43,17 +44,6 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
 
   const fit = assessNextFit(deal);
   const model = businessModelLabel(deal);
-  const sourceIds = Array.isArray(deal.source_ids)
-    ? deal.source_ids
-        .map((raw) => {
-          if (typeof raw === "string") return raw;
-          if (raw && typeof raw === "object" && "canonical" in raw) {
-            return String((raw as { canonical?: string }).canonical || "");
-          }
-          return "";
-        })
-        .filter(Boolean)
-    : [];
 
   const facts: [string, string][] = [
     ["Deal number", deal.deal_number],
@@ -64,8 +54,8 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
     ["Location", locationLabel(deal)],
     ...(model ? [["Business model", model] as [string, string]] : []),
     ["Broker", deal.broker_firm || "—"],
-    ["Source IDs", sourceIds.join(" · ") || "—"],
-    ["Source", deal.nickname || deal.source || "Unknown"],
+    ["Source IDs", listingIdLabel(deal) || "—"],
+    ["Source", sourceDisplayName(deal)],
     ["Stage", nextStageLabel(deal.stage)],
     ["Next action", deal.next_action || defaultNextAction(deal.stage) || "—"],
   ];
@@ -78,20 +68,20 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           ← Back to Next review
         </Link>
 
-        <div className="mt-3 mb-1 flex items-center gap-2">
-          <span className="text-ink-dim text-[13px] font-semibold tabular">{deal.deal_number}</span>
-          {deal.is_demo && (
-            <span className="bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
-              DEMO
-            </span>
-          )}
-        </div>
-
-        <div className="mb-4 flex items-start gap-2.5">
-          <SourcePill deal={deal} />
-          <h1 className="min-w-0 flex-1 text-xl leading-snug font-semibold tracking-tight">
-            {deal.title}
-          </h1>
+        <div className="mt-3 mb-4 flex w-full min-w-0 flex-col">
+          <DealTitleStack
+            deal={deal}
+            titleAs="h1"
+            titleClassName="text-xl leading-snug font-semibold tracking-tight"
+          />
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <SourcePill deal={deal} />
+            {deal.is_demo && (
+              <span className="bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
+                DEMO
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
