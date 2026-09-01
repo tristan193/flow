@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { currentMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
+import { importTokenValid } from "@/lib/import-auth";
 import { applyAuthorizedNextStage } from "@/lib/next/stage-auth";
 
 /**
@@ -32,12 +33,16 @@ const schema = z
 export async function POST(request: NextRequest) {
   await ensureReady();
 
+  const sessionMember = await currentMember();
+  if (!importTokenValid(request.headers.get("authorization")) && !sessionMember) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid stage." }, { status: 400 });
   }
 
-  const sessionMember = await currentMember();
   const result = await applyAuthorizedNextStage({
     authorization: request.headers.get("authorization"),
     sessionMember,
