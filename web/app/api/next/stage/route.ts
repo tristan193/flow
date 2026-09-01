@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { moveNextStage } from "@/lib/next/deals";
-import { isNextStageId } from "@/lib/next/model";
+import { mapNextStage } from "@/lib/next/model";
 
 const schema = z.object({
   dealId: z.number().int().positive(),
@@ -16,10 +16,11 @@ export async function POST(request: Request) {
   const member = await requireMember();
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || !isNextStageId(parsed.data.stage)) {
+  const stage = parsed.success ? mapNextStage(parsed.data.stage) : null;
+  if (!parsed.success || !stage) {
     return NextResponse.json({ error: "Invalid stage." }, { status: 400 });
   }
 
-  await moveNextStage(parsed.data.dealId, member, parsed.data.stage);
+  await moveNextStage(parsed.data.dealId, member, stage);
   return NextResponse.json({ ok: true });
 }

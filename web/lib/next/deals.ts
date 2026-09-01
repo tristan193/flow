@@ -10,8 +10,10 @@ import {
   type NextStageId,
   type NextVerdictRow,
   type VerdictAction,
+  coerceNextStage,
   defaultNextAction,
-  isNextStageId,
+  nextFollowupKind,
+  sanitizeNextAction,
 } from "./model";
 
 function isoString(value: unknown): string {
@@ -58,7 +60,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     gmail_thread_ids: toStringArray(row.gmail_thread_ids),
     broker_firm: row.broker_firm == null ? null : String(row.broker_firm),
     fingerprint: row.fingerprint == null ? null : String(row.fingerprint),
-    next_action: row.next_action == null ? null : String(row.next_action),
+    next_action: sanitizeNextAction(row.next_action),
     is_demo: Boolean(row.is_demo),
     title: String(row.title ?? ""),
     blurb: row.blurb == null ? null : String(row.blurb),
@@ -79,7 +81,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     first_seen: isoString(row.first_seen),
     last_seen: isoString(row.last_seen),
     times_seen: Number(row.times_seen ?? 1),
-    stage: isNextStageId(stageRaw) ? stageRaw : "inbox",
+    stage: coerceNextStage(stageRaw),
     stage_changed_at: row.stage_changed_at ? isoString(row.stage_changed_at) : null,
     stage_changed_by: row.stage_changed_by == null ? null : String(row.stage_changed_by),
     cim_url: row.cim_url == null ? null : String(row.cim_url),
@@ -141,7 +143,8 @@ export async function listNextBoardDeals(): Promise<NextDeal[]> {
      WHERE stage <> 'inbox'
      ORDER BY earnings DESC NULLS LAST, id DESC`,
   );
-  return attachVerdicts(rows.map(normalizeDeal));
+  const deals = await attachVerdicts(rows.map(normalizeDeal));
+  return deals.filter((deal) => deal.stage !== "inbox");
 }
 
 export async function getNextDeal(id: number): Promise<NextDeal | null> {
@@ -175,7 +178,7 @@ export async function setNextVerdict(
   if (action === "short") {
     await moveNextStage(dealId, member, "shortlist", { onlyFrom: "inbox" });
   } else if (action === "pass") {
-    await moveNextStage(dealId, member, "dead", { onlyFrom: "inbox" });
+    await moveNextStage(dealId, member, "closed", { onlyFrom: "inbox" });
   }
 }
 
@@ -194,9 +197,17 @@ export async function moveNextStage(
     [dealId],
   );
   if (!current) return;
-  const from = isNextStageId(current.stage) ? current.stage : "inbox";
+  const from = coerceNextStage(current.stage);
   if (options.onlyFrom && from !== options.onlyFrom) return;
-  if (from === stage) return;
+  if (from === stage) {
+    if (current.stage !== stage) {
+      await query(`UPDATE deals_next SET stage = $1, updated_at = now() WHERE id = $2`, [
+        stage,
+        dealId,
+      ]);
+    }
+    return;
+  }
 
   const nextAction = defaultNextAction(stage);
 
@@ -216,13 +227,8 @@ export async function moveNextStage(
     [dealId, from, stage, member],
   );
 
-  if (stage === "nda_to_sign" || stage === "nda" || stage === "cim" || stage === "awaiting_reply") {
-    const kind =
-      stage === "nda_to_sign" || stage === "nda"
-        ? "nda"
-        : stage === "cim"
-          ? "cim"
-          : "broker_reply";
+  const kind = nextFollowupKind(stage);
+  if (kind) {
     await query(
       `INSERT INTO next_followups (deal_id, kind, status, armed_by)
        SELECT $1, $2, 'open', $3
@@ -240,7 +246,7 @@ export async function setNextAction(
   nextAction: string | null,
 ): Promise<void> {
   await query(`UPDATE deals_next SET next_action = $1, updated_at = now() WHERE id = $2`, [
-    nextAction,
+    sanitizeNextAction(nextAction),
     dealId,
   ]);
 }

@@ -413,3 +413,20 @@ SELECT
     ELSE NULL
   END AS margin
 FROM deals_next d;
+
+-- Canonical /next board: inbox (review queue) + shortlist, nda, cim, pursuing, closed.
+-- Closed = passed / dead / walked, not won. Retired ids fold in on every boot.
+UPDATE deals_next SET stage = 'shortlist', updated_at = now()
+ WHERE lower(stage) IN ('pof', 'shortlisted', 'proof_of_funds');
+UPDATE deals_next SET stage = 'nda', updated_at = now()
+ WHERE lower(stage) IN ('nda_to_sign', 'nda_signed', 'nda signed');
+UPDATE deals_next SET stage = 'pursuing', updated_at = now()
+ WHERE lower(stage) IN ('awaiting_reply', 'active');
+UPDATE deals_next SET stage = 'closed', updated_at = now()
+ WHERE lower(stage) IN ('dead', 'pass');
+UPDATE deals_next SET next_action = 'Request NDA', updated_at = now()
+ WHERE next_action ILIKE '%proof of funds%'
+    OR next_action ILIKE '%send POF%'
+    OR next_action ILIKE 'Request NDA or send POF';
+UPDATE deals_next SET next_action = 'Continue pursuit', updated_at = now()
+ WHERE next_action = 'Continue active review';
