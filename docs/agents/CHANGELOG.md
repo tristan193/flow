@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-01 — `nm/ops/harvest-clock` — DONE
+
+**Scope:** Stop scheduled Python/Apify harvest writes to Flow; Dirk ingest → /next is the live path  
+**Risk:** low (clocks only; pipeline, `/api/cron/harvest`, `/api/import`, `/next` unchanged)  
+**Coords:** none
+
+### Changed
+- `web/vercel.json` — empty `crons` (removed 11:20 and 15:20 UTC `/api/cron/harvest`)
+- `.github/workflows/daily-harvest.yml` — removed `schedule:`; kept `workflow_dispatch` + `repository_dispatch`
+- `docs/agents/SYSTEM.md`, `docs/agents/README.md`, `pipeline/GMAIL_SETUP.md` — clocks off, manual dispatch still works
+
+### Do not touch
+- `web/app/api/cron/harvest` — keep for manual curl
+- Python pipeline, `/api/import`, passcodes, `/next`
+
+### Follow-ups
+- After merge + Vercel prod deploy, confirm Cron Jobs list is empty
+- Human can still `gh workflow run "Daily harvest"` or curl `/api/cron/harvest`
+
 ## 2026-08-27 — `nm/web/crm` — DONE
 
 **Scope:** Dismiss button on Inbox watches (armed expectations)  

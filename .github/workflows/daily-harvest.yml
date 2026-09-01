@@ -1,13 +1,12 @@
-# Daily deal harvest from dirk@ — LIVE pipeline (cloud, not Tristan's PC).
+# Daily deal harvest from dirk@ — manual only (clocks off).
 #
 # Flow: Gmail (dirk@) → ingest → Apify BBS enrich → nm_deals.db → POST Flow App
 # Google Drive is not part of this path.
 #
-# Schedule: driven by Vercel Cron hitting the Flow App route
-# web/app/api/cron/harvest, which calls workflow_dispatch. GitHub's own
-# scheduler never fired for this repo, so the native crons below are only a
-# best-effort backup (odd minutes, since :00/:30 are the worst slots).
-# See pipeline/GMAIL_SETUP.md §3.
+# Scheduled Vercel Cron and GitHub `schedule:` were removed so this no longer
+# writes to Flow on a clock. Dirk ingest → /next is the live path.
+# Keep workflow_dispatch + repository_dispatch for a human-triggered run.
+# Manual curl to /api/cron/harvest still dispatches. See pipeline/GMAIL_SETUP.md §3.
 #
 # Ingest is idempotent (3-day lookback + ext_id upsert), so overlapping
 # triggers are harmless; concurrency below serializes them.
@@ -24,17 +23,10 @@
 name: Daily harvest
 
 on:
-  # PRIMARY trigger is workflow_dispatch, called by Vercel Cron
-  # (web/app/api/cron/harvest). GitHub's own scheduler never fired for this
-  # repo, so the crons below are an unreliable backup, nothing more.
+  # No schedule: — clocks are off. Manual only.
   workflow_dispatch:
   repository_dispatch:
     types: [harvest]
-  schedule:
-    # Odd minutes on purpose — :00/:30 are where GitHub drops schedules.
-    - cron: "17 11 * * *" # ~6:17 AM CT (CDT)
-    - cron: "23 13 * * *" # ~8:23 AM CT (CDT)
-    - cron: "41 15 * * *" # ~10:41 AM CT (CDT)
 
 concurrency:
   group: daily-harvest
