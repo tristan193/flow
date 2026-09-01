@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-01 — `nm/web/review-ui` — IN PROGRESS
+
+**Scope:** Collapse `/next` pipeline to Shortlist → NDA → CIM → Pursuing → Closed; remove POF  
+**Risk:** low (Next schema only; classic Review/`deals` untouched)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/model.ts` — five board stages; coerce legacy ids (`pof`→shortlist, `nda_to_sign`→nda, `awaiting_reply`/`active`→pursuing, `dead`→closed)
+- `web/db/schema.sql` — boot UPDATE folds old `deals_next.stage` / POF next-action copy
+- `web/app/api/next/stage` · Dirk followups · board/picker — no POF column; pass from inbound → Closed
+- Closed = passed/walked, not won
+
+### Do not touch
+- Classic `/` Review and `/pipeline` (`STAGES` in `web/lib/model.ts`)
+
+### Follow-ups
+- Merge + Vercel prod deploy of `web/`
+
+---
+
 ## 2026-08-27 — `nm/web/crm` — DONE
 
 **Scope:** Dismiss button on Inbox watches (armed expectations)  

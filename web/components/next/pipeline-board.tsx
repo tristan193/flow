@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import {
+  coerceNextStage,
+  mapNextStage,
   NEXT_BOARD_STAGES,
   type MemberId,
   type NextDeal,
@@ -18,13 +20,10 @@ import { Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
-  pof: "text-flag",
-  nda_to_sign: "text-discuss",
   nda: "text-discuss",
   cim: "text-flag",
-  awaiting_reply: "text-discuss",
-  active: "text-flag",
-  dead: "text-ink-faint",
+  pursuing: "text-discuss",
+  closed: "text-ink-faint",
 };
 
 export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member: MemberId }) {
@@ -34,7 +33,7 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
   const [error, setError] = useState<string | null>(null);
 
   const stageOf = useCallback(
-    (deal: NextDeal): NextStageId => stages[deal.id] ?? deal.stage,
+    (deal: NextDeal): NextStageId => coerceNextStage(stages[deal.id] ?? deal.stage),
     [stages],
   );
 
@@ -66,9 +65,8 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
   }, [deals, stageOf]);
 
   const visibleGroups = useMemo(() => {
-    const nonempty = grouped.filter(({ deals: staged }) => staged.length > 0);
-    if (filter === "all") return nonempty;
-    return nonempty.filter(({ stage }) => stage.id === filter);
+    if (filter === "all") return grouped;
+    return grouped.filter(({ stage }) => stage.id === filter);
   }, [grouped, filter]);
 
   return (
@@ -140,6 +138,9 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
             </div>
 
             <div className="space-y-2">
+              {staged.length === 0 && (
+                <p className="text-ink-faint py-1 text-[12px]">None</p>
+              )}
               {staged.map((deal) => (
                 <article key={deal.id} className="border-line bg-surface rounded-xl border p-3.5">
                   <div className="mb-2 flex items-start gap-2.5">
@@ -205,7 +206,10 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                     <span className="sr-only">Move {deal.title} to another stage</span>
                     <select
                       value={stageOf(deal)}
-                      onChange={(event) => move(deal, event.target.value as NextStageId)}
+                      onChange={(event) => {
+                        const stage = mapNextStage(event.target.value);
+                        if (stage) void move(deal, stage);
+                      }}
                       className="border-line bg-surface-raised text-ink w-full rounded-lg border px-3 py-2 text-[13px] font-medium"
                     >
                       {NEXT_BOARD_STAGES.map((option) => (

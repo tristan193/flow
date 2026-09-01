@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-08-04 · Primary author this pass: `nm/bbs/enrich` + `nm/docs/handoff`
+Last reviewed: 2026-09-01 · Primary author this pass: `nm/web/review-ui`
 
 ## 1. Product in one paragraph
 
@@ -134,6 +134,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 
 | Area | Paths |
 |------|--------|
+| Next (experimental) | `web/app/next/` · `deals_next` · board **Shortlist → NDA → CIM → Pursuing → Closed** (`closed` = passed/walked, not won). Inbound is `/next` review, not a column. |
 | Import API | `web/app/api/import/` · auth `FLOW_IMPORT_TOKEN` |
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |

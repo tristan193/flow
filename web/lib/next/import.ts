@@ -17,7 +17,7 @@ import {
 } from "./identity";
 
 export { isHarvestExtId } from "./identity";
-import { isMemberId, isVerdictAction } from "./model";
+import { isMemberId, isVerdictAction, sanitizeNextAction } from "./model";
 
 /**
  * Next ingest. Identity is TLY number + source id + fingerprint.
@@ -222,7 +222,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
     const threads = ident.gmailThreadIds;
     const needs = JSON.stringify(deal.needsLlm ?? []);
     const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
-    const nextAction = deal.nextAction?.trim() || null;
+    const nextAction = sanitizeNextAction(deal.nextAction);
 
     if (matchedId != null) {
       const existing = await query<Record<string, unknown>>(

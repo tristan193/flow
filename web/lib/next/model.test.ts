@@ -1,0 +1,76 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  NEXT_BOARD_STAGES,
+  coerceNextStage,
+  defaultNextAction,
+  mapNextStage,
+  nextFollowupKind,
+  nextStageLabel,
+  sanitizeNextAction,
+} from "./stages.ts";
+
+test("board is exactly Shortlist, NDA, CIM, Pursuing, Closed", () => {
+  assert.deepEqual(
+    NEXT_BOARD_STAGES.map((s) => s.id),
+    ["shortlist", "nda", "cim", "pursuing", "closed"],
+  );
+  assert.deepEqual(
+    NEXT_BOARD_STAGES.map((s) => s.label),
+    ["Shortlist", "NDA", "CIM", "Pursuing", "Closed"],
+  );
+});
+
+test("legacy stages map onto the five columns", () => {
+  const cases: [unknown, string][] = [
+    ["pof", "shortlist"],
+    ["shortlisted", "shortlist"],
+    ["shortlist", "shortlist"],
+    ["proof of funds", "shortlist"],
+    ["nda_to_sign", "nda"],
+    ["nda", "nda"],
+    ["nda signed", "nda"],
+    ["nda_signed", "nda"],
+    ["cim", "cim"],
+    ["CIM / data room", "cim"],
+    ["data room", "cim"],
+    ["awaiting_reply", "pursuing"],
+    ["active", "pursuing"],
+    ["dead", "closed"],
+    ["pass", "closed"],
+    ["inbox", "inbox"],
+    ["inbound", "inbox"],
+  ];
+  for (const [raw, want] of cases) {
+    assert.equal(mapNextStage(raw), want, String(raw));
+    assert.equal(coerceNextStage(raw), want, String(raw));
+  }
+});
+
+test("unknown stage strings coerce to inbox instead of throwing", () => {
+  assert.equal(mapNextStage("not-a-stage"), null);
+  assert.equal(coerceNextStage("not-a-stage"), "inbox");
+  assert.equal(coerceNextStage(null), "inbox");
+  assert.equal(nextStageLabel("pof"), "Shortlist");
+  assert.equal(nextStageLabel("dead"), "Closed");
+});
+
+test("next-action copy has no POF", () => {
+  assert.equal(defaultNextAction("shortlist"), "Request NDA");
+  assert.equal(defaultNextAction("nda"), "Sign the NDA");
+  assert.equal(defaultNextAction("pursuing"), "Continue pursuit");
+  assert.equal(defaultNextAction("closed"), null);
+  assert.equal(sanitizeNextAction("Request NDA or send POF"), "Request NDA");
+  assert.equal(sanitizeNextAction("Send proof of funds"), "Request NDA");
+  assert.equal(sanitizeNextAction("Continue active review"), "Continue pursuit");
+  assert.equal(sanitizeNextAction("Follow up with broker"), "Follow up with broker");
+});
+
+test("follow-ups arm on NDA, CIM, and Pursuing only", () => {
+  assert.equal(nextFollowupKind("nda"), "nda");
+  assert.equal(nextFollowupKind("cim"), "cim");
+  assert.equal(nextFollowupKind("pursuing"), "broker_reply");
+  assert.equal(nextFollowupKind("shortlist"), null);
+  assert.equal(nextFollowupKind("closed"), null);
+});
