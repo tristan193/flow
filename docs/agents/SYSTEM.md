@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-08-04 · Primary author this pass: `nm/bbs/enrich` + `nm/docs/handoff`
+Last reviewed: 2026-09-01 · Primary author this pass: `nm/ops/harvest-clock`
 
 ## 1. Product in one paragraph
 
@@ -12,8 +12,12 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Vercel Cron → web/app/api/cron/harvest                      │
-│   workflow_dispatch → .github/workflows/daily-harvest.yml   │
+│ Live ingest: Dirk Gmail → /next  (not this pipeline)        │
+│                                                             │
+│ Old harvest (manual only — clocks off):                     │
+│   workflow_dispatch / repository_dispatch / curl            │
+│   → /api/cron/harvest → .github/workflows/daily-harvest.yml │
+│   Vercel crons[] empty; workflow has no schedule:           │
 └────────────────────────────┬────────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -141,7 +145,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | CIM → pipeline | Pipeline “Add from CIM” · `POST /api/cim/extract` + `/create` · AI Gateway + unpdf · lands at stage `cim` |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |
-| Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |
+| Cron harvest trigger | `web/app/api/cron/harvest/route.ts` (route kept; Vercel `crons` empty — no clock) |
 
 Local: `npm run dev` in `web/` with `.env.local` (passcodes + session secret). Restart required to re-seed PGlite from updated `seed-data.json`.
 
@@ -158,7 +162,7 @@ python enrich_bizbuysell.py --backend apify --newest --dry-run
 # Export seed for local app
 python export_snapshot.py --db nm_deals.db --out ../web/db/seed-data.json
 
-# Trigger live harvest
+# Manual harvest only (clocks off; Dirk → /next is live ingest)
 gh workflow run "Daily harvest" --ref main
 ```
 

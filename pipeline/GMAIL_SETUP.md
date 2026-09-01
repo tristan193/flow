@@ -41,43 +41,33 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 
 **Required.** If either is missing, the “Push snapshot to Flow App” step fails the workflow. Harvest artifacts are still uploaded, but Flow App will not update.
 
-## 3. Scheduling — Vercel Cron drives it, not GitHub cron
+## 3. Scheduling — clocks off (manual only)
 
 File: `.github/workflows/daily-harvest.yml`
 
-**Why (2026-07-31):** GitHub’s `schedule:` trigger never fired once for this repo.
-Every run in history was `workflow_dispatch`. GitHub documents scheduled runs as
-best-effort and drops them under load, and brand-new repos often don’t register a
-schedule at all. Adding more cron lines does not fix that.
+**2026-09-01:** Vercel Cron entries for `/api/cron/harvest` and GitHub
+`schedule:` crons were removed. This pipeline no longer writes to Flow on a
+clock. Live ingest is Dirk Gmail → `/next`. The Python harvest still exists
+for a human-triggered run.
 
-**Trigger chain now:**
+**Manual trigger chain:**
 
 ```
-Vercel Cron  →  GET /api/cron/harvest  (Flow App)
-             →  POST workflow_dispatch  (GitHub API)
+curl /api/cron/harvest  or  Actions → Run workflow  or  repository_dispatch
              →  Daily harvest workflow  →  Gmail → ingest → Flow App
 ```
 
-### Vercel setup (one time)
+`web/vercel.json` has `"crons": []`. The route `web/app/api/cron/harvest`
+is kept so a curl still dispatches.
 
-The cron schedule itself lives in `web/vercel.json`, so it deploys with the app.
-Add two environment variables in **Vercel → Project → Settings → Environment
-Variables** (Production):
+### Vercel env (still needed for a manual curl dispatch)
 
 | Variable | Value |
 |----------|-------|
 | `CRON_SECRET` | Any long random string. Vercel sends it back as `Authorization: Bearer …`, and the route rejects anything else. |
 | `GITHUB_DISPATCH_TOKEN` | GitHub fine-grained PAT — repo `tristan193/flow`, permission **Actions: Read and write** |
 
-Create the PAT at **GitHub → Settings → Developer settings → Personal access
-tokens → Fine-grained tokens**.
-
 Optional overrides: `GITHUB_REPO`, `GITHUB_WORKFLOW_FILE`, `GITHUB_REF_NAME`.
-
-Redeploy after adding the variables, then confirm under **Vercel → Cron Jobs**.
-
-Cron times are UTC: `20 11 * * *` ≈ 6:20 AM CT and `20 15 * * *` ≈ 10:20 AM CT.
-On the Hobby plan each cron fires once a day and may land anywhere in that hour.
 
 ### Manual test (no waiting)
 
@@ -88,11 +78,11 @@ curl -X POST https://web-tau-seven-77.vercel.app/api/cron/harvest `
 
 `{"ok":true,...}` means a new run appeared under Actions → Daily harvest.
 
-### Backups
+### How to run by hand
 
-- GitHub native cron at odd minutes (~6:17 / 8:23 / 10:41 AM CT) — best-effort
-- Actions → Daily harvest → **Run workflow** — always works
-- `repository_dispatch` type `harvest` — for any other scheduler
+- Actions → Daily harvest → **Run workflow**
+- `repository_dispatch` type `harvest`
+- curl `/api/cron/harvest` (above)
 
 ### Behavior
 

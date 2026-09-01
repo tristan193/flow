@@ -24,8 +24,11 @@ Repo: `tristan193/flow` · default branch `main`.
 ## Quick map
 
 ```
+Live: Dirk Gmail → /next  (not the Python harvest)
+
+Old harvest (manual only — clocks off):
 Gmail (dirk@)
-  → GitHub Actions daily-harvest.yml
+  → GitHub Actions daily-harvest.yml  (workflow_dispatch / repository_dispatch)
   → harvest_gmail.py + ingest.py
   → enrich_bizbuysell.py (Apify)   ← required for BizBuySell money fields
   → export_snapshot.py --post
