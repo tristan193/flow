@@ -27,6 +27,31 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-01 — `nm/web/next-ingest` — DONE
+
+**Scope:** Dirk token control plane for `/next` stages; ingest race + duplicate merge  
+**Risk:** medium (Neon `deals_next` unique index after merge; stage moves)  
+**Coords:** none — did not merge PR #1 or PR #6; harvest clocks untouched
+
+### Changed
+- `web/app/api/next/stage/route.ts` — Bearer `FLOW_IMPORT_TOKEN` or member session; `dealNumber` or `dealId` + `stage`
+- `web/lib/next/stage-auth.ts` — 401 / 400 / 404; aliases `closed|pass|passed` → `dead`, `pursuing` → `awaiting_reply`
+- `web/lib/next/import.ts` — transactional match+insert; import `stage`/`proposedStage` via `moveNextStage` (`dirk`); pass/short verdicts move inbox
+- `web/app/api/next/merge/route.ts` — token collapse of duplicate TLY rows
+- `web/middleware.ts` — `/api/next/stage` and `/api/next/merge` token-reachable
+
+### Do not touch
+- Classic `/` and `/pipeline`
+- Live `deals` table / `/api/import`
+- Login passcodes
+- Harvest clocks
+
+### Follow-ups
+- After deploy: `POST /api/next/merge` `{ "confirm": "MERGE" }` to collapse TLY-023..029
+- Dirk: `POST /api/next/stage` `{ "dealNumber": "TLY-002", "stage": "dead" }` with import token
+
+---
+
 ## 2026-08-27 — `nm/web/crm` — DONE
 
 **Scope:** Dismiss button on Inbox watches (armed expectations)  

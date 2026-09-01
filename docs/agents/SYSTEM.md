@@ -135,6 +135,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Area | Paths |
 |------|--------|
 | Import API | `web/app/api/import/` · auth `FLOW_IMPORT_TOKEN` |
+| Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Stage operator is Dirk, not a browser session. Writes `deals_next` only. |
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
 | Review UI | `web/components/review-client.tsx`, `deal-card.tsx` |
