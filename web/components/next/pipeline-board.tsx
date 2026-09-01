@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
@@ -14,7 +13,7 @@ import {
 } from "@/lib/next/model";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
-import { DealIdLine, Earnings, SourcePill, VerdictChips } from "./deal-card";
+import { DealTitleStack, Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -142,17 +141,16 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
             <div className="space-y-2">
               {staged.map((deal) => (
                 <article key={deal.id} className="border-line bg-surface rounded-xl border p-3.5">
-                  <div className="mb-2 flex items-start gap-2.5">
-                    <SourcePill deal={deal} />
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/next/deals/${deal.id}`} className="block">
-                        <span className="text-[15px] leading-snug font-semibold hover:underline">
-                          {deal.title}
-                        </span>
-                        <DealIdLine deal={deal} />
-                      </Link>
+                  <div className="mb-2 flex w-full min-w-0 flex-col">
+                    <DealTitleStack
+                      deal={deal}
+                      href={`/next/deals/${deal.id}`}
+                      titleClassName="text-[15px] leading-snug font-semibold hover:underline"
+                    />
+                    <div className="mt-1.5 flex items-start justify-between gap-2">
+                      <SourcePill deal={deal} />
+                      <Earnings deal={deal} />
                     </div>
-                    <Earnings deal={deal} />
                   </div>
 
                   <div className="text-ink-faint mb-2.5 space-y-1 text-[12px]">

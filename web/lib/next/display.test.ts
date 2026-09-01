@@ -62,6 +62,39 @@ test("ID line is TLY then listing id", () => {
   assert.equal(dealIdLine({ deal_number: "TLY-002" }), "TLY-002");
 });
 
+test("nickname-as-id (prod Axial hex / WC number) goes on the ID line, not the pill", () => {
+  assert.equal(
+    dealIdLine({
+      deal_number: "TLY-035",
+      nickname: "fe962202156a4cf0aacb395f1b891096",
+      source: "axial.net",
+    }),
+    "TLY-035 · fe962202156a4cf0aacb395f1b891096",
+  );
+  assert.equal(
+    sourceDisplayName({
+      nickname: "fe962202156a4cf0aacb395f1b891096",
+      source: "axial.net",
+    }),
+    "Axial",
+  );
+  assert.equal(
+    dealIdLine({
+      deal_number: "TLY-034",
+      nickname: "119402",
+      source: "websiteclosers.com",
+    }),
+    "TLY-034 · 119402",
+  );
+  assert.equal(
+    sourceDisplayName({
+      nickname: "119402",
+      source: "websiteclosers.com",
+    }),
+    "WebsiteClosers",
+  );
+});
+
 test("source pill uses human names, never hex or q=", () => {
   assert.equal(sourceDisplayName({ nickname: "Axial", source: "axial.net" }), "Axial");
   assert.equal(

@@ -5,7 +5,7 @@
  * Kept free of identity.ts so node:test can load this file without .ts extensions.
  */
 
-type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb";
+type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb" | "loose";
 
 interface SourceId {
   kind: SourceKind;
@@ -24,7 +24,7 @@ export type DisplayDeal = {
   url?: string | null;
 };
 
-const KIND_ORDER: SourceKind[] = ["axial", "bbs", "vaid", "tw", "rejigg", "wc", "smb"];
+const KIND_ORDER: SourceKind[] = ["axial", "bbs", "vaid", "tw", "rejigg", "wc", "smb", "loose"];
 
 const KIND_PREFIX = /^(axial|bbs|vaid|tw|rejigg|wc|smb):(.+)$/i;
 
@@ -34,7 +34,7 @@ const BBS_Q = /^q=\d{6,}$/i;
 const TRANSWORLD = /^\d{4}-\d{6}$/;
 const DIGITS = /^\d{6,}$/;
 
-const KIND_SOURCE_NAME: Record<SourceKind, string> = {
+const KIND_SOURCE_NAME: Partial<Record<SourceKind, string>> = {
   axial: "Axial",
   bbs: "BizBuySell",
   vaid: "V-AID",
@@ -147,10 +147,42 @@ function extractFromUrl(url: string | null | undefined): SourceId[] {
   return out;
 }
 
+function inferKind(value: string, deal: DisplayDeal): SourceKind {
+  if (HEX_TOKEN.test(value) || UUIDISH.test(value)) return "axial";
+  if (BBS_Q.test(value)) return "bbs";
+  if (TRANSWORLD.test(value)) return "tw";
+  const blob = [deal.source, deal.sub_source, deal.sources, deal.url]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (blob.includes("bizbuysell")) return "bbs";
+  if (blob.includes("rejigg")) return "rejigg";
+  if (blob.includes("websiteclosers")) return "wc";
+  if (blob.includes("axial")) return "axial";
+  if (/\bvaid\b|v-aid/.test(blob)) return "vaid";
+  if (blob.includes("transworld")) return "tw";
+  if (blob.includes("smbdeal")) return "smb";
+  return "loose";
+}
+
+function adoptLoose(out: SourceId[], raw: string | null | undefined, deal: DisplayDeal) {
+  const v = (raw || "").trim();
+  if (!v || !looksLikeListingId(v)) return;
+  const prefixed = v.match(KIND_PREFIX);
+  if (prefixed) {
+    addSource(out, prefixed[1].toLowerCase() as SourceKind, prefixed[2]);
+    return;
+  }
+  addSource(out, inferKind(v, deal), v.replace(/^q=/i, ""));
+}
+
 export function listingIds(deal: DisplayDeal): SourceId[] {
-  const stored = parseStoredSourceIds(deal.source_ids, deal.source_deal_id);
-  if (stored.length) return stored;
-  return extractFromUrl(deal.url);
+  const out = parseStoredSourceIds(deal.source_ids, deal.source_deal_id);
+  for (const id of extractFromUrl(deal.url)) addSource(out, id.kind, id.value);
+  // Production often stored the Axial hex / WC number in nickname, not source_ids.
+  adoptLoose(out, deal.source_deal_id, deal);
+  adoptLoose(out, deal.nickname, deal);
+  return out;
 }
 
 /** Listing ids in kind order, formatted for the quiet ID line. */
@@ -210,7 +242,10 @@ export function sourceDisplayName(deal: DisplayDeal): string {
   if (fromBlob) return fromBlob;
 
   const fromKind = listingIds(deal)[0];
-  if (fromKind) return KIND_SOURCE_NAME[fromKind.kind];
+  if (fromKind) {
+    const named = KIND_SOURCE_NAME[fromKind.kind];
+    if (named) return named;
+  }
 
   const domain = (deal.source || "").trim().toLowerCase().replace(/^www\./, "");
   const core = domain.split(".")[0] || "";

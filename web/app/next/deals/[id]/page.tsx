@@ -5,7 +5,7 @@ import { BlurbText } from "@/components/blurb-text";
 import { NextAttachCim } from "@/components/next/attach-cim";
 import { NextBuyboxReview } from "@/components/next/buybox-review";
 import { NextDealActions } from "@/components/next/deal-actions";
-import { DealIdLine, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
+import { DealTitleStack, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
 import { listingIdLabel, sourceDisplayName } from "@/lib/next/display";
 import { NextNav } from "@/components/next/nav";
 import { NextNotes } from "@/components/next/notes";
@@ -68,18 +68,19 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           ← Back to Next review
         </Link>
 
-        <div className="mt-3 mb-4 flex items-start gap-2.5">
-          <SourcePill deal={deal} />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl leading-snug font-semibold tracking-tight">{deal.title}</h1>
-            <div className="flex flex-wrap items-center gap-x-2">
-              <DealIdLine deal={deal} />
-              {deal.is_demo && (
-                <span className="bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
-                  DEMO
-                </span>
-              )}
-            </div>
+        <div className="mt-3 mb-4 flex w-full min-w-0 flex-col">
+          <DealTitleStack
+            deal={deal}
+            titleAs="h1"
+            titleClassName="text-xl leading-snug font-semibold tracking-tight"
+          />
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <SourcePill deal={deal} />
+            {deal.is_demo && (
+              <span className="bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
+                DEMO
+              </span>
+            )}
           </div>
         </div>
 
