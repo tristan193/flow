@@ -4,14 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/", label: "Review" },
-  { href: "/pipeline", label: "Pipeline" },
-  { href: "/next", label: "Next · exp" },
+  { href: "/next", label: "Review" },
+  { href: "/next/pipeline", label: "Pipeline" },
 ];
 
-export function Nav({ memberLabel }: { memberLabel: string }) {
+export function NextNav({ memberLabel }: { memberLabel: string }) {
   const pathname = usePathname();
-  const dataActive = pathname.startsWith("/import");
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -21,17 +19,21 @@ export function Nav({ memberLabel }: { memberLabel: string }) {
   return (
     <header className="border-line bg-canvas/95 sticky top-0 z-20 border-b backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-        <span className="text-base font-semibold tracking-tight">Flow</span>
+        <span className="text-base font-semibold tracking-tight">
+          Flow
+          <span className="text-flag ms-1.5 text-[11px] font-bold tracking-wide uppercase">
+            Next
+          </span>
+        </span>
 
         <nav className="flex flex-1 items-center gap-1">
           {TABS.map((tab) => {
             const active =
-              tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+              tab.href === "/next" ? pathname === "/next" : pathname.startsWith(tab.href);
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
-                title={tab.href === "/next" ? "Experimental Next shell — original Review stays the fallback" : undefined}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                   active ? "bg-surface-raised text-ink" : "text-ink-dim hover:text-ink"
                 }`}
@@ -50,13 +52,8 @@ export function Nav({ memberLabel }: { memberLabel: string }) {
           >
             {memberLabel}
           </button>
-          <Link
-            href="/import"
-            className={`text-[11px] leading-none transition-colors ${
-              dataActive ? "text-ink font-medium" : "text-ink-faint hover:text-ink-dim"
-            }`}
-          >
-            Data
+          <Link href="/" className="text-ink-faint hover:text-ink-dim text-[11px] leading-none">
+            Original
           </Link>
         </div>
       </div>

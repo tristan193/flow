@@ -1,5 +1,6 @@
 import { applySchema, getDb, query } from "./db";
 import { seedIfEmpty } from "./import";
+import { seedNextIfEmpty } from "./next/import";
 
 /**
  * Applies the schema and, on a genuinely empty database, migrates the deals the
@@ -40,6 +41,7 @@ export async function ensureReady(): Promise<void> {
     globalForBoot.__flowReady = (async () => {
       await getDb();
       await seedIfEmpty();
+      await seedNextIfEmpty();
     })().catch((error) => {
       globalForBoot.__flowReady = undefined;
       throw error;

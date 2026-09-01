@@ -1,0 +1,54 @@
+{
+  "note": "LOCAL DEMO fixture for /next empty-state screenshots only. Never imported when DATABASE_URL is set. Titles are labeled DEMO.",
+  "deals": [
+    {
+      "dealNumber": "TLY-001",
+      "title": "[DEMO] Central Texas HVAC & Filtration",
+      "blurb": "Commercial HVAC and indoor air filtration contractor serving Austin and San Antonio. Recurring service contracts with hospitals and school districts.",
+      "source": "bizbuysell.com",
+      "subSource": "bizalert@bizbuysell.com",
+      "nickname": "BizBuySell",
+      "city": "Austin",
+      "state": "TX",
+      "revenue": 2800000,
+      "ebitda": 520000,
+      "asking": 1950000,
+      "url": "https://www.bizbuysell.com/business-opportunity/Profile/?q=2214412",
+      "gmailThreadIds": ["18f0demo001"],
+      "brokerFirm": "Benchmark International",
+      "isDemo": true
+    },
+    {
+      "dealNumber": "TLY-002",
+      "title": "[DEMO] Water Treatment Platform",
+      "blurb": "Water filtration and legionella management for healthcare and correctional facilities. National contract service.",
+      "source": "axial.net",
+      "subSource": "notifications@axial.net",
+      "nickname": "Axial",
+      "city": "Houston",
+      "state": "TX",
+      "revenue": 4100000,
+      "ebitda": 890000,
+      "asking": 4200000,
+      "html": "<a href=\"https://network.axial.net/app/opportunity/deadbeefcafebabe?action=pursue\">Pursue</a>",
+      "gmailThreadIds": ["18f0demo002"],
+      "brokerFirm": "Axial Network",
+      "isDemo": true
+    },
+    {
+      "dealNumber": "TLY-003",
+      "title": "[DEMO] Neighborhood Pizza Restaurant",
+      "blurb": "Dine-in pizzeria with a small taproom. Owner-operated.",
+      "source": "bizbuysell.com",
+      "nickname": "BizBuySell",
+      "city": "Dallas",
+      "state": "TX",
+      "revenue": 900000,
+      "sde": 180000,
+      "asking": 450000,
+      "url": "https://www.bizbuysell.com/business-opportunity/Profile/?q=1999001",
+      "isDemo": true
+    }
+  ],
+  "verdicts": []
+}

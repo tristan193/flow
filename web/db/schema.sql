@@ -255,3 +255,161 @@ CREATE INDEX IF NOT EXISTS ix_deal_expectations_open
   WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS ix_deal_expectations_deal
   ON deal_expectations (deal_id, status, armed_at DESC);
+
+-- =============================================================================
+-- Next (experimental) — parallel schema. Live `deals` / harvest import untouched.
+-- Primary identity is deal_number (TLY-NNN), never harvest ext_id / gmail_msg.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS deals_next (
+  id                  SERIAL PRIMARY KEY,
+  deal_number         TEXT UNIQUE NOT NULL,
+
+  source_deal_id      TEXT,
+  source_ids          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  alias_names         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  gmail_thread_ids    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  broker_firm         TEXT,
+  fingerprint         TEXT,
+  next_action         TEXT,
+  is_demo             BOOLEAN NOT NULL DEFAULT FALSE,
+
+  title               TEXT NOT NULL,
+  blurb               TEXT,
+  source              TEXT,
+  sub_source          TEXT,
+  nickname            TEXT,
+  sources             TEXT,
+
+  city                TEXT,
+  state               TEXT,
+  county              TEXT,
+
+  revenue             DOUBLE PRECISION,
+  ebitda              DOUBLE PRECISION,
+  sde                 DOUBLE PRECISION,
+  asking              DOUBLE PRECISION,
+
+  business_model_type TEXT NOT NULL DEFAULT '',
+  needs_llm           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  url                 TEXT,
+
+  first_seen          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  times_seen          INTEGER NOT NULL DEFAULT 1,
+
+  stage               TEXT NOT NULL DEFAULT 'inbox',
+  stage_changed_at    TIMESTAMPTZ,
+  stage_changed_by    TEXT,
+
+  cim_url             TEXT,
+  nda_url             TEXT,
+
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_deals_next_stage ON deals_next (stage);
+CREATE INDEX IF NOT EXISTS ix_deals_next_last_seen ON deals_next (last_seen DESC);
+CREATE INDEX IF NOT EXISTS ix_deals_next_fingerprint ON deals_next (fingerprint);
+CREATE INDEX IF NOT EXISTS ix_deals_next_source_deal_id ON deals_next (source_deal_id);
+
+CREATE TABLE IF NOT EXISTS next_deal_counters (
+  key     TEXT PRIMARY KEY,
+  next_n  INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO next_deal_counters (key, next_n) VALUES ('tly', 1) ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS verdicts_next (
+  deal_id     INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  member      TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('short', 'pass', 'discuss')),
+  reason      TEXT,
+  note        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (deal_id, member)
+);
+
+CREATE INDEX IF NOT EXISTS ix_verdicts_next_member ON verdicts_next (member);
+
+CREATE TABLE IF NOT EXISTS stage_events_next (
+  id          SERIAL PRIMARY KEY,
+  deal_id     INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  from_stage  TEXT,
+  to_stage    TEXT NOT NULL,
+  member      TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_stage_events_next_deal ON stage_events_next (deal_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS notes_next (
+  id          SERIAL PRIMARY KEY,
+  deal_id     INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  member      TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_notes_next_deal ON notes_next (deal_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS deal_files_next (
+  id            SERIAL PRIMARY KEY,
+  deal_id       INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  member        TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'cim',
+  filename      TEXT NOT NULL,
+  content_type  TEXT NOT NULL,
+  bytes         BYTEA NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_deal_files_next_deal ON deal_files_next (deal_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS next_import_runs (
+  id                SERIAL PRIMARY KEY,
+  source            TEXT NOT NULL,
+  detail            TEXT,
+  deals_new         INTEGER NOT NULL DEFAULT 0,
+  deals_updated     INTEGER NOT NULL DEFAULT 0,
+  verdicts_applied  INTEGER NOT NULL DEFAULT 0,
+  skipped           INTEGER NOT NULL DEFAULT 0,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS next_followups (
+  id              SERIAL PRIMARY KEY,
+  deal_id         INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'open',
+  armed_by        TEXT NOT NULL,
+  armed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  due_at          TIMESTAMPTZ,
+  fulfilled_at    TIMESTAMPTZ,
+  note            TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_next_followups_open
+  ON next_followups (status, kind, due_at)
+  WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS ix_next_followups_deal
+  ON next_followups (deal_id, status, armed_at DESC);
+
+DROP VIEW IF EXISTS v_deals_next;
+CREATE VIEW v_deals_next AS
+SELECT
+  d.*,
+  COALESCE(d.ebitda, d.sde) AS earnings,
+  CASE
+    WHEN d.ebitda IS NOT NULL THEN 'EBITDA'
+    WHEN d.sde    IS NOT NULL THEN 'SDE'
+    ELSE NULL
+  END AS earnings_basis,
+  (d.ebitda IS NULL AND d.sde IS NOT NULL) AS earnings_is_sde,
+  CASE
+    WHEN d.revenue > 0
+      THEN ROUND((COALESCE(d.ebitda, d.sde) / d.revenue)::numeric, 4)::float8
+    ELSE NULL
+  END AS margin
+FROM deals_next d;

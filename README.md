@@ -35,10 +35,25 @@ UI may truncate for display; storage keeps full values. Format catalog:
 Agent handoff (intent, findings, docs):
 [`docs/Deal_Extraction_Format_Repertoire_Whitepaper.md`](docs/Deal_Extraction_Format_Repertoire_Whitepaper.md).
 
+## Original vs Next
+
+| | **Original (fallback)** | **Next (experimental)** |
+|---|---|---|
+| UI | `/` Review · `/pipeline` | `/next` Review · `/next/pipeline` |
+| Import | `POST /api/import` — live harvest still posts here | `POST /api/next/import` |
+| Dirk poll | none | `GET /api/next/dirk` |
+| Tables | `deals`, `verdicts`, … | `deals_next`, `verdicts_next`, … |
+| Identity | harvest `ext_id` (`format:gmail_msg:index`) | `TLY-001` + source ID + fingerprint |
+
+**If anything on Next breaks, use `/` and `/pipeline`.** Login passcodes and the harvest → `/api/import` path are unchanged.
+
+Next deal numbers mint `TLY-001` on first touch. Join order: deal number → source ID (Axial hex from Pursue/Pass HTML, BBS `q=`, V-AID, Transworld) → fingerprint (teaser + broker + round(EBITDA) + geo). Aliases and `gmail_thread_ids[]` accumulate. Never broker-only. Never one Gmail thread = one deal.
+
 ## What Flow App does
 
 - **Review** — swipe or list; shortlist / discuss / pass with live shared verdicts
 - **Pipeline** — shortlisted deals on a board (contacted → NDA → CIM → offer → closed / dead)
+- **Next** — experimental rebuild of cards → board → CIM → Dirk APIs (`/next`)
 - **Data** — status of the live harvest; manual CSV upload as fallback
 
 ## Pipeline setup (Gmail → Actions)
@@ -76,7 +91,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `FLOW_SESSION_SECRET` | Random 32+ char string for signed cookies |
 | `FLOW_PASSCODE_TRISTAN` | Tristan's passcode |
 | `FLOW_PASSCODE_PARTNER` | Partner's passcode |
-| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `GET /api/next/dirk` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 
 ## Manual push (dev / one-off)
