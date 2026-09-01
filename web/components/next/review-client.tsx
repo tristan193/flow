@@ -15,6 +15,7 @@ import {
 } from "@/lib/next/model";
 import {
   CardFooter,
+  DealIdLine,
   DealListCard,
   FitStrip,
   LeadLine,
@@ -644,6 +645,7 @@ function SwipeDeck({
 
                   <div>
                     <h2 className="text-[18px] leading-snug font-semibold">{deal.title}</h2>
+                    <DealIdLine deal={deal} />
                     <div className="mt-1">
                       <Where deal={deal} />
                     </div>

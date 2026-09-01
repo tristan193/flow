@@ -14,7 +14,7 @@ import {
 } from "@/lib/next/model";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
-import { Earnings, SourcePill, VerdictChips } from "./deal-card";
+import { DealIdLine, Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -144,15 +144,14 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                 <article key={deal.id} className="border-line bg-surface rounded-xl border p-3.5">
                   <div className="mb-2 flex items-start gap-2.5">
                     <SourcePill deal={deal} />
-                    <Link
-                      href={`/next/deals/${deal.id}`}
-                      className="min-w-0 flex-1 text-[15px] leading-snug font-semibold hover:underline"
-                    >
-                      <span className="text-ink-faint mr-1.5 text-[12px] font-semibold tabular">
-                        {deal.deal_number}
-                      </span>
-                      {deal.title}
-                    </Link>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/next/deals/${deal.id}`} className="block">
+                        <span className="text-[15px] leading-snug font-semibold hover:underline">
+                          {deal.title}
+                        </span>
+                        <DealIdLine deal={deal} />
+                      </Link>
+                    </div>
                     <Earnings deal={deal} />
                   </div>
 
