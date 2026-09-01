@@ -2,17 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  axialHexFromNickname,
   buildIdentity,
   computeFingerprint,
   extractSourceIds,
   findIdentityMatch,
   formatDealNumber,
   gmailAllHref,
+  identityGroupKeys,
   isHarvestExtId,
   isNonDealMail,
   mergeAliasNames,
   mergeThreadIds,
   parseDealNumber,
+  sanitizeSourceDealId,
 } from "./identity.ts";
 
 test("deal numbers", () => {
@@ -190,4 +193,47 @@ test("Action Summary is not a deal; threads accumulate", () => {
   assert.equal(buildIdentity({ title: "X" }).dealNumber, null);
   assert.equal(isHarvestExtId("axial.teaser:18abc:0"), true);
   assert.equal(isHarvestExtId("format:gmail_msg:2"), true);
+  assert.equal(isHarvestExtId("bbs:2214412"), false);
+});
+
+test("harvest ext_id is dropped from source ids and never matches", () => {
+  assert.equal(sanitizeSourceDealId("axial.teaser:18abc:0"), null);
+  assert.equal(sanitizeSourceDealId("axial:deadbeefcafebabe"), "axial:deadbeefcafebabe");
+  const ident = buildIdentity({
+    title: "HVAC",
+    sourceDealId: "axial.teaser:18abc:0",
+    sourceIds: [
+      { kind: "axial", value: "teaser:18abc:0", canonical: "axial.teaser:18abc:0" },
+    ],
+  });
+  assert.equal(ident.sourceDealId, null);
+  assert.equal(ident.sourceIds.length, 0);
+
+  const hit = findIdentityMatch(
+    { title: "HVAC follow-up", extId: "axial.teaser:18abc:0" } as never,
+    [
+      {
+        id: 1,
+        dealNumber: "TLY-001",
+        sourceDealId: "axial.teaser:18abc:0",
+        title: "HVAC",
+      },
+    ],
+  );
+  assert.equal(hit, null);
+});
+
+test("Axial hex nickname groups with source id", () => {
+  assert.equal(axialHexFromNickname("Axial"), null);
+  assert.equal(axialHexFromNickname("deadbeefcafebabe"), "deadbeefcafebabe");
+  const fromNick = extractSourceIds({ title: "Auto wash", nickname: "deadbeefcafebabe" });
+  assert.deepEqual(
+    fromNick.map((s) => s.canonical),
+    ["axial:deadbeefcafebabe"],
+  );
+  const keys = identityGroupKeys({
+    nickname: "deadbeefcafebabe",
+    sourceIds: [{ kind: "axial", value: "deadbeefcafebabe", canonical: "axial:deadbeefcafebabe" }],
+  });
+  assert.ok(keys.includes("axial:deadbeefcafebabe"));
 });

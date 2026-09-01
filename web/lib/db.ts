@@ -12,10 +12,28 @@ import path from "node:path";
  * under Windows + OneDrive setups. Restarting the dev server re-seeds from
  * db/seed-data.json. Hosted deploys use DATABASE_URL and keep data for real.
  */
+export type QueryFn = <T = Record<string, unknown>>(
+  text: string,
+  params?: unknown[],
+) => Promise<T[]>;
+
 export interface Db {
-  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  query: QueryFn;
   exec(text: string): Promise<void>;
+  withTransaction<T>(fn: (q: QueryFn) => Promise<T>): Promise<T>;
   readonly driver: "postgres" | "pglite";
+}
+
+export function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const rec = error as { code?: unknown; message?: unknown };
+  if (String(rec.code ?? "") === "23505") return true;
+  const msg = String(rec.message ?? "").toLowerCase();
+  return msg.includes("unique") && (msg.includes("duplicate") || msg.includes("constraint"));
+}
+
+function bindQuery(run: QueryFn): QueryFn {
+  return async <T>(text: string, params: unknown[] = []) => run<T>(text, params);
 }
 
 async function createPglite(): Promise<Db> {
@@ -29,6 +47,15 @@ async function createPglite(): Promise<Db> {
     },
     async exec(text: string) {
       await pg.exec(text);
+    },
+    async withTransaction<T>(fn: (q: QueryFn) => Promise<T>): Promise<T> {
+      return pg.transaction(async (tx) => {
+        const q = bindQuery(async <R>(text: string, params: unknown[] = []) => {
+          const result = await tx.query(text, params);
+          return result.rows as R[];
+        });
+        return fn(q);
+      });
     },
   };
 }
@@ -45,6 +72,14 @@ async function createPostgres(url: string): Promise<Db> {
     },
     async exec(text: string) {
       await sql.unsafe(text);
+    },
+    async withTransaction<T>(fn: (q: QueryFn) => Promise<T>): Promise<T> {
+      return sql.begin(async (tx) => {
+        const q = bindQuery(async <R>(text: string, params: unknown[] = []) => {
+          return (await tx.unsafe(text, params as never[])) as unknown as R[];
+        });
+        return fn(q);
+      }) as Promise<T>;
     },
   };
 }
@@ -90,4 +125,9 @@ export async function queryOne<T = Record<string, unknown>>(
 ): Promise<T | null> {
   const rows = await query<T>(text, params);
   return rows[0] ?? null;
+}
+
+export async function withTransaction<T>(fn: (q: QueryFn) => Promise<T>): Promise<T> {
+  const db = await getDb();
+  return db.withTransaction(fn);
 }

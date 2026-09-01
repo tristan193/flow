@@ -185,7 +185,7 @@ export async function clearNextVerdict(dealId: number, member: MemberId): Promis
 
 export async function moveNextStage(
   dealId: number,
-  member: MemberId,
+  member: string,
   stage: NextStageId,
   options: { onlyFrom?: NextStageId } = {},
 ): Promise<void> {

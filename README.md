@@ -42,6 +42,7 @@ Agent handoff (intent, findings, docs):
 | UI | `/` Review · `/pipeline` | `/next` Review · `/next/pipeline` |
 | Import | `POST /api/import` — live harvest still posts here | `POST /api/next/import` |
 | Dirk poll | none | `GET /api/next/dirk` |
+| Merge dups | none | `POST /api/next/merge` (import token) |
 | Tables | `deals`, `verdicts`, … | `deals_next`, `verdicts_next`, … |
 | Identity | harvest `ext_id` (`format:gmail_msg:index`) | `TLY-001` + source ID + fingerprint |
 
@@ -91,7 +92,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `FLOW_SESSION_SECRET` | Random 32+ char string for signed cookies |
 | `FLOW_PASSCODE_TRISTAN` | Tristan's passcode |
 | `FLOW_PASSCODE_PARTNER` | Partner's passcode |
-| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `GET /api/next/dirk` |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `GET /api/next/dirk` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 
 ## Manual push (dev / one-off)

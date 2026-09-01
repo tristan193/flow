@@ -1,23 +1,29 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { query } from "../db";
+import { type QueryFn, isUniqueViolation, query, withTransaction } from "../db";
 import { normalizeAxialHref } from "../playbooks";
 import { allocateDealNumber, bumpCounterToAtLeast } from "./deal-number";
+import { moveNextStage } from "./deals";
 import {
   type IdentityInput,
+  type IdentityRecord,
   type MatchCandidate,
   type SourceId,
+  asStringArray,
   buildIdentity,
   findIdentityMatch,
   isNonDealMail,
   mergeAliasNames,
   mergeThreadIds,
   parseDealNumber,
+  parseSourceIdsValue,
+  sanitizeSourceDealId,
 } from "./identity";
+import { ensureNextSourceDealIdUnique } from "./merge";
+import { isMemberId, isNextStageId, isVerdictAction } from "./model";
 
 export { isHarvestExtId } from "./identity";
-import { isMemberId, isVerdictAction } from "./model";
 
 /**
  * Next ingest. Identity is TLY number + source id + fingerprint.
@@ -56,6 +62,9 @@ export interface IncomingNextDeal {
   nextAction?: string | null;
   fingerprint?: string | null;
   isDemo?: boolean | null;
+  stage?: string | null;
+  proposedStage?: string | null;
+  member?: string | null;
 }
 
 export interface IncomingNextVerdict {
@@ -73,6 +82,9 @@ export interface NextImportResult {
   verdictsApplied: number;
   skipped: number;
 }
+
+/** Machine actor recorded on ingest-driven stage moves. */
+export const NEXT_INGEST_ACTOR = "dirk";
 
 function normalizeBusinessModel(value: string | null | undefined): string {
   const t = (value || "").trim();
@@ -92,63 +104,24 @@ function toTimestamp(value: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function asStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String).filter(Boolean);
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
-    } catch {
-      return value.trim() ? [value.trim()] : [];
-    }
-  }
-  return [];
-}
-
-function asSourceIds(value: unknown): SourceId[] {
-  if (!Array.isArray(value)) return [];
-  const out: SourceId[] = [];
-  for (const raw of value) {
-    if (!raw || typeof raw !== "object") continue;
-    const rec = raw as Record<string, unknown>;
-    const kind = String(rec.kind || "");
-    const val = String(rec.value || "");
-    const canonical = String(rec.canonical || (kind && val ? `${kind}:${val}` : ""));
-    if (!kind || !val || !canonical) continue;
-    out.push({ kind: kind as SourceId["kind"], value: val, canonical });
-  }
-  return out;
-}
-
-function parseSourceIds(value: unknown): SourceId[] {
-  if (Array.isArray(value)) return asSourceIds(value);
-  if (typeof value === "string") {
-    try {
-      return asSourceIds(JSON.parse(value));
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-async function loadMatchCandidates(): Promise<MatchCandidate[]> {
-  const rows = await query<Record<string, unknown>>(
+async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
+  const rows = await q<Record<string, unknown>>(
     `SELECT id, deal_number, source_deal_id, source_ids, fingerprint,
-            title, alias_names, broker_firm, city, state
+            title, alias_names, broker_firm, city, state, nickname
        FROM deals_next`,
   );
   return rows.map((row) => ({
     id: Number(row.id),
     dealNumber: row.deal_number == null ? null : String(row.deal_number),
     sourceDealId: row.source_deal_id == null ? null : String(row.source_deal_id),
-    sourceIds: parseSourceIds(row.source_ids),
+    sourceIds: parseSourceIdsValue(row.source_ids),
     fingerprint: row.fingerprint == null ? null : String(row.fingerprint),
     title: row.title == null ? null : String(row.title),
     aliasNames: asStringArray(row.alias_names),
     brokerFirm: row.broker_firm == null ? null : String(row.broker_firm),
     city: row.city == null ? null : String(row.city),
     state: row.state == null ? null : String(row.state),
+    nickname: row.nickname == null ? null : String(row.nickname),
   }));
 }
 
@@ -173,6 +146,207 @@ function incomingToIdentity(deal: IncomingNextDeal): IdentityInput {
   };
 }
 
+function prepareIdentity(deal: IncomingNextDeal): IdentityRecord {
+  const ident = buildIdentity(incomingToIdentity(deal));
+  const postedSource = sanitizeSourceDealId(deal.sourceDealId);
+  if (postedSource && !ident.sourceDealId) ident.sourceDealId = postedSource;
+  if (deal.fingerprint && !ident.fingerprint) ident.fingerprint = deal.fingerprint;
+  const postedNumber = deal.dealNumber?.trim().toUpperCase() || null;
+  if (postedNumber && parseDealNumber(postedNumber)) ident.dealNumber = postedNumber;
+  return ident;
+}
+
+async function lockIdentity(q: QueryFn, ident: IdentityRecord): Promise<void> {
+  const keys = new Set<string>();
+  if (ident.sourceDealId) keys.add(ident.sourceDealId);
+  for (const s of ident.sourceIds) keys.add(s.canonical);
+  if (keys.size === 0 && ident.fingerprint) keys.add(`fp:${ident.fingerprint}`);
+  if (keys.size === 0 && ident.teaserNorm) keys.add(`title:${ident.teaserNorm}`);
+  for (const key of [...keys].sort()) {
+    await q("SELECT pg_advisory_xact_lock(872011, hashtext($1))", [key]);
+  }
+}
+
+async function updateMatchedDeal(
+  q: QueryFn,
+  matchedId: number,
+  deal: IncomingNextDeal,
+  ident: IdentityRecord,
+  title: string,
+): Promise<void> {
+  const existing = await q<Record<string, unknown>>(
+    `SELECT title, alias_names, gmail_thread_ids, source_ids, deal_number,
+            source_deal_id, fingerprint, broker_firm
+       FROM deals_next WHERE id = $1`,
+    [matchedId],
+  );
+  const cur = existing[0];
+  if (!cur) return;
+
+  const aliases = mergeAliasNames(
+    asStringArray(cur.alias_names),
+    title,
+    cur.title == null ? null : String(cur.title),
+    deal.aliasNames,
+  );
+  const mergedThreads = mergeThreadIds(asStringArray(cur.gmail_thread_ids), ident.gmailThreadIds);
+  const priorIds = parseSourceIdsValue(cur.source_ids);
+  const mergedIds = [...priorIds];
+  for (const s of ident.sourceIds) {
+    if (!mergedIds.some((p) => p.canonical === s.canonical)) mergedIds.push(s);
+  }
+
+  if (ident.dealNumber) await bumpCounterToAtLeast(ident.dealNumber, q);
+
+  const url = normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null;
+  const needs = JSON.stringify(deal.needsLlm ?? []);
+  const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
+  const nextAction = deal.nextAction?.trim() || null;
+
+  await q(
+    `UPDATE deals_next SET
+       title               = $1,
+       blurb               = COALESCE($2, blurb),
+       source              = COALESCE($3, source),
+       sub_source          = COALESCE($4, sub_source),
+       nickname            = COALESCE($5, nickname),
+       sources             = COALESCE($6, sources),
+       city                = COALESCE($7, city),
+       state               = COALESCE($8, state),
+       county              = COALESCE($9, county),
+       revenue             = COALESCE($10, revenue),
+       ebitda              = COALESCE($11, ebitda),
+       sde                 = COALESCE($12, sde),
+       asking              = COALESCE($13, asking),
+       business_model_type = CASE
+                               WHEN business_model_type IS NULL
+                                 OR business_model_type = ''
+                                 OR business_model_type = 'AMBIGUOUS'
+                                 OR business_model_type = 'LOCATION_AGNOSTIC'
+                                 THEN $14
+                               ELSE business_model_type
+                             END,
+       needs_llm           = $15::jsonb,
+       url                 = COALESCE($16, url),
+       last_seen           = GREATEST(last_seen, COALESCE($17::timestamptz, now())),
+       times_seen          = GREATEST(times_seen, $18),
+       source_deal_id      = COALESCE(source_deal_id, $19),
+       source_ids          = $20::jsonb,
+       alias_names         = $21::jsonb,
+       gmail_thread_ids    = $22::jsonb,
+       broker_firm         = COALESCE($23, broker_firm),
+       fingerprint         = COALESCE($24, fingerprint),
+       next_action         = COALESCE($25, next_action),
+       updated_at          = now()
+     WHERE id = $26`,
+    [
+      title,
+      deal.blurb ?? null,
+      deal.source ?? null,
+      deal.subSource ?? null,
+      deal.nickname ?? null,
+      deal.sources ?? null,
+      deal.city ?? null,
+      deal.state ?? null,
+      deal.county ?? null,
+      toNumber(deal.revenue),
+      toNumber(deal.ebitda),
+      toNumber(deal.sde),
+      toNumber(deal.asking),
+      normalizeBusinessModel(deal.businessModelType),
+      needs,
+      url,
+      toTimestamp(deal.lastSeen),
+      deal.timesSeen ?? 1,
+      ident.sourceDealId,
+      JSON.stringify(mergedIds),
+      JSON.stringify(aliases),
+      JSON.stringify(mergedThreads),
+      broker,
+      ident.fingerprint,
+      nextAction,
+      matchedId,
+    ],
+  );
+}
+
+async function insertNewDeal(
+  q: QueryFn,
+  deal: IncomingNextDeal,
+  ident: IdentityRecord,
+  title: string,
+): Promise<number> {
+  const dealNumber =
+    ident.dealNumber && parseDealNumber(ident.dealNumber)
+      ? ident.dealNumber
+      : await allocateDealNumber(q);
+  if (ident.dealNumber) await bumpCounterToAtLeast(dealNumber, q);
+
+  const url = normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null;
+  const needs = JSON.stringify(deal.needsLlm ?? []);
+  const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
+  const nextAction = deal.nextAction?.trim() || null;
+
+  const inserted = await q<{ id: number }>(
+    `INSERT INTO deals_next (
+       deal_number, source_deal_id, source_ids, alias_names,
+       gmail_thread_ids, broker_firm, fingerprint, next_action, is_demo,
+       title, blurb, source, sub_source, nickname, sources,
+       city, state, county,
+       revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
+       first_seen, last_seen, times_seen
+     ) VALUES (
+       $1, $2, $3::jsonb, $4::jsonb,
+       $5::jsonb, $6, $7, $8, $9,
+       $10, $11, $12, $13, $14, $15,
+       $16, $17, $18,
+       $19, $20, $21, $22, $23, $24::jsonb, $25,
+       COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28
+     )
+     RETURNING id`,
+    [
+      dealNumber,
+      ident.sourceDealId,
+      JSON.stringify(ident.sourceIds),
+      JSON.stringify(ident.aliasNames),
+      JSON.stringify(ident.gmailThreadIds),
+      broker,
+      ident.fingerprint,
+      nextAction,
+      Boolean(deal.isDemo),
+      title,
+      deal.blurb ?? null,
+      deal.source ?? null,
+      deal.subSource ?? null,
+      deal.nickname ?? null,
+      deal.sources ?? null,
+      deal.city ?? null,
+      deal.state ?? null,
+      deal.county ?? null,
+      toNumber(deal.revenue),
+      toNumber(deal.ebitda),
+      toNumber(deal.sde),
+      toNumber(deal.asking),
+      normalizeBusinessModel(deal.businessModelType),
+      needs,
+      url,
+      toTimestamp(deal.firstSeen),
+      toTimestamp(deal.lastSeen),
+      deal.timesSeen ?? 1,
+    ],
+  );
+
+  return Number(inserted[0]?.id);
+}
+
+async function applyIncomingStage(dealId: number, deal: IncomingNextDeal): Promise<void> {
+  const raw = deal.stage ?? deal.proposedStage;
+  if (!raw || !isNextStageId(raw)) return;
+  const member =
+    deal.member && isMemberId(deal.member) ? deal.member : NEXT_INGEST_ACTOR;
+  await moveNextStage(dealId, member, raw);
+}
+
 export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
   dealsNew: number;
   dealsUpdated: number;
@@ -181,7 +355,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
   let dealsNew = 0;
   let dealsUpdated = 0;
   let skipped = 0;
-  let candidates = await loadMatchCandidates();
+  const staged: Array<{ id: number; deal: IncomingNextDeal }> = [];
 
   for (const deal of deals) {
     const title = deal.title?.trim();
@@ -198,215 +372,48 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
       continue;
     }
 
-    const ident = buildIdentity(incomingToIdentity(deal));
-    if (deal.sourceDealId && !ident.sourceDealId) {
-      ident.sourceDealId = deal.sourceDealId.trim().toLowerCase();
-    }
-    if (deal.fingerprint && !ident.fingerprint) {
-      ident.fingerprint = deal.fingerprint;
-    }
+    const ident = prepareIdentity(deal);
+    const matchInput = incomingToIdentity({ ...deal, dealNumber: ident.dealNumber });
 
-    const postedNumber = deal.dealNumber?.trim().toUpperCase() || null;
-    if (postedNumber && parseDealNumber(postedNumber)) {
-      ident.dealNumber = postedNumber;
-    }
-
-    // Never join on harvest ext_id (format:gmail_msg:index).
-    const hit = findIdentityMatch(
-      incomingToIdentity({ ...deal, dealNumber: ident.dealNumber }),
-      candidates,
-    );
-    const matchedId = hit?.candidate.id ?? null;
-
-    const url = normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null;
-    const threads = ident.gmailThreadIds;
-    const needs = JSON.stringify(deal.needsLlm ?? []);
-    const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
-    const nextAction = deal.nextAction?.trim() || null;
-
-    if (matchedId != null) {
-      const existing = await query<Record<string, unknown>>(
-        `SELECT title, alias_names, gmail_thread_ids, source_ids, deal_number,
-                source_deal_id, fingerprint, broker_firm
-           FROM deals_next WHERE id = $1`,
-        [matchedId],
-      );
-      const cur = existing[0];
-      if (!cur) {
-        skipped += 1;
-        continue;
+    const outcome = await withTransaction(async (q) => {
+      await lockIdentity(q, ident);
+      const candidates = await loadMatchCandidates(q);
+      const hit = findIdentityMatch(matchInput, candidates);
+      if (hit) {
+        await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
+        return { kind: "updated" as const, id: hit.candidate.id };
       }
-
-      const aliases = mergeAliasNames(
-        asStringArray(cur.alias_names),
-        title,
-        cur.title == null ? null : String(cur.title),
-        deal.aliasNames,
-      );
-      const mergedThreads = mergeThreadIds(asStringArray(cur.gmail_thread_ids), threads);
-      const priorIds = parseSourceIds(cur.source_ids);
-      const mergedIds = [...priorIds];
-      for (const s of ident.sourceIds) {
-        if (!mergedIds.some((p) => p.canonical === s.canonical)) mergedIds.push(s);
+      try {
+        await q("SAVEPOINT next_insert");
+        const id = await insertNewDeal(q, deal, ident, title);
+        await q("RELEASE SAVEPOINT next_insert");
+        return { kind: "new" as const, id };
+      } catch (error) {
+        try {
+          await q("ROLLBACK TO SAVEPOINT next_insert");
+        } catch {
+          // savepoint missing — transaction already failed
+        }
+        if (!isUniqueViolation(error)) throw error;
+        const again = await loadMatchCandidates(q);
+        const retry = findIdentityMatch(matchInput, again);
+        if (!retry) throw error;
+        await updateMatchedDeal(q, retry.candidate.id, deal, ident, title);
+        return { kind: "updated" as const, id: retry.candidate.id };
       }
+    });
 
-      if (ident.dealNumber) await bumpCounterToAtLeast(ident.dealNumber);
-
-      await query(
-        `UPDATE deals_next SET
-           title               = $1,
-           blurb               = COALESCE($2, blurb),
-           source              = COALESCE($3, source),
-           sub_source          = COALESCE($4, sub_source),
-           nickname            = COALESCE($5, nickname),
-           sources             = COALESCE($6, sources),
-           city                = COALESCE($7, city),
-           state               = COALESCE($8, state),
-           county              = COALESCE($9, county),
-           revenue             = COALESCE($10, revenue),
-           ebitda              = COALESCE($11, ebitda),
-           sde                 = COALESCE($12, sde),
-           asking              = COALESCE($13, asking),
-           business_model_type = CASE
-                                   WHEN business_model_type IS NULL
-                                     OR business_model_type = ''
-                                     OR business_model_type = 'AMBIGUOUS'
-                                     OR business_model_type = 'LOCATION_AGNOSTIC'
-                                     THEN $14
-                                   ELSE business_model_type
-                                 END,
-           needs_llm           = $15::jsonb,
-           url                 = COALESCE($16, url),
-           last_seen           = GREATEST(last_seen, COALESCE($17::timestamptz, now())),
-           times_seen          = GREATEST(times_seen, $18),
-           source_deal_id      = COALESCE(source_deal_id, $19),
-           source_ids          = $20::jsonb,
-           alias_names         = $21::jsonb,
-           gmail_thread_ids    = $22::jsonb,
-           broker_firm         = COALESCE($23, broker_firm),
-           fingerprint         = COALESCE($24, fingerprint),
-           next_action         = COALESCE($25, next_action),
-           updated_at          = now()
-         WHERE id = $26`,
-        [
-          title,
-          deal.blurb ?? null,
-          deal.source ?? null,
-          deal.subSource ?? null,
-          deal.nickname ?? null,
-          deal.sources ?? null,
-          deal.city ?? null,
-          deal.state ?? null,
-          deal.county ?? null,
-          toNumber(deal.revenue),
-          toNumber(deal.ebitda),
-          toNumber(deal.sde),
-          toNumber(deal.asking),
-          normalizeBusinessModel(deal.businessModelType),
-          needs,
-          url,
-          toTimestamp(deal.lastSeen),
-          deal.timesSeen ?? 1,
-          ident.sourceDealId,
-          JSON.stringify(mergedIds),
-          JSON.stringify(aliases),
-          JSON.stringify(mergedThreads),
-          broker,
-          ident.fingerprint,
-          nextAction,
-          matchedId,
-        ],
-      );
-      dealsUpdated += 1;
-      const idx = candidates.findIndex((c) => c.id === matchedId);
-      if (idx >= 0) {
-        candidates[idx] = {
-          ...candidates[idx],
-          title,
-          aliasNames: aliases,
-          sourceDealId: ident.sourceDealId || candidates[idx].sourceDealId,
-          sourceIds: mergedIds,
-          fingerprint: ident.fingerprint || candidates[idx].fingerprint,
-          brokerFirm: broker || candidates[idx].brokerFirm,
-          city: deal.city ?? candidates[idx].city,
-          state: deal.state ?? candidates[idx].state,
-        };
-      }
+    if (!outcome.id) {
+      skipped += 1;
       continue;
     }
+    if (outcome.kind === "new") dealsNew += 1;
+    else dealsUpdated += 1;
+    staged.push({ id: outcome.id, deal });
+  }
 
-    const dealNumber =
-      ident.dealNumber && parseDealNumber(ident.dealNumber)
-        ? ident.dealNumber
-        : await allocateDealNumber();
-    if (ident.dealNumber) await bumpCounterToAtLeast(dealNumber);
-
-    const inserted = await query<{ id: number }>(
-      `INSERT INTO deals_next (
-         deal_number, source_deal_id, source_ids, alias_names,
-         gmail_thread_ids, broker_firm, fingerprint, next_action, is_demo,
-         title, blurb, source, sub_source, nickname, sources,
-         city, state, county,
-         revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
-         first_seen, last_seen, times_seen
-       ) VALUES (
-         $1, $2, $3::jsonb, $4::jsonb,
-         $5::jsonb, $6, $7, $8, $9,
-         $10, $11, $12, $13, $14, $15,
-         $16, $17, $18,
-         $19, $20, $21, $22, $23, $24::jsonb, $25,
-         COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28
-       )
-       RETURNING id`,
-      [
-        dealNumber,
-        ident.sourceDealId,
-        JSON.stringify(ident.sourceIds),
-        JSON.stringify(ident.aliasNames),
-        JSON.stringify(threads),
-        broker,
-        ident.fingerprint,
-        nextAction,
-        Boolean(deal.isDemo),
-        title,
-        deal.blurb ?? null,
-        deal.source ?? null,
-        deal.subSource ?? null,
-        deal.nickname ?? null,
-        deal.sources ?? null,
-        deal.city ?? null,
-        deal.state ?? null,
-        deal.county ?? null,
-        toNumber(deal.revenue),
-        toNumber(deal.ebitda),
-        toNumber(deal.sde),
-        toNumber(deal.asking),
-        normalizeBusinessModel(deal.businessModelType),
-        needs,
-        url,
-        toTimestamp(deal.firstSeen),
-        toTimestamp(deal.lastSeen),
-        deal.timesSeen ?? 1,
-      ],
-    );
-
-    const newId = Number(inserted[0]?.id);
-    dealsNew += 1;
-    candidates = [
-      ...candidates,
-      {
-        id: newId,
-        dealNumber,
-        sourceDealId: ident.sourceDealId,
-        sourceIds: ident.sourceIds,
-        fingerprint: ident.fingerprint,
-        title,
-        aliasNames: ident.aliasNames,
-        brokerFirm: broker,
-        city: deal.city ?? null,
-        state: deal.state ?? null,
-      },
-    ];
+  for (const item of staged) {
+    await applyIncomingStage(item.id, item.deal);
   }
 
   return { dealsNew, dealsUpdated, skipped };
@@ -445,7 +452,14 @@ export async function applyNextVerdicts(verdicts: IncomingNextVerdict[]): Promis
       ],
     );
 
-    if (result.length > 0) applied += 1;
+    if (result.length === 0) continue;
+    applied += 1;
+
+    if (verdict.action === "short") {
+      await moveNextStage(deal[0].id, verdict.member, "shortlist", { onlyFrom: "inbox" });
+    } else if (verdict.action === "pass") {
+      await moveNextStage(deal[0].id, verdict.member, "dead", { onlyFrom: "inbox" });
+    }
   }
 
   return applied;
@@ -464,6 +478,7 @@ export async function importNextSnapshot(
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [source, detail, result.dealsNew, result.dealsUpdated, result.verdictsApplied, result.skipped],
   );
+  await ensureNextSourceDealIdUnique();
   return result;
 }
 

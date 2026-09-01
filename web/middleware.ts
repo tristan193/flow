@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   "/api/auth/login",
   "/api/import",
   "/api/next/import", // Next/Dirk loop — does not write live `deals`
+  "/api/next/merge",
   "/api/next/dirk",
   "/api/cron",
   "/api/crm/pursuit", // machine harvest token; /api/crm/attention stays session-gated
