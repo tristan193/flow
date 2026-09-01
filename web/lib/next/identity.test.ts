@@ -17,6 +17,7 @@ import {
   parseDealNumber,
   sanitizeSourceDealId,
 } from "./identity.ts";
+import { canonicalizeNextStage } from "./model.ts";
 
 test("deal numbers", () => {
   assert.equal(formatDealNumber(1), "TLY-001");
@@ -221,6 +222,17 @@ test("harvest ext_id is dropped from source ids and never matches", () => {
     ],
   );
   assert.equal(hit, null);
+});
+
+test("Dirk stage aliases map onto canonical Next stages", () => {
+  assert.equal(canonicalizeNextStage("dead"), "dead");
+  assert.equal(canonicalizeNextStage("closed"), "dead");
+  assert.equal(canonicalizeNextStage("Pass"), "dead");
+  assert.equal(canonicalizeNextStage("passed"), "dead");
+  assert.equal(canonicalizeNextStage("pursuing"), "awaiting_reply");
+  assert.equal(canonicalizeNextStage("nda_signed"), "nda");
+  assert.equal(canonicalizeNextStage("cim"), "cim");
+  assert.equal(canonicalizeNextStage("hold"), null);
 });
 
 test("Axial hex nickname groups with source id", () => {

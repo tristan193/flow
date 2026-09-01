@@ -42,6 +42,7 @@ Agent handoff (intent, findings, docs):
 | UI | `/` Review · `/pipeline` | `/next` Review · `/next/pipeline` |
 | Import | `POST /api/import` — live harvest still posts here | `POST /api/next/import` |
 | Dirk poll | none | `GET /api/next/dirk` |
+| Stage move | session cookie | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
 | Merge dups | none | `POST /api/next/merge` (import token) |
 | Tables | `deals`, `verdicts`, … | `deals_next`, `verdicts_next`, … |
 | Identity | harvest `ext_id` (`format:gmail_msg:index`) | `TLY-001` + source ID + fingerprint |
@@ -49,6 +50,8 @@ Agent handoff (intent, findings, docs):
 **If anything on Next breaks, use `/` and `/pipeline`.** Login passcodes and the harvest → `/api/import` path are unchanged.
 
 Next deal numbers mint `TLY-001` on first touch. Join order: deal number → source ID (Axial hex from Pursue/Pass HTML, BBS `q=`, V-AID, Transworld) → fingerprint (teaser + broker + round(EBITDA) + geo). Aliases and `gmail_thread_ids[]` accumulate. Never broker-only. Never one Gmail thread = one deal.
+
+Dirk is the stage operator (`FLOW_IMPORT_TOKEN` on `POST /api/next/stage` or import `stage` / `proposedStage`). Canonical stages: `inbox`, `shortlist`, `pof`, `nda_to_sign`, `nda`, `cim`, `awaiting_reply`, `active`, `dead`. Aliases: `closed` / `pass` / `passed` → `dead`; `pursuing` → `awaiting_reply`; `nda_signed` → `nda`. PR #6 "Closed" is still stored as `dead` on this branch.
 
 ## What Flow App does
 

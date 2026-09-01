@@ -21,7 +21,7 @@ import {
   sanitizeSourceDealId,
 } from "./identity";
 import { ensureNextSourceDealIdUnique } from "./merge";
-import { isMemberId, isNextStageId, isVerdictAction } from "./model";
+import { isMemberId, isVerdictAction, canonicalizeNextStage } from "./model";
 
 export { isHarvestExtId } from "./identity";
 
@@ -340,11 +340,11 @@ async function insertNewDeal(
 }
 
 async function applyIncomingStage(dealId: number, deal: IncomingNextDeal): Promise<void> {
-  const raw = deal.stage ?? deal.proposedStage;
-  if (!raw || !isNextStageId(raw)) return;
+  const stage = canonicalizeNextStage(deal.stage ?? deal.proposedStage);
+  if (!stage) return;
   const member =
     deal.member && isMemberId(deal.member) ? deal.member : NEXT_INGEST_ACTOR;
-  await moveNextStage(dealId, member, raw);
+  await moveNextStage(dealId, member, stage);
 }
 
 export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{

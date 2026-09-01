@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { query } from "../db.ts";
 import { applyNextVerdicts, upsertNextDeals } from "./import.ts";
 import { collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
+import { applyAuthorizedNextStage } from "./stage-auth.ts";
 
 const AXIAL_HTML =
   '<a href="https://network.axial.net/app/opportunity/aaaabbbbccccdddd?action=pursue">Pursue</a>';
@@ -173,4 +174,98 @@ test("unique source_deal_id index is created when no duplicates remain", async (
   await resetNext();
   await upsertNextDeals([{ title: "Only one", html: AXIAL_HTML }]);
   assert.equal(await ensureNextSourceDealIdUnique(), true);
+});
+
+test("token moves TLY from cim to dead; missing token 401; bad stage 400; session still works", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = "test-dirk-token";
+  try {
+    const minted = await upsertNextDeals([
+      { title: "Diamond Gate Security", html: AXIAL_HTML, stage: "cim" },
+    ]);
+    assert.equal(minted.dealsNew, 1);
+    const [row] = await query<{ id: number; deal_number: string; stage: string; stage_changed_by: string | null }>(
+      "SELECT id, deal_number, stage, stage_changed_by FROM deals_next",
+    );
+    assert.equal(row.stage, "cim");
+    assert.equal(row.stage_changed_by, "dirk");
+    assert.match(row.deal_number, /^TLY-00\d$/);
+
+    const noToken = await applyAuthorizedNextStage({
+      authorization: null,
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "dead",
+    });
+    assert.equal(noToken.ok, false);
+    if (!noToken.ok) assert.equal(noToken.status, 401);
+
+    const badToken = await applyAuthorizedNextStage({
+      authorization: "Bearer wrong-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "dead",
+    });
+    assert.equal(badToken.ok, false);
+    if (!badToken.ok) assert.equal(badToken.status, 401);
+
+    const badStage = await applyAuthorizedNextStage({
+      authorization: "Bearer test-dirk-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "not-a-stage",
+    });
+    assert.equal(badStage.ok, false);
+    if (!badStage.ok) assert.equal(badStage.status, 400);
+
+    const missing = await applyAuthorizedNextStage({
+      authorization: "Bearer test-dirk-token",
+      sessionMember: null,
+      dealNumber: "TLY-999",
+      stage: "dead",
+    });
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.status, 404);
+
+    const moved = await applyAuthorizedNextStage({
+      authorization: "Bearer test-dirk-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "closed",
+      reason: "pass",
+      note: "Simon passed Diamond Gate",
+    });
+    assert.equal(moved.ok, true);
+    if (moved.ok) {
+      assert.equal(moved.stage, "dead");
+      assert.equal(moved.actor, "dirk");
+    }
+    const [after] = await query<{ stage: string; stage_changed_by: string | null }>(
+      "SELECT stage, stage_changed_by FROM deals_next WHERE id = $1",
+      [row.id],
+    );
+    assert.equal(after.stage, "dead");
+    assert.equal(after.stage_changed_by, "dirk");
+    const notes = await query<{ body: string }>("SELECT body FROM notes_next WHERE deal_id = $1", [row.id]);
+    assert.ok(notes.some((n) => /Diamond Gate/i.test(n.body)));
+
+    await query(`UPDATE deals_next SET stage = 'cim' WHERE id = $1`, [row.id]);
+    const sessioned = await applyAuthorizedNextStage({
+      authorization: null,
+      sessionMember: "tristan",
+      dealId: row.id,
+      stage: "shortlist",
+    });
+    assert.equal(sessioned.ok, true);
+    const [fromSession] = await query<{ stage: string; stage_changed_by: string | null }>(
+      "SELECT stage, stage_changed_by FROM deals_next WHERE id = $1",
+      [row.id],
+    );
+    assert.equal(fromSession.stage, "shortlist");
+    assert.equal(fromSession.stage_changed_by, "tristan");
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
 });
