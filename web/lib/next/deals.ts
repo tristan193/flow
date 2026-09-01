@@ -185,7 +185,7 @@ export async function clearNextVerdict(dealId: number, member: MemberId): Promis
 
 export async function moveNextStage(
   dealId: number,
-  member: MemberId,
+  member: string,
   stage: NextStageId,
   options: { onlyFrom?: NextStageId } = {},
 ): Promise<void> {
@@ -314,7 +314,7 @@ export async function getNextDealFile(id: number): Promise<{
   };
 }
 
-export async function addNextNote(dealId: number, member: MemberId, body: string): Promise<void> {
+export async function addNextNote(dealId: number, member: string, body: string): Promise<void> {
   await query("INSERT INTO notes_next (deal_id, member, body) VALUES ($1, $2, $3)", [
     dealId,
     member,

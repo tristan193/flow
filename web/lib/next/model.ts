@@ -61,6 +61,25 @@ export function isNextStageId(value: unknown): value is NextStageId {
   return NEXT_STAGES.some((s) => s.id === value);
 }
 
+/**
+ * Canonical ids on main: inbox, shortlist, pof, nda_to_sign, nda, cim,
+ * awaiting_reply, active, dead.
+ *
+ * Dirk aliases (Simon Pursue/Pass/Hold language):
+ *   closed | pass | passed  → dead          (PR #6 "Closed" is still `dead` here)
+ *   pursuing                → awaiting_reply
+ *   nda_signed              → nda
+ */
+export function canonicalizeNextStage(value: unknown): NextStageId | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (isNextStageId(raw)) return raw;
+  if (raw === "closed" || raw === "pass" || raw === "passed") return "dead";
+  if (raw === "pursuing" || raw === "pursue") return "awaiting_reply";
+  if (raw === "nda_signed") return "nda";
+  return null;
+}
+
 export function nextStageLabel(id: string): string {
   return NEXT_STAGES.find((s) => s.id === id)?.label ?? id;
 }

@@ -313,6 +313,9 @@ CREATE INDEX IF NOT EXISTS ix_deals_next_stage ON deals_next (stage);
 CREATE INDEX IF NOT EXISTS ix_deals_next_last_seen ON deals_next (last_seen DESC);
 CREATE INDEX IF NOT EXISTS ix_deals_next_fingerprint ON deals_next (fingerprint);
 CREATE INDEX IF NOT EXISTS ix_deals_next_source_deal_id ON deals_next (source_deal_id);
+-- Unique source_deal_id is applied from lib/next/merge.ts once duplicate rows
+-- are collapsed. Putting CREATE UNIQUE INDEX here would fail applySchema while
+-- Neon still has the raced Axial duplicates.
 
 CREATE TABLE IF NOT EXISTS next_deal_counters (
   key     TEXT PRIMARY KEY,

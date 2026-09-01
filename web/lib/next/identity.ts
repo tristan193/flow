@@ -183,10 +183,30 @@ export function computeFingerprint(input: {
   return { fingerprint: `${teaser}|${broker}|${earnings}|${geo}`, complete: true };
 }
 
+/**
+ * Harvest leftover keys (`format:gmail_msg:index`). Never a Next join key.
+ * Matching uses deal number → source id → fingerprint only.
+ */
+export function isHarvestExtId(value: string | null | undefined): boolean {
+  const v = (value || "").trim().toLowerCase();
+  if (!v) return true;
+  if (v.startsWith("gmail:") || v.includes("gmail_msg")) return true;
+  // format:gmail_msg:index — e.g. axial.teaser:18abc:0
+  if (/^[a-z0-9_.-]+:[a-z0-9_-]+:\d+$/.test(v)) return true;
+  return false;
+}
+
+export function sanitizeSourceDealId(value: string | null | undefined): string | null {
+  const v = (value || "").trim().toLowerCase();
+  if (!v || isHarvestExtId(v)) return null;
+  return v;
+}
+
 function addSource(out: SourceId[], kind: SourceKind, value: string) {
   const v = value.trim().toLowerCase();
-  if (!v) return;
+  if (!v || isHarvestExtId(v)) return;
   const canonical = `${kind}:${v}`;
+  if (isHarvestExtId(canonical)) return;
   if (out.some((s) => s.canonical === canonical)) return;
   out.push({ kind, value: v, canonical });
 }
@@ -207,7 +227,10 @@ function isVaidMailbox(input: IdentityInput): boolean {
 export function extractSourceIds(input: IdentityInput): SourceId[] {
   const out: SourceId[] = [];
   if (input.sourceIds?.length) {
-    for (const s of input.sourceIds) addSource(out, s.kind, s.value);
+    for (const s of input.sourceIds) {
+      if (isHarvestExtId(s.value) || isHarvestExtId(s.canonical)) continue;
+      addSource(out, s.kind, s.value);
+    }
   }
 
   const urlHtml = haystack([input.url, input.html, input.body]);
@@ -246,7 +269,56 @@ export function extractSourceIds(input: IdentityInput): SourceId[] {
   TRANSWORLD.lastIndex = 0;
   while ((m = TRANSWORLD.exec(idText))) addSource(out, "tw", m[1]);
 
+  const nickHex = axialHexFromNickname(input.nickname);
+  if (nickHex) addSource(out, "axial", nickHex);
+
   return out;
+}
+
+export function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    } catch {
+      return value.trim() ? [value.trim()] : [];
+    }
+  }
+  return [];
+}
+
+export function parseSourceIdsValue(value: unknown): SourceId[] {
+  if (Array.isArray(value)) {
+    const out: SourceId[] = [];
+    for (const raw of value) {
+      if (!raw || typeof raw !== "object") {
+        if (typeof raw === "string") {
+          const v = sanitizeSourceDealId(raw);
+          if (!v) continue;
+          const colon = v.indexOf(":");
+          if (colon > 0) {
+            addSource(out, v.slice(0, colon) as SourceKind, v.slice(colon + 1));
+          }
+        }
+        continue;
+      }
+      const rec = raw as Record<string, unknown>;
+      const kind = String(rec.kind || "");
+      const val = String(rec.value || "");
+      if (!kind || !val || isHarvestExtId(val) || isHarvestExtId(String(rec.canonical || ""))) continue;
+      addSource(out, kind as SourceKind, val);
+    }
+    return out;
+  }
+  if (typeof value === "string") {
+    try {
+      return parseSourceIdsValue(JSON.parse(value));
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 export function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -327,6 +399,7 @@ export interface MatchCandidate {
   brokerFirm?: string | null;
   city?: string | null;
   state?: string | null;
+  nickname?: string | null;
 }
 
 export type MatchReason =
@@ -338,14 +411,23 @@ export type MatchReason =
 
 function candidateSourceCanonicals(c: MatchCandidate): Set<string> {
   const out = new Set<string>();
-  if (c.sourceDealId) out.add(c.sourceDealId.toLowerCase());
+  const sid = sanitizeSourceDealId(c.sourceDealId);
+  if (sid) out.add(sid);
+  const nickHex = axialHexFromNickname(c.nickname);
+  if (nickHex) out.add(`axial:${nickHex}`);
   for (const raw of c.sourceIds || []) {
     if (typeof raw === "string") {
-      out.add(raw.toLowerCase());
+      const v = sanitizeSourceDealId(raw);
+      if (v) out.add(v);
       continue;
     }
-    if (raw.canonical) out.add(String(raw.canonical).toLowerCase());
-    else if (raw.kind && raw.value) out.add(`${raw.kind}:${raw.value}`.toLowerCase());
+    const canonical = raw.canonical
+      ? String(raw.canonical).toLowerCase()
+      : raw.kind && raw.value
+        ? `${raw.kind}:${raw.value}`.toLowerCase()
+        : "";
+    const cleaned = sanitizeSourceDealId(canonical);
+    if (cleaned) out.add(cleaned);
   }
   return out;
 }
@@ -440,15 +522,31 @@ export function gmailAllHref(threadId: string): string {
   return `https://mail.google.com/mail/u/0/#all/${id}`;
 }
 
-/**
- * Harvest leftover keys (`format:gmail_msg:index`). Never a Next join key.
- * Matching uses deal number → source id → fingerprint only.
- */
-export function isHarvestExtId(value: string | null | undefined): boolean {
-  const v = (value || "").trim().toLowerCase();
-  if (!v) return true;
-  if (v.startsWith("gmail:") || v.includes("gmail_msg")) return true;
-  // format:gmail_msg:index — e.g. axial.teaser:18abc:0
-  if (/^[a-z0-9_.-]+:[a-z0-9_-]+:\d+$/.test(v)) return true;
-  return false;
+/** Axial hex stored as the nickname pill (not the provider label "Axial"). */
+export function axialHexFromNickname(nickname: string | null | undefined): string | null {
+  const raw = (nickname || "").trim().toLowerCase();
+  if (!raw) return null;
+  const labeled = raw.match(/^axial:([a-f0-9]{8,}(?:-[a-f0-9]{4,})*)$/i);
+  if (labeled) return labeled[1].toLowerCase();
+  if (HEX_TOKEN.test(raw) || UUIDISH.test(raw)) return raw;
+  return null;
+}
+
+export function identityGroupKeys(input: {
+  sourceDealId?: string | null;
+  sourceIds?: unknown;
+  nickname?: string | null;
+  url?: string | null;
+  html?: string | null;
+}): string[] {
+  const keys = new Set<string>();
+  const sid = sanitizeSourceDealId(input.sourceDealId);
+  if (sid) keys.add(sid);
+  for (const s of parseSourceIdsValue(input.sourceIds)) keys.add(s.canonical);
+  const hex = axialHexFromNickname(input.nickname);
+  if (hex) keys.add(`axial:${hex}`);
+  for (const s of extractSourceIds({ url: input.url, html: input.html ?? input.url })) {
+    keys.add(s.canonical);
+  }
+  return [...keys];
 }
