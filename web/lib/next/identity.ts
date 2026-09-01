@@ -448,6 +448,7 @@ export function isHarvestExtId(value: string | null | undefined): boolean {
   const v = (value || "").trim().toLowerCase();
   if (!v) return true;
   if (v.startsWith("gmail:") || v.includes("gmail_msg")) return true;
-  if (/^[a-z0-9_.-]+:\d+:\d+$/.test(v)) return true;
+  // format:gmail_msg:index — e.g. axial.teaser:18abc:0
+  if (/^[a-z0-9_.-]+:[a-z0-9_-]+:\d+$/.test(v)) return true;
   return false;
 }
