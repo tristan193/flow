@@ -10,6 +10,7 @@ import {
   type MemberId,
   type NextDeal,
   isTeamShortlist,
+  isNextReviewStage,
   PASS_REASONS,
   type VerdictAction,
 } from "@/lib/next/model";
@@ -198,7 +199,10 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
   const queue = useMemo(
     () =>
       scored
-        .filter((deal) => !verdictOf(deal) && !skipped.includes(deal.id))
+        .filter(
+          (deal) =>
+            isNextReviewStage(deal.stage) && !verdictOf(deal) && !skipped.includes(deal.id),
+        )
         .sort(byFit),
     [scored, verdictOf, skipped],
   );
@@ -224,9 +228,13 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
       // Shortlisted when the other partner shortlists.
       if (myAction === "pass" && filter !== "short") return false;
 
+      // Board stages (CIM / Pursuing / Closed / …) never belong in Review,
+      // even if Tristan never swiped a verdict on that card.
+      if (!isNextReviewStage(deal.stage)) return false;
+
       switch (filter) {
         case "todo":
-          return !verdict;
+          return isNextReviewStage(deal.stage) && !verdict;
         case "priority":
           return deal.fit.level === "priority";
         case "inbox":

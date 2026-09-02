@@ -67,7 +67,13 @@ function draftToForm(d: Draft): FormState {
 /**
  * Pipeline entry: upload a CIM PDF → LLM extracts fields → review → deal @ stage CIM.
  */
-export function AddFromCim() {
+export function AddFromCim({
+  extractPath = "/api/cim/extract",
+  createPath = "/api/cim/create",
+}: {
+  extractPath?: string;
+  createPath?: string;
+}) {
   const router = useRouter();
   const titleId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -108,7 +114,7 @@ export function AddFromCim() {
     try {
       const body = new FormData();
       body.append("file", next);
-      const response = await fetch("/api/cim/extract", { method: "POST", body });
+      const response = await fetch(extractPath, { method: "POST", body });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not read that CIM.");
       const draft = data.draft as Draft;
@@ -145,7 +151,7 @@ export function AddFromCim() {
       body.append("url", form.url.trim());
       if (file) body.append("file", file);
 
-      const response = await fetch("/api/cim/create", { method: "POST", body });
+      const response = await fetch(createPath, { method: "POST", body });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not create deal.");
       setOpen(false);

@@ -137,6 +137,12 @@ export async function listNextDeals(): Promise<NextDeal[]> {
   return attachVerdicts(rows.map(normalizeDeal));
 }
 
+/** Inbound queue for `/next` Review. Board stages never belong here. */
+export async function listNextInboxDeals(): Promise<NextDeal[]> {
+  const deals = await listNextDeals();
+  return deals.filter((deal) => deal.stage === "inbox");
+}
+
 export async function listNextBoardDeals(): Promise<NextDeal[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT * FROM v_deals_next
@@ -258,6 +264,7 @@ export async function saveNextDealFile(
   member: MemberId,
   file: { filename: string; contentType: string; bytes: Uint8Array },
   kind: string = "cim",
+  options: { moveToCim?: boolean } = {},
 ): Promise<{ id: number; url: string }> {
   if (file.bytes.byteLength > MAX_CIM_BYTES) {
     throw new Error(`File too large — max ${MAX_CIM_BYTES / (1024 * 1024)}MB`);
@@ -275,7 +282,9 @@ export async function saveNextDealFile(
     url,
     dealId,
   ]);
-  await moveNextStage(dealId, member, "cim");
+  if (options.moveToCim !== false) {
+    await moveNextStage(dealId, member, "cim");
+  }
   return { id, url };
 }
 

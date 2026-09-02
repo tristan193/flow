@@ -6,6 +6,7 @@ import {
   canonicalizeNextStage,
   coerceNextStage,
   defaultNextAction,
+  isNextReviewStage,
   mapNextStage,
   nextFollowupKind,
   nextStageLabel,
@@ -80,4 +81,15 @@ test("follow-ups arm on NDA, CIM, and Pursuing only", () => {
   assert.equal(nextFollowupKind("pursuing"), "broker_reply");
   assert.equal(nextFollowupKind("shortlist"), null);
   assert.equal(nextFollowupKind("closed"), null);
+});
+
+test("Review swipe is inbound only — board stages stay off the deck", () => {
+  assert.equal(isNextReviewStage("inbox"), true);
+  assert.equal(isNextReviewStage("inbound"), true);
+  assert.equal(isNextReviewStage("shortlist"), false);
+  assert.equal(isNextReviewStage("nda"), false);
+  assert.equal(isNextReviewStage("cim"), false);
+  assert.equal(isNextReviewStage("pursuing"), false);
+  assert.equal(isNextReviewStage("closed"), false);
+  assert.equal(isNextReviewStage("dead"), false);
 });

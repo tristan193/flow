@@ -44,6 +44,7 @@ export {
   canonicalizeNextStage,
   coerceNextStage,
   defaultNextAction,
+  isNextReviewStage,
   isNextStageId,
   mapNextStage,
   nextFollowupKind,

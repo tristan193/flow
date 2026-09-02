@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-02 — `nm/web/tly-match` — IN PROGRESS
+
+**Scope:** `/next` Review swipe inbound-only; CIM add lands on `/next` at CIM; stop minting Axial twins
+**Risk:** medium (Review queue filter; `deals_next` CIM insert; merge of raced TLY-023..029)
+**Coords:** none
+
+### Changed
+- `web/app/next/page.tsx` + `listNextInboxDeals()` — Review loads stage `inbox` only. Pursuing TLY-074 / Closed CIM cards no longer return as PRIORITY.
+- `web/components/next/review-client.tsx` — swipe/todo also require inbound (defense in depth).
+- `web/lib/next/cim-create.ts` + `POST /api/next/cim/create` — Add from CIM on `/next/pipeline` joins existing TLY then sets CIM; new cards skip inbound.
+- `web/lib/next/import.ts` — return `dealIds`; lock fingerprint together with source id.
+
+### Do not touch
+- Classic `/` and `/pipeline` CIM create (`deals` table)
+- Live harvest → `/api/import`
+- TLY-074 / TLY-077 (not twins; already one TLY each)
+
+### Follow-ups
+- After deploy: `POST /api/next/merge` `{ "confirm": "MERGE", "deleteDealNumbers": ["TLY-023","TLY-024","TLY-025","TLY-026","TLY-027","TLY-028","TLY-029"] }` to collapse 9/1 concurrent Axial twins, then unique `source_deal_id` index can apply.
+
 ## 2026-09-02 — `nm/web/next-pipeline` — DONE
 
 **Scope:** Collapse `/next` Pipeline to five stages; stack TLY + listing IDs under the company name  

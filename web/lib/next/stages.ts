@@ -71,6 +71,14 @@ export function coerceNextStage(value: unknown): NextStageId {
   return mapNextStage(value) ?? "inbox";
 }
 
+/**
+ * Next Review swipe is inbound only. Shortlisted / NDA / CIM / Pursuing /
+ * Closed live on the board — a missing verdict must not pull them back.
+ */
+export function isNextReviewStage(value: unknown): boolean {
+  return coerceNextStage(value) === "inbox";
+}
+
 export function isNextStageId(value: unknown): value is NextStageId {
   return NEXT_STAGES.some((s) => s.id === value);
 }

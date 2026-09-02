@@ -1,5 +1,6 @@
 import { NextNav } from "@/components/next/nav";
 import { NextPipelineBoard } from "@/components/next/pipeline-board";
+import { AddFromCim } from "@/components/add-from-cim";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { listNextBoardDeals } from "@/lib/next/deals";
@@ -16,12 +17,15 @@ export default async function NextPipelinePage() {
     <>
       <NextNav memberLabel={memberLabel(member)} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">
-        <div className="mb-3">
-          <h1 className="text-lg font-semibold tracking-tight">Next Pipeline</h1>
-          <p className="text-ink-dim text-[12.5px]">
-            Inbound stays in Next Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
-            Closed is passed or walked — not won.
-          </p>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Next Pipeline</h1>
+            <p className="text-ink-dim text-[12.5px]">
+              Inbound stays in Next Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
+              Closed is passed or walked — not won.
+            </p>
+          </div>
+          <AddFromCim createPath="/api/next/cim/create" />
         </div>
 
         {deals.length === 0 && (

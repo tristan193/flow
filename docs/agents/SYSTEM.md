@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-08-04 · Primary author this pass: `nm/bbs/enrich` + `nm/docs/handoff`
+Last reviewed: 2026-09-02 · Primary author this pass: `nm/web/tly-match`
 
 ## 1. Product in one paragraph
 
@@ -135,11 +135,11 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Area | Paths |
 |------|--------|
 | Import API | `web/app/api/import/` · auth `FLOW_IMPORT_TOKEN` |
-| Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Stage operator is Dirk, not a browser session. Writes `deals_next` only. Board: Shortlisted → NDA → CIM → Pursuing → Closed (`inbox` is review). |
+| Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Stage operator is Dirk, not a browser session. Writes `deals_next` only. Board: Shortlisted → NDA → CIM → Pursuing → Closed (`inbox` is Next Review swipe, inbound only). |
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
-| Review UI | `web/components/review-client.tsx`, `deal-card.tsx` |
-| CIM → pipeline | Pipeline “Add from CIM” · `POST /api/cim/extract` + `/create` · AI Gateway + unpdf · lands at stage `cim` |
+| Review UI | `web/components/review-client.tsx`, `deal-card.tsx` · `/next` Review is `listNextInboxDeals()` (stage `inbox` only) |
+| CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |
 | Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |

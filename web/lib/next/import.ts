@@ -160,7 +160,7 @@ async function lockIdentity(q: QueryFn, ident: IdentityRecord): Promise<void> {
   const keys = new Set<string>();
   if (ident.sourceDealId) keys.add(ident.sourceDealId);
   for (const s of ident.sourceIds) keys.add(s.canonical);
-  if (keys.size === 0 && ident.fingerprint) keys.add(`fp:${ident.fingerprint}`);
+  if (ident.fingerprint) keys.add(`fp:${ident.fingerprint}`);
   if (keys.size === 0 && ident.teaserNorm) keys.add(`title:${ident.teaserNorm}`);
   for (const key of [...keys].sort()) {
     await q("SELECT pg_advisory_xact_lock(872011, hashtext($1))", [key]);
@@ -351,6 +351,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
   dealsNew: number;
   dealsUpdated: number;
   skipped: number;
+  dealIds: number[];
 }> {
   let dealsNew = 0;
   let dealsUpdated = 0;
@@ -416,7 +417,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
     await applyIncomingStage(item.id, item.deal);
   }
 
-  return { dealsNew, dealsUpdated, skipped };
+  return { dealsNew, dealsUpdated, skipped, dealIds: staged.map((item) => item.id) };
 }
 
 export async function applyNextVerdicts(verdicts: IncomingNextVerdict[]): Promise<number> {

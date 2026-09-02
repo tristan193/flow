@@ -2,6 +2,8 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 
 import { query } from "../db.ts";
+import { createNextDealFromCim } from "./cim-create.ts";
+import { listNextInboxDeals } from "./deals.ts";
 import { applyNextVerdicts, upsertNextDeals } from "./import.ts";
 import { collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
@@ -268,4 +270,94 @@ test("token moves TLY from cim to dead; missing token 401; bad stage 400; sessio
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
   }
+});
+
+test("duplicate Axial HVAC teaser updates the same TLY instead of minting", async () => {
+  await resetNext();
+  const first = await upsertNextDeals([
+    {
+      title: "Dual-Trade HVAC Service and Repair Platform",
+      html: AXIAL_HTML,
+      nickname: "aaaabbbbccccdddd",
+    },
+  ]);
+  assert.equal(first.dealsNew, 1);
+  const [row] = await query<{ deal_number: string }>("SELECT deal_number FROM deals_next");
+  const again = await upsertNextDeals([
+    {
+      title: "Dual-Trade HVAC Service and Repair Platform",
+      html: AXIAL_HTML,
+      nickname: "aaaabbbbccccdddd",
+    },
+  ]);
+  assert.equal(again.dealsNew, 0);
+  assert.equal(again.dealsUpdated, 1);
+  assert.deepEqual(again.dealIds, first.dealIds);
+  const rows = await query<{ deal_number: string }>("SELECT deal_number FROM deals_next");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].deal_number, row.deal_number);
+});
+
+test("CIM add skips inbound Review and lands at CIM; harvest stays inbound", async () => {
+  await resetNext();
+  const minted = await createNextDealFromCim("tristan", {
+    title: "Rainwater Harvesting Systems",
+    blurb: "Commercial rainwater capture.",
+    city: "Austin",
+    state: "TX",
+    revenue: 4_200_000,
+    ebitda: 900_000,
+    sde: null,
+    asking: null,
+    businessModelType: "LOCAL_SERVICE",
+    url: "https://network.axial.net/app/opportunity/8932140e5f5c4c3b95ab30edf15588cb?action=pursue",
+  });
+  assert.equal(minted.stage, "cim");
+  assert.equal(minted.nickname, "Manual");
+  assert.equal((await listNextInboxDeals()).length, 0);
+
+  await resetNext();
+  const harvest = await upsertNextDeals([
+    {
+      title: "Dual-Trade HVAC Service and Repair Platform",
+      html: AXIAL_HTML,
+      nickname: "aaaabbbbccccdddd",
+    },
+  ]);
+  assert.equal(harvest.dealsNew, 1);
+  const [open] = await query<{ deal_number: string; stage: string }>(
+    "SELECT deal_number, stage FROM deals_next",
+  );
+  assert.equal(open.stage, "inbox");
+
+  const joined = await createNextDealFromCim("tristan", {
+    title: "Confidential Information Memorandum — HVAC Platform",
+    blurb: "Same shop, CIM retitle.",
+    city: "Austin",
+    state: "TX",
+    revenue: 6_000_000,
+    ebitda: 1_100_000,
+    sde: null,
+    asking: null,
+    businessModelType: "REGIONAL",
+    url: "https://network.axial.net/app/opportunity/aaaabbbbccccdddd?action=pursue",
+  });
+  assert.equal(joined.deal_number, open.deal_number);
+  assert.equal(joined.stage, "cim");
+  const after = await query<{ deal_number: string }>("SELECT deal_number FROM deals_next");
+  assert.equal(after.length, 1);
+  assert.equal((await listNextInboxDeals()).length, 0);
+});
+
+test("Pursuing cards stay off the Review inbox list", async () => {
+  await resetNext();
+  await upsertNextDeals([
+    { title: "Rainwater Harvesting", html: AXIAL_HTML, stage: "pursuing" },
+  ]);
+  const inbox = await listNextInboxDeals();
+  assert.equal(inbox.length, 0);
+  const [row] = await query<{ stage: string }>(
+    "SELECT stage FROM deals_next WHERE title = 'Rainwater Harvesting'",
+  );
+  assert.equal(row.stage, "pursuing");
 });
