@@ -784,20 +784,20 @@ function SwipeDeck({
           ?
         </DeckButton>
         <DeckButton
-          tone="super"
-          active={Boolean(top.super_liked_at)}
-          onClick={() => onSuperLike(top)}
-          title="Super Like — pin to top of this stack"
-        >
-          ✓✓✓
-        </DeckButton>
-        <DeckButton
           tone="short"
           active={intent === "short"}
           onClick={() => fling(top, "short")}
           title="Shortlist (right arrow)"
         >
           ✓
+        </DeckButton>
+        <DeckButton
+          tone="super"
+          active={Boolean(top.super_liked_at)}
+          onClick={() => onSuperLike(top)}
+          title="Super Like — pin to top of this stack"
+        >
+          ✓✓✓
         </DeckButton>
       </div>
 
