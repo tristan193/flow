@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import { byPinnedThenEarnings } from "@/lib/next/fit";
 import {
   coerceNextStage,
   mapNextStage,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/next/model";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
-import { DealTitleStack, Earnings, SourcePill, VerdictChips } from "./deal-card";
+import { DealTitleStack, Earnings, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -59,7 +60,7 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
   const grouped = useMemo(() => {
     return NEXT_BOARD_STAGES.map((stage) => ({
       stage,
-      deals: deals.filter((deal) => stageOf(deal) === stage.id),
+      deals: deals.filter((deal) => stageOf(deal) === stage.id).sort(byPinnedThenEarnings),
     }));
   }, [deals, stageOf]);
 
@@ -150,7 +151,8 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                     </div>
                     <Earnings deal={deal} />
                   </div>
-                  <div className="mb-2.5">
+                  <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                    <SuperLikeMark deal={deal} />
                     <SourcePill deal={deal} />
                   </div>
 

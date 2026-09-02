@@ -249,10 +249,20 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
   );
 }
 
+export function SuperLikeMark({ deal }: { deal: NextDeal }) {
+  if (!deal.super_liked_at) return null;
+  return (
+    <span className="text-short font-semibold" title="Super Liked — stays at the top of this stack">
+      ✓✓✓
+    </span>
+  );
+}
+
 export function CardFooter({ deal }: { deal: NextDeal }) {
   return (
     <div className="text-ink-faint flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
       {deal.is_demo && <span className="text-flag font-semibold">DEMO</span>}
+      <SuperLikeMark deal={deal} />
       <SourcePill deal={deal} />
       {deal.times_seen > 1 && <span>seen {deal.times_seen}×</span>}
       <NeedsTags deal={deal} />

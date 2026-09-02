@@ -304,6 +304,9 @@ CREATE TABLE IF NOT EXISTS deals_next (
 
   cim_url             TEXT,
   nda_url             TEXT,
+  -- Review Super Like pin. Not a verdict; follows the deal across stacks until
+  -- Pass, Pursue (short), or Closed. Newest pin sorts first within a stack.
+  super_liked_at      TIMESTAMPTZ,
 
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -313,6 +316,8 @@ CREATE INDEX IF NOT EXISTS ix_deals_next_stage ON deals_next (stage);
 CREATE INDEX IF NOT EXISTS ix_deals_next_last_seen ON deals_next (last_seen DESC);
 CREATE INDEX IF NOT EXISTS ix_deals_next_fingerprint ON deals_next (fingerprint);
 CREATE INDEX IF NOT EXISTS ix_deals_next_source_deal_id ON deals_next (source_deal_id);
+ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS super_liked_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ix_deals_next_super_liked ON deals_next (super_liked_at DESC NULLS LAST);
 -- Unique source_deal_id is applied from lib/next/merge.ts once duplicate rows
 -- are collapsed. Putting CREATE UNIQUE INDEX here would fail applySchema while
 -- Neon still has the raced Axial duplicates.
