@@ -38,51 +38,20 @@ export {
 };
 export type { MemberId, VerdictAction };
 
-/**
- * Real process board. `inbox` is inbound review (cards) and is not a column.
- */
-export const NEXT_STAGES = [
-  { id: "inbox", label: "Inbound", hint: "Waiting on a card verdict", board: false },
-  { id: "shortlist", label: "Shortlisted", hint: "Worth pursuing", board: true },
-  { id: "pof", label: "POF", hint: "Proof of funds — rare", board: true },
-  { id: "nda_to_sign", label: "NDA to sign", hint: "NDA out, not signed yet", board: true },
-  { id: "nda", label: "NDA signed", hint: "NDA done, awaiting CIM", board: true },
-  { id: "cim", label: "CIM / data room", hint: "Reviewing materials", board: true },
-  { id: "awaiting_reply", label: "Awaiting reply", hint: "Waiting on banker or seller", board: true },
-  { id: "active", label: "Active review", hint: "Live work past CIM", board: true },
-  { id: "dead", label: "Pass / dead", hint: "Passed or went nowhere", board: true },
-] as const;
-
-export type NextStageId = (typeof NEXT_STAGES)[number]["id"];
-
-export const NEXT_BOARD_STAGES = NEXT_STAGES.filter((s) => s.board);
-
-export function isNextStageId(value: unknown): value is NextStageId {
-  return NEXT_STAGES.some((s) => s.id === value);
-}
-
-/**
- * Canonical ids on main: inbox, shortlist, pof, nda_to_sign, nda, cim,
- * awaiting_reply, active, dead.
- *
- * Dirk aliases (Simon Pursue/Pass/Hold language):
- *   closed | pass | passed  → dead          (PR #6 "Closed" is still `dead` here)
- *   pursuing                → awaiting_reply
- *   nda_signed              → nda
- */
-export function canonicalizeNextStage(value: unknown): NextStageId | null {
-  if (typeof value !== "string") return null;
-  const raw = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (isNextStageId(raw)) return raw;
-  if (raw === "closed" || raw === "pass" || raw === "passed") return "dead";
-  if (raw === "pursuing" || raw === "pursue") return "awaiting_reply";
-  if (raw === "nda_signed") return "nda";
-  return null;
-}
-
-export function nextStageLabel(id: string): string {
-  return NEXT_STAGES.find((s) => s.id === id)?.label ?? id;
-}
+export {
+  NEXT_BOARD_STAGES,
+  NEXT_STAGES,
+  canonicalizeNextStage,
+  coerceNextStage,
+  defaultNextAction,
+  isNextStageId,
+  mapNextStage,
+  nextFollowupKind,
+  nextStageLabel,
+  sanitizeNextAction,
+} from "./stages";
+import type { NextStageId } from "./stages";
+export type { NextStageId };
 
 export function isTeamShortlist(
   deal: { verdicts: Partial<Record<MemberId, { action: VerdictAction }>> },
@@ -94,31 +63,6 @@ export function isTeamShortlist(
   if (mine === "short" || theirs === "short") return true;
   if (mine === "discuss" && theirs === "discuss") return true;
   return false;
-}
-
-export function defaultNextAction(stage: NextStageId): string | null {
-  switch (stage) {
-    case "inbox":
-      return "Review the card";
-    case "shortlist":
-      return "Request NDA or send POF";
-    case "pof":
-      return "Send proof of funds";
-    case "nda_to_sign":
-      return "Sign the NDA";
-    case "nda":
-      return "Await CIM / data room";
-    case "cim":
-      return "Review CIM against buy box";
-    case "awaiting_reply":
-      return "Follow up with broker";
-    case "active":
-      return "Continue active review";
-    case "dead":
-      return null;
-    default:
-      return null;
-  }
 }
 
 export interface NextDealRow {

@@ -15,6 +15,7 @@ import {
 } from "@/lib/next/model";
 import {
   CardFooter,
+  DealTitleStack,
   DealListCard,
   FitStrip,
   LeadLine,
@@ -642,8 +643,12 @@ function SwipeDeck({
                 <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
                   <MetricRow deal={deal} fit={deal.fit} large />
 
-                  <div>
-                    <h2 className="text-[18px] leading-snug font-semibold">{deal.title}</h2>
+                  <div className="flex w-full min-w-0 flex-col">
+                    <DealTitleStack
+                      deal={deal}
+                      titleAs="h2"
+                      titleClassName="text-[18px] leading-snug font-semibold"
+                    />
                     <div className="mt-1">
                       <Where deal={deal} />
                     </div>

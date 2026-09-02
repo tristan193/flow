@@ -114,8 +114,8 @@ test("ingest stage and verdicts move inbox via moveNextStage path", async () => 
     { dealNumber: inbox.deal_number, member: "tristan", action: "pass" },
   ]);
   assert.equal(applied, 1);
-  const [dead] = await query<{ stage: string }>("SELECT stage FROM deals_next");
-  assert.equal(dead.stage, "dead");
+  const [closed] = await query<{ stage: string }>("SELECT stage FROM deals_next");
+  assert.equal(closed.stage, "closed");
 
   await resetNext();
   await upsertNextDeals([{ title: "Short me", html: AXIAL_HTML }]);
@@ -196,7 +196,7 @@ test("token moves TLY from cim to dead; missing token 401; bad stage 400; sessio
       authorization: null,
       sessionMember: null,
       dealNumber: row.deal_number,
-      stage: "dead",
+      stage: "closed",
     });
     assert.equal(noToken.ok, false);
     if (!noToken.ok) assert.equal(noToken.status, 401);
@@ -205,7 +205,7 @@ test("token moves TLY from cim to dead; missing token 401; bad stage 400; sessio
       authorization: "Bearer wrong-token",
       sessionMember: null,
       dealNumber: row.deal_number,
-      stage: "dead",
+      stage: "closed",
     });
     assert.equal(badToken.ok, false);
     if (!badToken.ok) assert.equal(badToken.status, 401);
@@ -238,14 +238,14 @@ test("token moves TLY from cim to dead; missing token 401; bad stage 400; sessio
     });
     assert.equal(moved.ok, true);
     if (moved.ok) {
-      assert.equal(moved.stage, "dead");
+      assert.equal(moved.stage, "closed");
       assert.equal(moved.actor, "dirk");
     }
     const [after] = await query<{ stage: string; stage_changed_by: string | null }>(
       "SELECT stage, stage_changed_by FROM deals_next WHERE id = $1",
       [row.id],
     );
-    assert.equal(after.stage, "dead");
+    assert.equal(after.stage, "closed");
     assert.equal(after.stage_changed_by, "dirk");
     const notes = await query<{ body: string }>("SELECT body FROM notes_next WHERE deal_id = $1", [row.id]);
     assert.ok(notes.some((n) => /Diamond Gate/i.test(n.body)));

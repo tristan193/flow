@@ -27,6 +27,28 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-02 — `nm/web/next-pipeline` — DONE
+
+**Scope:** Collapse `/next` Pipeline to five stages; stack TLY + listing IDs under the company name  
+**Risk:** medium (boot SQL remaps `deals_next.stage`; Dirk aliases invert from old→new)  
+**Coords:** none — PRs #4 and #6 were still open; this lands both on current `main` (post Dirk token control plane)
+
+### Changed
+- `web/lib/next/stages.ts` — board is Shortlisted → NDA → CIM → Pursuing → Closed. `pof`/`nda_to_sign`/`nda` → NDA; `awaiting_reply`/`active` → Pursuing; `dead` → Closed. No new stages.
+- `web/db/schema.sql` — boot remap so leftover rows do not vanish
+- `web/components/next/deal-card.tsx` — company name on top; TLY and listing IDs stacked underneath
+- `web/components/next/pipeline-board.tsx` — five chips only; canned POF / NDA TO SIGN / AWAITING REPLY / ACTIVE REVIEW gone
+
+### Do not touch
+- Classic `/` and `/pipeline` (`web/lib/model.ts` `STAGES`)
+- Live `deals` table / `/api/import`
+- Harvest clocks
+
+### Follow-ups
+- Close or supercede open PRs #4 and #6 after this is on production
+
+---
+
 ## 2026-09-01 — `nm/web/next-ingest` — DONE
 
 **Scope:** Dirk token control plane for `/next` stages; ingest race + duplicate merge  

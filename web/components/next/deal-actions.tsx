@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
+  coerceNextStage,
+  mapNextStage,
   NEXT_BOARD_STAGES,
   type MemberId,
   type NextDeal,
@@ -157,9 +159,12 @@ export function NextDealActions({ deal, member }: { deal: NextDeal; member: Memb
           Pipeline stage
         </span>
         <select
-          value={deal.stage === "inbox" ? "shortlist" : deal.stage}
+          value={deal.stage === "inbox" ? "shortlist" : coerceNextStage(deal.stage)}
           disabled={busy}
-          onChange={(event) => move(event.target.value as NextStageId)}
+          onChange={(event) => {
+            const stage = mapNextStage(event.target.value);
+            if (stage) void move(stage);
+          }}
           className="border-line bg-surface text-ink w-full rounded-lg border px-3 py-2.5 text-[13px] font-medium"
         >
           {deal.stage === "inbox" && <option value="inbox">Still inbound</option>}
