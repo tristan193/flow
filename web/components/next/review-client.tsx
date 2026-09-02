@@ -143,6 +143,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
 
   const applyPin = useCallback(
     (deal: NextDeal, liked: boolean) => {
+      if (liked && deal.super_liked_at) return;
       setPins((prev) => ({
         ...prev,
         [deal.id]: liked ? new Date().toISOString() : null,
@@ -343,7 +344,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
           total={deals.length}
           member={member}
           onCommit={commitSwipe}
-          onSuperLike={(deal) => applyPin(deal, !deal.super_liked_at)}
+          onSuperLike={(deal) => applyPin(deal, true)}
           onSkip={skipDeal}
           onUndo={undo}
           canUndo={history.length > 0}
@@ -383,7 +384,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
                       <ActionButton
                         active={Boolean(deal.super_liked_at)}
                         tone="super"
-                        onClick={() => applyPin(deal, !deal.super_liked_at)}
+                        onClick={() => applyPin(deal, true)}
                         title="Super Like — pin to top"
                       >
                         ✓✓✓
@@ -858,7 +859,12 @@ function DeckButton({
       : "h-14 w-14 text-2xl";
   return (
     <button
-      onClick={onClick}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
       title={title}
       className={`flex items-center justify-center rounded-full border shadow-lg shadow-black/20 transition-all active:scale-95 ${size} ${
         active ? lit : idle
