@@ -101,6 +101,8 @@ export interface NextDealRow {
   stage_changed_by: string | null;
   cim_url: string | null;
   nda_url: string | null;
+  /** ISO timestamp when Super Liked. Null = not pinned. Not a verdict. */
+  super_liked_at: string | null;
   earnings: number | null;
   earnings_basis: "EBITDA" | "SDE" | null;
   earnings_is_sde: boolean;

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Fit, type FitLevel } from "@/lib/fit";
-import { assessNextFit, byFit } from "@/lib/next/fit";
+import { assessNextFit, byPinnedThenFit } from "@/lib/next/fit";
 import {
   type MemberId,
   type NextDeal,
@@ -51,6 +51,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
   const [mode, setMode] = useState<"swipe" | "list">("swipe");
   const [filter, setFilter] = useState<FilterId>("todo");
   const [overrides, setOverrides] = useState<Record<number, Override>>({});
+  const [pins, setPins] = useState<Record<number, string | null>>({});
   const [history, setHistory] = useState<{ id: number; kind: "verdict" | "skip" }[]>(
     [],
   );
@@ -75,9 +76,16 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
   const scored = useMemo<Scored[]>(
     () =>
       deals
-        .map((deal) => ({ ...deal, fit: assessNextFit(deal) }))
+        .map((deal) => ({
+          ...deal,
+          super_liked_at:
+            Object.prototype.hasOwnProperty.call(pins, deal.id)
+              ? pins[deal.id]
+              : deal.super_liked_at,
+          fit: assessNextFit(deal),
+        }))
         .filter((deal) => deal.fit.surfaced),
-    [deals],
+    [deals, pins],
   );
 
   const verdictOf = useCallback(
@@ -113,6 +121,36 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
       }
     },
     [scheduleRefresh],
+  );
+
+  const sendPin = useCallback(
+    async (dealId: number, liked: boolean) => {
+      try {
+        const response = await fetch("/api/next/super-like", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dealId, liked }),
+        });
+        if (!response.ok) throw new Error("rejected");
+        setFailed(false);
+        scheduleRefresh();
+      } catch {
+        setFailed(true);
+      }
+    },
+    [scheduleRefresh],
+  );
+
+  const applyPin = useCallback(
+    (deal: NextDeal, liked: boolean) => {
+      if (liked && deal.super_liked_at) return;
+      setPins((prev) => ({
+        ...prev,
+        [deal.id]: liked ? new Date().toISOString() : null,
+      }));
+      void sendPin(deal.id, liked);
+    },
+    [sendPin],
   );
 
   const apply = useCallback(
@@ -203,7 +241,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
           (deal) =>
             isNextReviewStage(deal.stage) && !verdictOf(deal) && !skipped.includes(deal.id),
         )
-        .sort(byFit),
+        .sort(byPinnedThenFit),
     [scored, verdictOf, skipped],
   );
 
@@ -260,7 +298,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
           return true;
       }
     });
-    return rows.sort(byFit);
+    return rows.sort(byPinnedThenFit);
   }, [scored, filter, verdictOf, member]);
 
   return (
@@ -306,6 +344,7 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
           total={deals.length}
           member={member}
           onCommit={commitSwipe}
+          onSuperLike={(deal) => applyPin(deal, true)}
           onSkip={skipDeal}
           onUndo={undo}
           canUndo={history.length > 0}
@@ -342,6 +381,14 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
                 return (
                   <DealListCard key={deal.id} deal={deal} fit={deal.fit} member={member}>
                     <div className="flex gap-1.5 pt-0.5">
+                      <ActionButton
+                        active={Boolean(deal.super_liked_at)}
+                        tone="super"
+                        onClick={() => applyPin(deal, true)}
+                        title="Super Like — pin to top"
+                      >
+                        ✓✓✓
+                      </ActionButton>
                       <ActionButton
                         active={verdict?.action === "short"}
                         tone="short"
@@ -461,19 +508,21 @@ function ActionButton({
   title,
 }: {
   active: boolean;
-  tone: "short" | "discuss" | "pass";
+  tone: "short" | "super" | "discuss" | "pass";
   onClick: () => void;
   children: React.ReactNode;
   title?: string;
 }) {
   const activeTone = {
     short: "border-short bg-short text-canvas hover:brightness-110",
+    super: "border-short bg-short text-canvas hover:brightness-110",
     discuss: "border-discuss bg-discuss text-canvas hover:brightness-110",
     pass: "border-pass bg-pass text-canvas hover:brightness-110",
   }[tone];
 
   const idleTone = {
     short: "border-line bg-surface-raised text-short hover:border-short hover:bg-short-bg",
+    super: "border-line bg-surface-raised text-short hover:border-short hover:bg-short-bg",
     discuss:
       "border-line bg-surface-raised text-ink-dim hover:border-discuss hover:bg-discuss-bg hover:text-discuss",
     pass: "border-line bg-surface-raised text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass",
@@ -498,6 +547,7 @@ function SwipeDeck({
   total,
   member,
   onCommit,
+  onSuperLike,
   onSkip,
   onUndo,
   canUndo,
@@ -507,6 +557,7 @@ function SwipeDeck({
   total: number;
   member: MemberId;
   onCommit: (deal: NextDeal, action: VerdictAction) => void;
+  onSuperLike: (deal: NextDeal) => void;
   onSkip: (deal: NextDeal) => void;
   onUndo: () => void;
   canUndo: boolean;
@@ -733,6 +784,14 @@ function SwipeDeck({
           ?
         </DeckButton>
         <DeckButton
+          tone="super"
+          active={Boolean(top.super_liked_at)}
+          onClick={() => onSuperLike(top)}
+          title="Super Like — pin to top of this stack"
+        >
+          ✓✓✓
+        </DeckButton>
+        <DeckButton
           tone="short"
           active={intent === "short"}
           onClick={() => fling(top, "short")}
@@ -774,7 +833,7 @@ function DeckButton({
   small = false,
   active = false,
 }: {
-  tone: "short" | "discuss" | "pass";
+  tone: "short" | "super" | "discuss" | "pass";
   onClick: () => void;
   children: React.ReactNode;
   title: string;
@@ -783,18 +842,29 @@ function DeckButton({
 }) {
   const idle = {
     short: "border-line bg-surface text-short hover:border-short hover:bg-short-bg",
+    super: "border-line bg-surface text-short hover:border-short hover:bg-short-bg",
     discuss: "border-line bg-surface text-discuss hover:border-discuss hover:bg-discuss-bg",
     pass: "border-line bg-surface text-pass hover:border-pass hover:bg-pass-bg",
   }[tone];
   const lit = {
     short: "bg-short text-canvas border-short hover:brightness-110",
+    super: "bg-short text-canvas border-short hover:brightness-110",
     discuss: "bg-discuss text-canvas border-discuss hover:brightness-110",
     pass: "bg-pass text-canvas border-pass hover:brightness-110",
   }[tone];
-  const size = small ? "h-12 w-12 text-lg" : "h-14 w-14 text-2xl";
+  const size = small
+    ? "h-12 w-12 text-lg"
+    : tone === "super"
+      ? "h-14 min-w-14 px-2 text-[15px] tracking-tight"
+      : "h-14 w-14 text-2xl";
   return (
     <button
-      onClick={onClick}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
       title={title}
       className={`flex items-center justify-center rounded-full border shadow-lg shadow-black/20 transition-all active:scale-95 ${size} ${
         active ? lit : idle

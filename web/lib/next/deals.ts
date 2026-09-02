@@ -86,6 +86,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     stage_changed_by: row.stage_changed_by == null ? null : String(row.stage_changed_by),
     cim_url: row.cim_url == null ? null : String(row.cim_url),
     nda_url: row.nda_url == null ? null : String(row.nda_url),
+    super_liked_at: row.super_liked_at ? isoString(row.super_liked_at) : null,
     earnings: row.earnings == null ? null : Number(row.earnings),
     earnings_basis:
       row.earnings_basis === "EBITDA" || row.earnings_basis === "SDE"
@@ -132,7 +133,7 @@ async function attachVerdicts(rows: NextDealRow[]): Promise<NextDeal[]> {
 export async function listNextDeals(): Promise<NextDeal[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT * FROM v_deals_next
-     ORDER BY earnings DESC NULLS LAST, last_seen DESC, id DESC`,
+     ORDER BY super_liked_at DESC NULLS LAST, earnings DESC NULLS LAST, last_seen DESC, id DESC`,
   );
   return attachVerdicts(rows.map(normalizeDeal));
 }
@@ -147,7 +148,7 @@ export async function listNextBoardDeals(): Promise<NextDeal[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT * FROM v_deals_next
      WHERE stage <> 'inbox'
-     ORDER BY earnings DESC NULLS LAST, id DESC`,
+     ORDER BY super_liked_at DESC NULLS LAST, earnings DESC NULLS LAST, id DESC`,
   );
   const deals = await attachVerdicts(rows.map(normalizeDeal));
   return deals.filter((deal) => deal.stage !== "inbox");
@@ -181,6 +182,10 @@ export async function setNextVerdict(
     [dealId, member, action, reason, note],
   );
 
+  if (action === "short" || action === "pass") {
+    await clearNextSuperLike(dealId);
+  }
+
   if (action === "short") {
     await moveNextStage(dealId, member, "shortlist", { onlyFrom: "inbox" });
   } else if (action === "pass") {
@@ -190,6 +195,32 @@ export async function setNextVerdict(
 
 export async function clearNextVerdict(dealId: number, member: MemberId): Promise<void> {
   await query("DELETE FROM verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
+}
+
+/** Pin a deal to the top of whichever stack it lives in. Not a verdict. */
+export async function setNextSuperLike(dealId: number, liked: boolean): Promise<string | null> {
+  if (!liked) {
+    await clearNextSuperLike(dealId);
+    return null;
+  }
+  const rows = await query<{ super_liked_at: unknown }>(
+    `UPDATE deals_next
+        SET super_liked_at = now(), updated_at = now()
+      WHERE id = $1
+    RETURNING super_liked_at`,
+    [dealId],
+  );
+  const raw = rows[0]?.super_liked_at;
+  return raw ? isoString(raw) : null;
+}
+
+export async function clearNextSuperLike(dealId: number): Promise<void> {
+  await query(
+    `UPDATE deals_next
+        SET super_liked_at = NULL, updated_at = now()
+      WHERE id = $1 AND super_liked_at IS NOT NULL`,
+    [dealId],
+  );
 }
 
 export async function moveNextStage(
@@ -205,6 +236,10 @@ export async function moveNextStage(
   if (!current) return;
   const from = coerceNextStage(current.stage);
   if (options.onlyFrom && from !== options.onlyFrom) return;
+  if (stage === "closed") {
+    await clearNextSuperLike(dealId);
+  }
+
   if (from === stage) {
     if (current.stage !== stage) {
       await query(`UPDATE deals_next SET stage = $1, updated_at = now() WHERE id = $2`, [

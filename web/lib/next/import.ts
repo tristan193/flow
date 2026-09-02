@@ -4,7 +4,7 @@ import path from "node:path";
 import { type QueryFn, isUniqueViolation, query, withTransaction } from "../db";
 import { normalizeAxialHref } from "../playbooks";
 import { allocateDealNumber, bumpCounterToAtLeast } from "./deal-number";
-import { moveNextStage } from "./deals";
+import { clearNextSuperLike, moveNextStage } from "./deals";
 import {
   type IdentityInput,
   type IdentityRecord,
@@ -456,6 +456,9 @@ export async function applyNextVerdicts(verdicts: IncomingNextVerdict[]): Promis
     if (result.length === 0) continue;
     applied += 1;
 
+    if (verdict.action === "short" || verdict.action === "pass") {
+      await clearNextSuperLike(deal[0].id);
+    }
     if (verdict.action === "short") {
       await moveNextStage(deal[0].id, verdict.member, "shortlist", { onlyFrom: "inbox" });
     } else if (verdict.action === "pass") {
