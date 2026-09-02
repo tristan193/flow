@@ -1,6 +1,13 @@
 import { query } from "../db";
 import { gmailAllHref } from "./identity";
-import { defaultNextAction, isNextStageId, memberLabel, nextStageLabel } from "./model";
+import {
+  coerceNextStage,
+  defaultNextAction,
+  memberLabel,
+  nextFollowupKind,
+  nextStageLabel,
+  sanitizeNextAction,
+} from "./model";
 
 function iso(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -98,8 +105,7 @@ export async function listDirkVerdicts(limit = 50): Promise<DirkVerdict[]> {
   );
   return rows.map((row) => {
     const member = String(row.member ?? "");
-    const stageRaw = row.stage == null ? "inbox" : String(row.stage);
-    const stage = isNextStageId(stageRaw) ? stageRaw : "inbox";
+    const stage = coerceNextStage(row.stage);
     return {
       dealNumber: row.deal_number == null ? null : String(row.deal_number),
       title: String(row.title ?? ""),
@@ -129,7 +135,12 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
   const staged = await query<Record<string, unknown>>(
     `SELECT deal_number, title, stage, next_action, nda_url, cim_url, gmail_thread_ids
        FROM deals_next
-      WHERE stage IN ('shortlist', 'pof', 'nda_to_sign', 'nda', 'cim', 'awaiting_reply', 'active')
+      WHERE stage IN (
+              'shortlist', 'pof', 'shortlisted',
+              'nda', 'nda_to_sign', 'nda_signed',
+              'cim',
+              'pursuing', 'awaiting_reply', 'active'
+            )
       ORDER BY stage_changed_at DESC NULLS LAST, id DESC
       LIMIT $1`,
     [limit],
@@ -141,14 +152,13 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
   for (const row of watched) {
     const key = `${row.deal_number}:${row.kind}`;
     seen.add(key);
-    const stageRaw = row.stage == null ? "inbox" : String(row.stage);
-    const stage = isNextStageId(stageRaw) ? stageRaw : "inbox";
+    const stage = coerceNextStage(row.stage);
     out.push({
       dealNumber: row.deal_number == null ? null : String(row.deal_number),
       title: String(row.title ?? ""),
       kind: String(row.kind ?? "watch"),
       stage: nextStageLabel(stage),
-      nextAction: row.next_action == null ? defaultNextAction(stage) : String(row.next_action),
+      nextAction: sanitizeNextAction(row.next_action) ?? defaultNextAction(stage),
       gmailLinks: threadLinks(row),
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),
@@ -157,16 +167,8 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
   }
 
   for (const row of staged) {
-    const stageRaw = row.stage == null ? "inbox" : String(row.stage);
-    const stage = isNextStageId(stageRaw) ? stageRaw : "inbox";
-    const kind =
-      stage === "nda_to_sign" || stage === "nda"
-        ? "nda"
-        : stage === "cim"
-          ? "cim"
-          : stage === "awaiting_reply"
-            ? "broker_reply"
-            : "follow_up";
+    const stage = coerceNextStage(row.stage);
+    const kind = nextFollowupKind(stage) ?? "follow_up";
     const key = `${row.deal_number}:${kind}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -175,7 +177,7 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
       title: String(row.title ?? ""),
       kind,
       stage: nextStageLabel(stage),
-      nextAction: row.next_action == null ? defaultNextAction(stage) : String(row.next_action),
+      nextAction: sanitizeNextAction(row.next_action) ?? defaultNextAction(stage),
       gmailLinks: threadLinks(row),
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),

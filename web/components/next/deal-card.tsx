@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
+import { dealIdLines, sourceDisplayName } from "@/lib/next/display";
 import {
   type MemberId,
   type NextDeal,
@@ -131,7 +132,7 @@ const BUCKET_STYLES: Record<string, string> = {
 };
 
 export function SourcePill({ deal }: { deal: NextDeal }) {
-  const label = deal.nickname || deal.source || deal.sub_source || "Unknown";
+  const label = sourceDisplayName(deal);
   const bucket = sourceBucket(deal);
   return (
     <span
@@ -143,6 +144,53 @@ export function SourcePill({ deal }: { deal: NextDeal }) {
       {label}
     </span>
   );
+}
+
+/** Quiet TLY then listing ids, each on its own full-width line under the title. */
+export function DealIdStack({ deal }: { deal: NextDeal }) {
+  const lines = dealIdLines(deal);
+  if (lines.length === 0) return null;
+  return (
+    <div className="mt-0.5 flex w-full min-w-0 flex-col">
+      {lines.map((line) => (
+        <div key={line} className="text-ink-faint block w-full text-[11px] font-medium tabular">
+          {line}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Title on its own full-width line, IDs stacked underneath. flex-col so a parent
+ * flex-row cannot pull hex/TLY to the left of the company name.
+ */
+export function DealTitleStack({
+  deal,
+  href,
+  titleAs: Tag = "span",
+  titleClassName,
+}: {
+  deal: NextDeal;
+  href?: string;
+  titleAs?: "h1" | "h2" | "span";
+  titleClassName: string;
+}) {
+  const inner = (
+    <>
+      <Tag className={`block w-full min-w-0 ${titleClassName}`}>{deal.title}</Tag>
+      <DealIdStack deal={deal} />
+    </>
+  );
+  const stackClass = "flex w-full min-w-0 flex-col";
+  if (href) {
+    return (
+      <Link href={href} className={stackClass}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className={stackClass}>{inner}</div>;
 }
 
 export function Earnings({ deal, large = false }: { deal: NextDeal; large?: boolean }) {
@@ -204,7 +252,6 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
 export function CardFooter({ deal }: { deal: NextDeal }) {
   return (
     <div className="text-ink-faint flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
-      <span className="text-ink-dim font-semibold tabular">{deal.deal_number}</span>
       {deal.is_demo && <span className="text-flag font-semibold">DEMO</span>}
       <SourcePill deal={deal} />
       {deal.times_seen > 1 && <span>seen {deal.times_seen}×</span>}
@@ -237,16 +284,13 @@ export function DealListCard({
       <div className="space-y-2.5 p-3.5">
         <MetricRow deal={deal} fit={fit} />
 
-        <div>
-          <Link
-            href={`/next/deals/${deal.id}`}
-            className="text-[15px] leading-snug font-semibold hover:underline"
-          >
-            {deal.title}
-          </Link>
-          <div className="mt-1">
-            <Where deal={deal} />
-          </div>
+        <DealTitleStack
+          deal={deal}
+          href={`/next/deals/${deal.id}`}
+          titleClassName="text-[15px] leading-snug font-semibold hover:underline"
+        />
+        <div className="mt-1">
+          <Where deal={deal} />
         </div>
 
         <LeadLine deal={deal} />

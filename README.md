@@ -51,7 +51,7 @@ Agent handoff (intent, findings, docs):
 
 Next deal numbers mint `TLY-001` on first touch. Join order: deal number → source ID (Axial hex from Pursue/Pass HTML, BBS `q=`, V-AID, Transworld) → fingerprint (teaser + broker + round(EBITDA) + geo). Aliases and `gmail_thread_ids[]` accumulate. Never broker-only. Never one Gmail thread = one deal.
 
-Dirk is the stage operator (`FLOW_IMPORT_TOKEN` on `POST /api/next/stage` or import `stage` / `proposedStage`). Canonical stages: `inbox`, `shortlist`, `pof`, `nda_to_sign`, `nda`, `cim`, `awaiting_reply`, `active`, `dead`. Aliases: `closed` / `pass` / `passed` → `dead`; `pursuing` → `awaiting_reply`; `nda_signed` → `nda`. PR #6 "Closed" is still stored as `dead` on this branch.
+Dirk is the stage operator (`FLOW_IMPORT_TOKEN` on `POST /api/next/stage` or import `stage` / `proposedStage`). Canonical board: `shortlist` → `nda` → `cim` → `pursuing` → `closed` (`inbox` is Next Review, not a column). Closed = passed / dead / walked, not won. Legacy aliases: `pof` / `nda_to_sign` / `nda_signed` → `nda`; `awaiting_reply` / `active` → `pursuing`; `dead` / `pass` / `passed` → `closed`.
 
 ## What Flow App does
 

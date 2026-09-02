@@ -225,11 +225,13 @@ test("harvest ext_id is dropped from source ids and never matches", () => {
 });
 
 test("Dirk stage aliases map onto canonical Next stages", () => {
-  assert.equal(canonicalizeNextStage("dead"), "dead");
-  assert.equal(canonicalizeNextStage("closed"), "dead");
-  assert.equal(canonicalizeNextStage("Pass"), "dead");
-  assert.equal(canonicalizeNextStage("passed"), "dead");
-  assert.equal(canonicalizeNextStage("pursuing"), "awaiting_reply");
+  assert.equal(canonicalizeNextStage("dead"), "closed");
+  assert.equal(canonicalizeNextStage("closed"), "closed");
+  assert.equal(canonicalizeNextStage("Pass"), "closed");
+  assert.equal(canonicalizeNextStage("passed"), "closed");
+  assert.equal(canonicalizeNextStage("pursuing"), "pursuing");
+  assert.equal(canonicalizeNextStage("awaiting_reply"), "pursuing");
+  assert.equal(canonicalizeNextStage("pof"), "nda");
   assert.equal(canonicalizeNextStage("nda_signed"), "nda");
   assert.equal(canonicalizeNextStage("cim"), "cim");
   assert.equal(canonicalizeNextStage("hold"), null);

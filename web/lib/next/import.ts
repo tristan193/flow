@@ -21,7 +21,7 @@ import {
   sanitizeSourceDealId,
 } from "./identity";
 import { ensureNextSourceDealIdUnique } from "./merge";
-import { isMemberId, isVerdictAction, canonicalizeNextStage } from "./model";
+import { isMemberId, isVerdictAction, canonicalizeNextStage, sanitizeNextAction } from "./model";
 
 export { isHarvestExtId } from "./identity";
 
@@ -201,7 +201,7 @@ async function updateMatchedDeal(
   const url = normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null;
   const needs = JSON.stringify(deal.needsLlm ?? []);
   const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
-  const nextAction = deal.nextAction?.trim() || null;
+  const nextAction = sanitizeNextAction(deal.nextAction);
 
   await q(
     `UPDATE deals_next SET
@@ -285,7 +285,7 @@ async function insertNewDeal(
   const url = normalizeAxialHref(deal.url ?? null) ?? deal.url ?? null;
   const needs = JSON.stringify(deal.needsLlm ?? []);
   const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
-  const nextAction = deal.nextAction?.trim() || null;
+  const nextAction = sanitizeNextAction(deal.nextAction);
 
   const inserted = await q<{ id: number }>(
     `INSERT INTO deals_next (
@@ -458,7 +458,7 @@ export async function applyNextVerdicts(verdicts: IncomingNextVerdict[]): Promis
     if (verdict.action === "short") {
       await moveNextStage(deal[0].id, verdict.member, "shortlist", { onlyFrom: "inbox" });
     } else if (verdict.action === "pass") {
-      await moveNextStage(deal[0].id, verdict.member, "dead", { onlyFrom: "inbox" });
+      await moveNextStage(deal[0].id, verdict.member, "closed", { onlyFrom: "inbox" });
     }
   }
 

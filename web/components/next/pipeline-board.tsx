@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import {
+  coerceNextStage,
+  mapNextStage,
   NEXT_BOARD_STAGES,
   type MemberId,
   type NextDeal,
@@ -14,17 +15,14 @@ import {
 } from "@/lib/next/model";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
-import { Earnings, SourcePill, VerdictChips } from "./deal-card";
+import { DealTitleStack, Earnings, SourcePill, VerdictChips } from "./deal-card";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
-  pof: "text-flag",
-  nda_to_sign: "text-discuss",
   nda: "text-discuss",
   cim: "text-flag",
-  awaiting_reply: "text-discuss",
-  active: "text-flag",
-  dead: "text-ink-faint",
+  pursuing: "text-discuss",
+  closed: "text-ink-faint",
 };
 
 export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member: MemberId }) {
@@ -34,7 +32,7 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
   const [error, setError] = useState<string | null>(null);
 
   const stageOf = useCallback(
-    (deal: NextDeal): NextStageId => stages[deal.id] ?? deal.stage,
+    (deal: NextDeal): NextStageId => coerceNextStage(stages[deal.id] ?? deal.stage),
     [stages],
   );
 
@@ -142,18 +140,18 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
             <div className="space-y-2">
               {staged.map((deal) => (
                 <article key={deal.id} className="border-line bg-surface rounded-xl border p-3.5">
-                  <div className="mb-2 flex items-start gap-2.5">
-                    <SourcePill deal={deal} />
-                    <Link
-                      href={`/next/deals/${deal.id}`}
-                      className="min-w-0 flex-1 text-[15px] leading-snug font-semibold hover:underline"
-                    >
-                      <span className="text-ink-faint mr-1.5 text-[12px] font-semibold tabular">
-                        {deal.deal_number}
-                      </span>
-                      {deal.title}
-                    </Link>
+                  <div className="mb-2 flex w-full min-w-0 items-start gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <DealTitleStack
+                        deal={deal}
+                        href={`/next/deals/${deal.id}`}
+                        titleClassName="text-[15px] leading-snug font-semibold hover:underline"
+                      />
+                    </div>
                     <Earnings deal={deal} />
+                  </div>
+                  <div className="mb-2.5">
+                    <SourcePill deal={deal} />
                   </div>
 
                   <div className="text-ink-faint mb-2.5 space-y-1 text-[12px]">
@@ -205,7 +203,10 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                     <span className="sr-only">Move {deal.title} to another stage</span>
                     <select
                       value={stageOf(deal)}
-                      onChange={(event) => move(deal, event.target.value as NextStageId)}
+                      onChange={(event) => {
+                        const next = mapNextStage(event.target.value);
+                        if (next) void move(deal, next);
+                      }}
                       className="border-line bg-surface-raised text-ink w-full rounded-lg border px-3 py-2 text-[13px] font-medium"
                     >
                       {NEXT_BOARD_STAGES.map((option) => (

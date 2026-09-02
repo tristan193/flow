@@ -10,7 +10,7 @@ import { applyAuthorizedNextStage } from "@/lib/next/stage-auth";
  * Move a Next deal on the board. Dirk is the operator.
  *
  *   Authorization: Bearer FLOW_IMPORT_TOKEN
- *   { "dealNumber": "TLY-002", "stage": "dead" }
+ *   { "dealNumber": "TLY-002", "stage": "closed" }
  *   { "dealId": 12, "stage": "cim", "note": "optional" }
  *
  * Member-session UI still works with the same body + cookie (no token).

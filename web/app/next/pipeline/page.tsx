@@ -19,20 +19,18 @@ export default async function NextPipelinePage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Next Pipeline</h1>
           <p className="text-ink-dim text-[12.5px]">
-            Shortlisted deals hold stage: Inbound → Shortlisted → POF → NDA → CIM → reply → active
+            Inbound stays in Next Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
+            Closed is passed or walked — not won.
           </p>
         </div>
 
-        {deals.length === 0 ? (
-          <div className="border-line bg-surface rounded-xl border p-4 text-sm">
-            <p className="font-medium">Nothing on the Next board yet</p>
-            <p className="text-ink-dim mt-1.5 leading-relaxed">
-              Shortlist a card in Next Review. Pass from inbound lands in Pass/dead.
-            </p>
-          </div>
-        ) : (
-          <NextPipelineBoard deals={deals} member={member} />
+        {deals.length === 0 && (
+          <p className="text-ink-dim mb-3 text-sm">
+            Shortlist a card in Next Review. Pass from inbound lands in Closed.
+          </p>
         )}
+
+        <NextPipelineBoard deals={deals} member={member} />
       </main>
     </>
   );
