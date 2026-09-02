@@ -234,6 +234,8 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
     [notePrompt, scored, apply],
   );
 
+  // This member's inbound deck only. A partner Pass/Discuss must not drop the
+  // card here — the server keeps those inbox until this member votes too.
   const queue = useMemo(
     () =>
       scored

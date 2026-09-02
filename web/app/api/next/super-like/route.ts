@@ -12,11 +12,12 @@ const schema = z.object({
 
 /**
  * Super Like pins a deal to the top of its current stack.
- * Not a verdict — does not change stage or close the card.
+ * On inbound Review it also shortlists immediately (Like-equivalent for the
+ * board) without writing a verdict, so the pin survives until Pass/Pursue/Closed.
  */
 export async function POST(request: Request) {
   await ensureReady();
-  await requireMember();
+  const member = await requireMember();
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -28,6 +29,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Deal not found." }, { status: 404 });
   }
 
-  const superLikedAt = await setNextSuperLike(parsed.data.dealId, parsed.data.liked);
+  const superLikedAt = await setNextSuperLike(parsed.data.dealId, parsed.data.liked, member);
   return NextResponse.json({ ok: true, superLikedAt });
 }

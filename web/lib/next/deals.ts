@@ -11,6 +11,7 @@ import {
   type NextVerdictRow,
   type VerdictAction,
   coerceNextStage,
+  combineNextReview,
   defaultNextAction,
   nextFollowupKind,
   sanitizeNextAction,
@@ -186,19 +187,24 @@ export async function setNextVerdict(
     await clearNextSuperLike(dealId);
   }
 
-  if (action === "short") {
-    await moveNextStage(dealId, member, "shortlist", { onlyFrom: "inbox" });
-  } else if (action === "pass") {
-    await moveNextStage(dealId, member, "closed", { onlyFrom: "inbox" });
-  }
+  await applyNextReviewOutcome(dealId, member);
 }
 
 export async function clearNextVerdict(dealId: number, member: MemberId): Promise<void> {
   await query("DELETE FROM verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
-/** Pin a deal to the top of whichever stack it lives in. Not a verdict. */
-export async function setNextSuperLike(dealId: number, liked: boolean): Promise<string | null> {
+/**
+ * Pin a deal to the top of whichever stack it lives in.
+ * On inbound Review, Super Like also shortlists immediately (same as a Like)
+ * so the other partner does not have to wait. Not a verdict — pin stays until
+ * a later Pass / Pursue / Closed decision.
+ */
+export async function setNextSuperLike(
+  dealId: number,
+  liked: boolean,
+  member: string = "tristan",
+): Promise<string | null> {
   if (!liked) {
     await clearNextSuperLike(dealId);
     return null;
@@ -211,7 +217,22 @@ export async function setNextSuperLike(dealId: number, liked: boolean): Promise<
     [dealId],
   );
   const raw = rows[0]?.super_liked_at;
-  return raw ? isoString(raw) : null;
+  const at = raw ? isoString(raw) : null;
+  await applyNextReviewOutcome(dealId, member);
+  return at;
+}
+
+/** Apply Tristan/Jim combine rules. Only moves inbound cards forward. */
+export async function applyNextReviewOutcome(dealId: number, actor: string): Promise<void> {
+  const deal = await getNextDeal(dealId);
+  if (!deal || deal.stage !== "inbox") return;
+  const outcome = combineNextReview({
+    tristan: deal.verdicts.tristan?.action ?? null,
+    partner: deal.verdicts.partner?.action ?? null,
+    superLiked: Boolean(deal.super_liked_at),
+  });
+  if (outcome === "inbox") return;
+  await moveNextStage(dealId, actor, outcome, { onlyFrom: "inbox" });
 }
 
 export async function clearNextSuperLike(dealId: number): Promise<void> {

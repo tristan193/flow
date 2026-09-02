@@ -88,23 +88,26 @@ test("board columns pin newest Super Like first, then earnings", () => {
   );
 });
 
-test("Super Like pins inbox without changing stage or writing a verdict", async () => {
+test("Super Like pins and shortlists immediately without writing a verdict", async () => {
   await resetNext();
   await upsertNextDeals([{ title: "Pinned HVAC", html: AXIAL_HTML, ebitda: 800_000 }]);
   const [before] = await listNextInboxDeals();
   assert.equal(before.stage, "inbox");
   assert.equal(before.super_liked_at, null);
 
-  const at = await setNextSuperLike(before.id, true);
+  const at = await setNextSuperLike(before.id, true, "partner");
   assert.ok(at);
 
-  const [after] = await listNextInboxDeals();
-  assert.equal(after.stage, "inbox");
-  assert.equal(after.super_liked_at, at);
-  assert.deepEqual(after.verdicts, {});
+  assert.equal((await listNextInboxDeals()).length, 0);
+  const board = await listNextBoardDeals();
+  assert.equal(board[0].title, "Pinned HVAC");
+  assert.equal(board[0].stage, "shortlist");
+  assert.equal(board[0].super_liked_at, at);
+  assert.deepEqual(board[0].verdicts, {});
+  assert.equal(board[0].stage_changed_by, "partner");
 });
 
-test("multiple Super Likes: newest sits first in the inbox stack", async () => {
+test("multiple Super Likes: newest sits first on Shortlisted", async () => {
   await resetNext();
   await upsertNextDeals([
     { title: "Older pin", html: AXIAL_HTML, ebitda: 1_200_000 },
@@ -128,10 +131,13 @@ test("multiple Super Likes: newest sits first in the inbox stack", async () => {
   await new Promise((resolve) => setTimeout(resolve, 15));
   await setNextSuperLike(newer.id, true);
 
-  const ordered = await listNextInboxDeals();
-  assert.equal(ordered[0].title, "Newer pin");
-  assert.equal(ordered[1].title, "Older pin");
-  assert.equal(ordered[2].title, "Unpinned better fit");
+  const remaining = await listNextInboxDeals();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].title, "Unpinned better fit");
+
+  const shortlisted = (await listNextBoardDeals()).filter((row) => row.stage === "shortlist");
+  assert.equal(shortlisted[0].title, "Newer pin");
+  assert.equal(shortlisted[1].title, "Older pin");
 });
 
 test("pin follows a Dirk stage move and stays at the top of the new stack", async () => {
@@ -213,7 +219,8 @@ test("Pass, Pursue, and Closed clear the Super Like pin", async () => {
   assert.ok(discussed[0].super_liked_at);
 
   await clearNextVerdict(byTitle["Will discuss"].id, "tristan");
-  const stillPinned = await listNextInboxDeals();
-  assert.equal(stillPinned[0].title, "Will discuss");
-  assert.ok(stillPinned[0].super_liked_at);
+  const stillPinned = (await listNextBoardDeals()).find((row) => row.title === "Will discuss");
+  assert.ok(stillPinned);
+  assert.equal(stillPinned.stage, "shortlist");
+  assert.ok(stillPinned.super_liked_at);
 });

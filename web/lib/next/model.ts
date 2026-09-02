@@ -66,6 +66,40 @@ export function isTeamShortlist(
   return false;
 }
 
+export type NextReviewOutcome = "inbox" | "shortlist" | "closed";
+
+/**
+ * Parallel /next Review decks share one board. Each partner's vote is stored
+ * separately; this decides when the card leaves inbound.
+ *
+ * - Either Like (`short`) or Super Like → Shortlisted immediately
+ * - Both Discuss (`?`) → Shortlisted
+ * - Both finished, otherwise (Pass/Pass, Pass/?) → Closed
+ * - Only one Pass or ? so far → stay inbox so the other deck still has it
+ */
+export function combineNextReview(input: {
+  tristan?: VerdictAction | null;
+  partner?: VerdictAction | null;
+  superLiked?: boolean;
+}): NextReviewOutcome {
+  const tristan = input.tristan ?? null;
+  const partner = input.partner ?? null;
+  if (input.superLiked || tristan === "short" || partner === "short") return "shortlist";
+  if (tristan === null || partner === null) return "inbox";
+  if (tristan === "discuss" && partner === "discuss") return "shortlist";
+  return "closed";
+}
+
+/** Inbound cards this member has not voted on yet. Partner votes do not hide them. */
+export function nextInboxDeck<
+  T extends {
+    stage: string;
+    verdicts: Partial<Record<MemberId, { action: VerdictAction }>>;
+  },
+>(deals: T[], member: MemberId): T[] {
+  return deals.filter((deal) => deal.stage === "inbox" && !deal.verdicts[member]);
+}
+
 export interface NextDealRow {
   id: number;
   deal_number: string;

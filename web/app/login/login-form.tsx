@@ -28,7 +28,7 @@ export function LoginForm({ next }: { next?: string }) {
 
       // A full navigation rather than a client push, so the new session cookie is
       // picked up by middleware on the way in.
-      window.location.href = next && next.startsWith("/") ? next : "/";
+      window.location.href = next && next.startsWith("/") ? next : "/next";
     } catch {
       setError("Network problem. Try again.");
       setBusy(false);
@@ -63,8 +63,8 @@ export function LoginForm({ next }: { next?: string }) {
       </button>
 
       <p className="text-ink-faint pt-2 text-xs leading-relaxed">
-        You and your partner each have your own passcode, which is how Flow knows whose verdicts
-        are whose.
+        Tristan and Jim Evans each have their own passcode. That is how Flow keeps two Review
+        decks — a Pass on one deck does not remove the card from the other.
       </p>
     </form>
   );
