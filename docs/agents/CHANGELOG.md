@@ -27,7 +27,7 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
-## 2026-09-02 — `nm/web/tly-match` — IN PROGRESS
+## 2026-09-02 — `nm/web/tly-match` — DONE
 
 **Scope:** `/next` Review swipe inbound-only; CIM add lands on `/next` at CIM; stop minting Axial twins
 **Risk:** medium (Review queue filter; `deals_next` CIM insert; merge of raced TLY-023..029)
