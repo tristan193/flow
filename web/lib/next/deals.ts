@@ -11,8 +11,11 @@ import {
   type NextVerdictRow,
   type VerdictAction,
   coerceNextStage,
+  combineNextCim,
   combineNextReview,
   defaultNextAction,
+  isMemberId,
+  isNextCimReviewCard,
   nextFollowupKind,
   sanitizeNextAction,
 } from "./model";
@@ -98,10 +101,11 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
   };
 }
 
-function normalizeVerdict(row: Record<string, unknown>): NextVerdictRow {
+function normalizeVerdict(row: Record<string, unknown>): NextVerdictRow | null {
+  if (!isMemberId(row.member)) return null;
   return {
     deal_id: Number(row.deal_id),
-    member: row.member as MemberId,
+    member: row.member,
     action: row.action as VerdictAction,
     reason: row.reason == null ? null : String(row.reason),
     note: row.note == null ? null : String(row.note),
@@ -121,13 +125,27 @@ async function attachVerdicts(rows: NextDealRow[]): Promise<NextDeal[]> {
   const byDeal = new Map<number, NextDeal["verdicts"]>();
   for (const raw of verdicts) {
     const verdict = normalizeVerdict(raw);
+    if (!verdict) continue;
     const bucket = byDeal.get(verdict.deal_id) ?? {};
     bucket[verdict.member] = verdict;
     byDeal.set(verdict.deal_id, bucket);
   }
+  const cimVerdicts = await query<Record<string, unknown>>(
+    `SELECT * FROM cim_verdicts_next WHERE deal_id IN (${placeholders})`,
+    ids,
+  );
+  const cimByDeal = new Map<number, NextDeal["cim_verdicts"]>();
+  for (const raw of cimVerdicts) {
+    const verdict = normalizeVerdict(raw);
+    if (!verdict) continue;
+    const bucket = cimByDeal.get(verdict.deal_id) ?? {};
+    bucket[verdict.member] = verdict;
+    cimByDeal.set(verdict.deal_id, bucket);
+  }
   return rows.map((row) => ({
     ...row,
     verdicts: byDeal.get(row.id) ?? {},
+    cim_verdicts: cimByDeal.get(row.id) ?? {},
   }));
 }
 
@@ -139,10 +157,16 @@ export async function listNextDeals(): Promise<NextDeal[]> {
   return attachVerdicts(rows.map(normalizeDeal));
 }
 
-/** Inbound queue for `/next` Review. Board stages never belong here. */
+/** Inbound queue for `/next` Review → New. Board stages never belong here. */
 export async function listNextInboxDeals(): Promise<NextDeal[]> {
   const deals = await listNextDeals();
   return deals.filter((deal) => deal.stage === "inbox");
+}
+
+/** CIM Review swipe. Stamped `cim_url` and/or stage CIM — not the pipeline reader. */
+export async function listNextCimDeals(): Promise<NextDeal[]> {
+  const deals = await listNextDeals();
+  return deals.filter(isNextCimReviewCard);
 }
 
 export async function listNextBoardDeals(): Promise<NextDeal[]> {
@@ -235,6 +259,42 @@ export async function applyNextReviewOutcome(dealId: number, actor: string): Pro
   await moveNextStage(dealId, actor, outcome, { onlyFrom: "inbox" });
 }
 
+export async function setNextCimVerdict(
+  dealId: number,
+  member: MemberId,
+  action: VerdictAction,
+  note: string | null = null,
+): Promise<void> {
+  if (!isMemberId(member)) return;
+  await query(
+    `INSERT INTO cim_verdicts_next (deal_id, member, action, note)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (deal_id, member) DO UPDATE
+       SET action = excluded.action,
+           note = excluded.note,
+           updated_at = now()`,
+    [dealId, member, action, note],
+  );
+  await applyNextCimOutcome(dealId, member);
+}
+
+export async function clearNextCimVerdict(dealId: number, member: MemberId): Promise<void> {
+  if (!isMemberId(member)) return;
+  await query("DELETE FROM cim_verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
+}
+
+/** CIM stays put until both partners Pass or both Pursue. Uses CIM votes only. */
+export async function applyNextCimOutcome(dealId: number, actor: string): Promise<void> {
+  const deal = await getNextDeal(dealId);
+  if (!deal || deal.stage !== "cim") return;
+  const outcome = combineNextCim({
+    tristan: deal.cim_verdicts.tristan?.action ?? null,
+    partner: deal.cim_verdicts.partner?.action ?? null,
+  });
+  if (outcome === "cim") return;
+  await moveNextStage(dealId, actor, outcome, { onlyFrom: "cim" });
+}
+
 export async function clearNextSuperLike(dealId: number): Promise<void> {
   await query(
     `UPDATE deals_next
@@ -300,6 +360,10 @@ export async function moveNextStage(
         )`,
       [dealId, kind, member],
     );
+  }
+
+  if (stage === "cim") {
+    await applyNextCimOutcome(dealId, member);
   }
 }
 
@@ -393,18 +457,41 @@ export async function addNextNote(dealId: number, member: string, body: string):
   ]);
 }
 
-export async function listNextNotes(dealId: number): Promise<NextNoteRow[]> {
-  const rows = await query<Record<string, unknown>>(
-    "SELECT * FROM notes_next WHERE deal_id = $1 ORDER BY created_at DESC",
-    [dealId],
-  );
-  return rows.map((row) => ({
+function noteFromRow(row: Record<string, unknown>): NextNoteRow {
+  return {
     id: Number(row.id),
     deal_id: Number(row.deal_id),
     member: String(row.member),
     body: String(row.body),
     created_at: isoString(row.created_at),
-  }));
+  };
+}
+
+export async function listNextNotes(dealId: number): Promise<NextNoteRow[]> {
+  const rows = await query<Record<string, unknown>>(
+    "SELECT * FROM notes_next WHERE deal_id = $1 ORDER BY created_at DESC",
+    [dealId],
+  );
+  return rows.map(noteFromRow);
+}
+
+export async function listNextNotesForDeals(
+  dealIds: number[],
+): Promise<Map<number, NextNoteRow[]>> {
+  const out = new Map<number, NextNoteRow[]>();
+  if (dealIds.length === 0) return out;
+  const placeholders = dealIds.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await query<Record<string, unknown>>(
+    `SELECT * FROM notes_next WHERE deal_id IN (${placeholders}) ORDER BY created_at DESC`,
+    dealIds,
+  );
+  for (const row of rows) {
+    const note = noteFromRow(row);
+    const bucket = out.get(note.deal_id) ?? [];
+    bucket.push(note);
+    out.set(note.deal_id, bucket);
+  }
+  return out;
 }
 
 export async function listNextStageEvents(dealId: number): Promise<NextStageEventRow[]> {

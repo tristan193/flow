@@ -38,6 +38,21 @@ export {
 };
 export type { MemberId, VerdictAction };
 
+import {
+  NEXT_BOARD_STAGES,
+  NEXT_STAGES,
+  canonicalizeNextStage,
+  coerceNextStage,
+  defaultNextAction,
+  isNextReviewStage,
+  isNextStageId,
+  mapNextStage,
+  nextFollowupKind,
+  nextStageLabel,
+  sanitizeNextAction,
+  type NextStageId,
+} from "./stages";
+
 export {
   NEXT_BOARD_STAGES,
   NEXT_STAGES,
@@ -50,8 +65,7 @@ export {
   nextFollowupKind,
   nextStageLabel,
   sanitizeNextAction,
-} from "./stages";
-import type { NextStageId } from "./stages";
+};
 export type { NextStageId };
 
 export function isTeamShortlist(
@@ -90,6 +104,59 @@ export function combineNextReview(input: {
   return "closed";
 }
 
+export type NextCimOutcome = "cim" | "pursuing" | "closed";
+
+/**
+ * Shared CIM board. Stricter than Review: the card stays at CIM until
+ * Tristan AND Jim both Pass, or both Pursue. Hold, mixed votes, or one
+ * vote never leave CIM. Super Like and Simon notes are not votes.
+ */
+export function combineNextCim(input: {
+  tristan?: VerdictAction | null;
+  partner?: VerdictAction | null;
+}): NextCimOutcome {
+  const tristan = input.tristan ?? null;
+  const partner = input.partner ?? null;
+  if (!tristan || !partner) return "cim";
+  if (tristan === "pass" && partner === "pass") return "closed";
+  if (tristan === "short" && partner === "short") return "pursuing";
+  return "cim";
+}
+
+/** CIM card buttons — same stored actions as Review, different labels. */
+export const CIM_VERDICT_LABELS: Record<VerdictAction, string> = {
+  short: "Pursue",
+  discuss: "Hold",
+  pass: "Pass",
+};
+
+export function cimCombineHint(
+  verdicts: Partial<Record<MemberId, { action: VerdictAction }>>,
+): string {
+  const tristan = verdicts.tristan?.action ?? null;
+  const partner = verdicts.partner?.action ?? null;
+  const outcome = combineNextCim({ tristan, partner });
+  if (outcome === "closed") return "Both Pass — leaves CIM for Closed";
+  if (outcome === "pursuing") return "Both Pursue — leaves CIM for Pursuing";
+  if (!tristan && !partner) return "Stays at CIM until both Pass or both Pursue";
+  if (!tristan || !partner) return "One vote — stays at CIM";
+  if (tristan === "discuss" || partner === "discuss") return "Hold — stays at CIM";
+  return "Disagreement — stays at CIM";
+}
+
+/**
+ * CIM Review membership. A card belongs if it has a stamped `cim_url` and/or
+ * is at stage CIM. Inbound stays in New; Pursuing / Closed already left.
+ */
+export function isNextCimReviewCard(deal: {
+  stage: string;
+  cim_url?: string | null;
+}): boolean {
+  const stage = coerceNextStage(deal.stage);
+  if (stage === "inbox" || stage === "closed" || stage === "pursuing") return false;
+  return stage === "cim" || Boolean(deal.cim_url?.trim());
+}
+
 /** Inbound cards this member has not voted on yet. Partner votes do not hide them. */
 export function nextInboxDeck<
   T extends {
@@ -98,6 +165,17 @@ export function nextInboxDeck<
   },
 >(deals: T[], member: MemberId): T[] {
   return deals.filter((deal) => deal.stage === "inbox" && !deal.verdicts[member]);
+}
+
+/** CIM Review deck: pack/CIM card this member has not cast a CIM vote on. */
+export function nextCimDeck<
+  T extends {
+    stage: string;
+    cim_url?: string | null;
+    cim_verdicts: Partial<Record<MemberId, { action: VerdictAction }>>;
+  },
+>(deals: T[], member: MemberId): T[] {
+  return deals.filter((deal) => isNextCimReviewCard(deal) && !deal.cim_verdicts[member]);
 }
 
 export interface NextDealRow {
@@ -172,4 +250,6 @@ export interface NextStageEventRow {
 
 export interface NextDeal extends NextDealRow {
   verdicts: Partial<Record<MemberId, NextVerdictRow>>;
+  /** CIM-lane votes only. Review Likes never live here. Simon never appears. */
+  cim_verdicts: Partial<Record<MemberId, NextVerdictRow>>;
 }

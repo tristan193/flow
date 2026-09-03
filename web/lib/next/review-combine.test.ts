@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { combineNextReview, memberLabel, nextInboxDeck, type VerdictAction } from "./model.ts";
+import {
+  combineNextCim,
+  combineNextReview,
+  isNextCimReviewCard,
+  memberLabel,
+  nextCimDeck,
+  nextInboxDeck,
+  type VerdictAction,
+} from "./model.ts";
 
 type Action = VerdictAction | null;
 
@@ -52,6 +60,70 @@ test("partner Review identity is Jim Evans (id stays partner)", () => {
     assert.equal(memberLabel("partner"), "Jim Evans");
   }
   assert.notEqual(memberLabel("tristan"), memberLabel("partner"));
+});
+
+test("combineNextCim stays CIM unless both Pass or both Pursue", () => {
+  const rows: Array<{
+    name: string;
+    tristan: Action;
+    partner: Action;
+    want: "cim" | "pursuing" | "closed";
+  }> = [
+    { name: "neither", tristan: null, partner: null, want: "cim" },
+    { name: "one Pass", tristan: "pass", partner: null, want: "cim" },
+    { name: "one Pursue", tristan: "short", partner: null, want: "cim" },
+    { name: "one Hold", tristan: "discuss", partner: null, want: "cim" },
+    { name: "both Hold", tristan: "discuss", partner: "discuss", want: "cim" },
+    { name: "Pass vs Pursue", tristan: "pass", partner: "short", want: "cim" },
+    { name: "Pass vs Hold", tristan: "pass", partner: "discuss", want: "cim" },
+    { name: "Pursue vs Hold", tristan: "short", partner: "discuss", want: "cim" },
+    { name: "both Pass", tristan: "pass", partner: "pass", want: "closed" },
+    { name: "both Pursue", tristan: "short", partner: "short", want: "pursuing" },
+  ];
+  for (const row of rows) {
+    assert.equal(
+      combineNextCim({ tristan: row.tristan, partner: row.partner }),
+      row.want,
+      row.name,
+    );
+  }
+});
+
+test("CIM deck is stamped cim_url and/or stage CIM; inbound and finished stay out", () => {
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: null }), true);
+  assert.equal(
+    isNextCimReviewCard({
+      stage: "nda",
+      cim_url: "https://drive.google.com/file/d/abcFile031/view",
+    }),
+    true,
+  );
+  assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: "https://drive.google.com/file/d/x/view" }), false);
+  assert.equal(isNextCimReviewCard({ stage: "pursuing", cim_url: "https://drive.google.com/file/d/x/view" }), false);
+  assert.equal(isNextCimReviewCard({ stage: "closed", cim_url: "https://drive.google.com/file/d/x/view" }), false);
+  assert.equal(isNextCimReviewCard({ stage: "shortlist", cim_url: null }), false);
+});
+
+test("nextCimDeck hides a card only after this member's CIM vote", () => {
+  const deals = [
+    { id: 1, stage: "cim", cim_url: null, cim_verdicts: {} },
+    { id: 2, stage: "cim", cim_url: null, cim_verdicts: { tristan: { action: "pass" as const } } },
+    { id: 3, stage: "inbox", cim_url: null, cim_verdicts: {} },
+    {
+      id: 4,
+      stage: "nda",
+      cim_url: "https://drive.google.com/file/d/iron/view",
+      cim_verdicts: {},
+    },
+  ];
+  assert.deepEqual(
+    nextCimDeck(deals, "tristan").map((row) => row.id),
+    [1, 4],
+  );
+  assert.deepEqual(
+    nextCimDeck(deals, "partner").map((row) => row.id),
+    [1, 2, 4],
+  );
 });
 
 test("nextInboxDeck is per-member — partner Pass does not hide Tristan's card", () => {

@@ -2,9 +2,15 @@ import { NextNav } from "@/components/next/nav";
 import { NextReviewClient } from "@/components/next/review-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { listNextInboxDeals } from "@/lib/next/deals";
+import { listNextCimDeals, listNextInboxDeals, listNextNotesForDeals } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
-import { memberLabel, nextInboxDeck, otherMember } from "@/lib/next/model";
+import {
+  memberLabel,
+  nextCimDeck,
+  nextInboxDeck,
+  otherMember,
+  type NextNoteRow,
+} from "@/lib/next/model";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +23,11 @@ export default async function NextReviewPage() {
   const demoCount = deals.filter((d) => d.is_demo).length;
   const myDeck = nextInboxDeck(deals, member);
 
+  const cimDeals = await listNextCimDeals();
+  const notesMap = await listNextNotesForDeals(cimDeals.map((deal) => deal.id));
+  const notesByDealId: Record<number, NextNoteRow[]> = Object.fromEntries(notesMap);
+  const myCim = nextCimDeck(cimDeals, member);
+
   return (
     <>
       <NextNav memberLabel={memberLabel(member)} />
@@ -24,29 +35,28 @@ export default async function NextReviewPage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Next Review</h1>
           <p className="text-ink-dim text-[12.5px]">
-            Your deck · {myDeck.length} left
+            New · {myDeck.length} in your deck
             {deals.length !== myDeck.length ? ` · ${deals.length} still inbound` : ""}
             {hidden > 0 ? ` · ${hidden} under floor hidden` : ""}
-            {demoCount > 0 ? ` · ${demoCount} DEMO` : ""} · a Pass here stays in{" "}
-            {memberLabel(otherMember(member))}&apos;s deck
+            {demoCount > 0 ? ` · ${demoCount} DEMO` : ""}
+            {" · "}
+            CIM · {myCim.length} to review
+            {cimDeals.length !== myCim.length ? ` · ${cimDeals.length} with a pack` : ""}
+            {" · "}a Pass on New stays in {memberLabel(otherMember(member))}&apos;s deck
           </p>
         </div>
 
-        {deals.length === 0 ? (
-          <div className="border-line bg-surface rounded-xl border p-4 text-sm">
-            <p className="font-medium">Nothing inbound</p>
-            <p className="text-ink-dim mt-1.5 leading-relaxed">
-              Nothing inbound. Board cards (CIM / Pursuing / Closed) stay on Pipeline. Dirk posts
-              teasers to <code>POST /api/next/import</code>.
-            </p>
-          </div>
-        ) : (
-          <NextReviewClient deals={deals} member={member} />
-        )}
+        <NextReviewClient
+          deals={deals}
+          cimDeals={cimDeals}
+          notesByDealId={notesByDealId}
+          member={member}
+        />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          Same visibility floors as the original: $350K+ in the Austin / SA / Waco corridor, $750K+
-          elsewhere. Water always surfaces. Inbound only — CIM, Pursuing, and Closed stay on the board.
+          New is inbound teasers. CIM is packs — stamped <code>cim_url</code> or stage CIM. Open
+          pack goes to <code>/cim/TLY-XXX</code>. Pipeline only shows progress. Super Like stays
+          on the far right of New.
         </p>
       </main>
     </>

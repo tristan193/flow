@@ -27,6 +27,28 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/review-cim` — DONE
+
+**Scope:** `/next` Review New | CIM modes; dual-agree CIM votes; no Drive writes
+**Risk:** medium (`cim_verdicts_next` + CIM stage combine)
+**Coords:** none — did not merge PR #12; reused vote/UI only
+
+### Changed
+- `web/app/next/page.tsx` + `review-client.tsx` — logged-in Review shows **New | CIM**
+- `web/lib/next/model.ts` `combineNextCim` — both Pass → Closed; both Pursue → Pursuing; Hold/mixed/one vote stay CIM
+- `web/lib/next/deals.ts` — `listNextCimDeals()` is stamped `cim_url` and/or stage CIM; Simon rows are dropped
+- `web/app/api/next/cim/verdict` — Tristan/Jim session votes only
+- CIM pack control → existing `/cim/TLY-XXX`
+
+### Do not touch
+- PR #12 Drive folder create / googleapis-on-the-client
+- `POST /api/next/cim-url` token stamp (already live)
+- Pipeline `/next` board (still SL / NDA / CIM / Pursuing)
+- New inbound combine (Like / Super Like / both `?`)
+
+### Follow-ups
+- none
+
 ## 2026-09-03 — `nm/web/cim-stamp` — DONE
 
 **Scope:** `/cim/TLY-XXX` redirects from a stamped Drive file URL; Dirk token-stamps `cimUrl`; no Google on Vercel
