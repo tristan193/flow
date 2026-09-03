@@ -241,6 +241,11 @@ export interface NextNoteRow {
   created_at: string;
 }
 
+/** Tristan / Jim notes only. Simon (and any other writer) never hits the CIM card. */
+export function partnerNotesOnly<T extends { member: string }>(notes: T[]): T[] {
+  return notes.filter((note) => isMemberId(note.member));
+}
+
 export interface NextStageEventRow {
   id: number;
   deal_id: number;

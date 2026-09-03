@@ -184,6 +184,8 @@ test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", (
   assert.match(page, /listNextCimDeals/);
   assert.doesNotMatch(review, /Browse everything in List view/);
   assert.doesNotMatch(review, /setMode|"swipe" \| "list"/);
-  assert.doesNotMatch(client, /\/api\/next\/notes|Written review|Add a note|notesByDealId|simon/);
-  assert.doesNotMatch(page, /listNextNotesForDeals|notesByDealId/);
+  assert.match(client, /\/api\/next\/notes/);
+  assert.match(client, /partnerNotesOnly/);
+  assert.doesNotMatch(client, /Written review/);
+  assert.match(page, /partnerNotesOnly/);
 });

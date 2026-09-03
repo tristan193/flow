@@ -8,6 +8,7 @@ import {
   memberLabel,
   nextCimDeck,
   nextInboxDeck,
+  partnerNotesOnly,
   type VerdictAction,
 } from "./model.ts";
 
@@ -147,5 +148,17 @@ test("nextInboxDeck is per-member — partner Pass does not hide Tristan's card"
   assert.deepEqual(
     nextInboxDeck(deals, "partner").map((row) => row.id),
     [2],
+  );
+});
+
+test("partnerNotesOnly keeps Tristan and Jim, drops Simon", () => {
+  const notes = [
+    { id: 1, member: "tristan", body: "mine" },
+    { id: 2, member: "simon", body: "specialist writeup" },
+    { id: 3, member: "partner", body: "jim" },
+  ];
+  assert.deepEqual(
+    partnerNotesOnly(notes).map((note) => note.member),
+    ["tristan", "partner"],
   );
 });
