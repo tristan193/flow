@@ -314,20 +314,20 @@ async function applyIntakeRow(
             city = COALESCE($8, city),
             state = COALESCE($9, state),
             county = COALESCE($10, county),
-            stage = CASE WHEN $14 = 'cim' THEN 'cim' ELSE stage END,
+            stage = CASE WHEN $14::text = 'cim' THEN 'cim' ELSE stage END,
             stage_changed_at = CASE
-              WHEN $14 = 'cim' AND stage IS DISTINCT FROM 'cim' THEN now()
+              WHEN $14::text = 'cim' AND stage IS DISTINCT FROM 'cim' THEN now()
               ELSE stage_changed_at
             END,
             stage_changed_by = CASE
-              WHEN $14 = 'cim' AND stage IS DISTINCT FROM 'cim' THEN $11
+              WHEN $14::text = 'cim' AND stage IS DISTINCT FROM 'cim' THEN $11
               ELSE stage_changed_by
             END,
             next_action = CASE
-              WHEN next_action ILIKE '%await%cim%' OR next_action ILIKE '%data room%' THEN $12
-              WHEN $12 IS NULL THEN next_action
-              WHEN next_action IS NULL THEN $12
-              WHEN $14 = 'cim' AND next_action IN ('Sign the NDA', 'Request NDA', 'Review the card') THEN $12
+              WHEN next_action ILIKE '%await%cim%' OR next_action ILIKE '%data room%' THEN $12::text
+              WHEN $12::text IS NULL THEN next_action
+              WHEN next_action IS NULL THEN $12::text
+              WHEN $14::text = 'cim' AND next_action IN ('Sign the NDA', 'Request NDA', 'Review the card') THEN $12::text
               ELSE next_action
             END,
             updated_at = now()

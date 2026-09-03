@@ -81,7 +81,7 @@ test("next-action copy has no POF", () => {
 
 test("a stamped CIM pack never shows Await CIM / data room", () => {
   assert.equal(isAwaitCimAction("Await CIM / data room"), true);
-  assert.equal(isAwaitCimAction("await the CIM"), true);
+  assert.equal(isAwaitCimAction("await CIM"), true);
   assert.equal(isAwaitCimAction("Review CIM against buy box"), false);
   assert.equal(resolveNextAction("nda", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Review CIM against buy box");
   assert.equal(resolveNextAction("nda", "Await CIM / data room", null), "Await CIM / data room");

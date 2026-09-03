@@ -130,7 +130,7 @@ export function defaultNextAction(stage: NextStageId): string | null {
 export function isAwaitCimAction(value: unknown): boolean {
   const text = sanitizeNextAction(value);
   if (!text) return false;
-  return /await\s+cim|data\s*room/i.test(text);
+  return /await[\s\S]{0,24}cim|data\s*room/i.test(text);
 }
 
 /**
