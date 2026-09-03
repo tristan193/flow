@@ -2,11 +2,10 @@ import { query } from "../db";
 import { gmailAllHref } from "./identity";
 import {
   coerceNextStage,
-  defaultNextAction,
   memberLabel,
   nextFollowupKind,
   nextStageLabel,
-  sanitizeNextAction,
+  resolveNextAction,
 } from "./model";
 
 function iso(value: unknown): string {
@@ -158,7 +157,11 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
       title: String(row.title ?? ""),
       kind: String(row.kind ?? "watch"),
       stage: nextStageLabel(stage),
-      nextAction: sanitizeNextAction(row.next_action) ?? defaultNextAction(stage),
+      nextAction: resolveNextAction(
+        stage,
+        row.next_action,
+        row.cim_url == null ? null : String(row.cim_url),
+      ),
       gmailLinks: threadLinks(row),
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),
@@ -177,7 +180,11 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
       title: String(row.title ?? ""),
       kind,
       stage: nextStageLabel(stage),
-      nextAction: sanitizeNextAction(row.next_action) ?? defaultNextAction(stage),
+      nextAction: resolveNextAction(
+        stage,
+        row.next_action,
+        row.cim_url == null ? null : String(row.cim_url),
+      ),
       gmailLinks: threadLinks(row),
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),

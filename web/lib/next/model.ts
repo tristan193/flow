@@ -45,12 +45,16 @@ import {
   canonicalizeNextStage,
   coerceNextStage,
   defaultNextAction,
+  isAwaitCimAction,
   isNextReviewStage,
   isNextStageId,
   mapNextStage,
+  nextActionAfterCimPack,
   nextFollowupKind,
   nextStageLabel,
+  resolveNextAction,
   sanitizeNextAction,
+  shouldAdvanceToCimOnPack,
   type NextStageId,
 } from "./stages";
 
@@ -60,12 +64,16 @@ export {
   canonicalizeNextStage,
   coerceNextStage,
   defaultNextAction,
+  isAwaitCimAction,
   isNextReviewStage,
   isNextStageId,
   mapNextStage,
+  nextActionAfterCimPack,
   nextFollowupKind,
   nextStageLabel,
+  resolveNextAction,
   sanitizeNextAction,
+  shouldAdvanceToCimOnPack,
 };
 export type { NextStageId };
 

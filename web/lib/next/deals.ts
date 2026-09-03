@@ -16,8 +16,11 @@ import {
   defaultNextAction,
   isMemberId,
   isNextCimReviewCard,
+  nextActionAfterCimPack,
   nextFollowupKind,
+  resolveNextAction,
   sanitizeNextAction,
+  shouldAdvanceToCimOnPack,
 } from "./model";
 
 function isoString(value: unknown): string {
@@ -64,7 +67,11 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     gmail_thread_ids: toStringArray(row.gmail_thread_ids),
     broker_firm: row.broker_firm == null ? null : String(row.broker_firm),
     fingerprint: row.fingerprint == null ? null : String(row.fingerprint),
-    next_action: sanitizeNextAction(row.next_action),
+    next_action: resolveNextAction(
+      coerceNextStage(stageRaw),
+      row.next_action,
+      row.cim_url == null ? null : String(row.cim_url),
+    ),
     is_demo: Boolean(row.is_demo),
     title: String(row.title ?? ""),
     cim_name: row.cim_name == null || String(row.cim_name).trim() === "" ? null : String(row.cim_name).trim(),
@@ -326,8 +333,8 @@ export async function moveNextStage(
   stage: NextStageId,
   options: { onlyFrom?: NextStageId } = {},
 ): Promise<void> {
-  const current = await queryOne<{ stage: string }>(
-    "SELECT stage FROM deals_next WHERE id = $1",
+  const current = await queryOne<{ stage: string; next_action: string | null }>(
+    "SELECT stage, next_action FROM deals_next WHERE id = $1",
     [dealId],
   );
   if (!current) return;
@@ -347,14 +354,14 @@ export async function moveNextStage(
     return;
   }
 
-  const nextAction = defaultNextAction(stage);
+  const nextAction = nextActionAfterCimPack(stage, current.next_action) ?? defaultNextAction(stage);
 
   await query(
     `UPDATE deals_next
         SET stage = $1,
             stage_changed_at = now(),
             stage_changed_by = $2,
-            next_action = COALESCE(next_action, $3),
+            next_action = $3,
             updated_at = now()
       WHERE id = $4`,
     [stage, member, nextAction, dealId],
@@ -419,7 +426,13 @@ export async function saveNextDealFile(
     dealId,
   ]);
   if (options.moveToCim !== false) {
-    await moveNextStage(dealId, member, "cim");
+    const current = await queryOne<{ stage: string }>(
+      "SELECT stage FROM deals_next WHERE id = $1",
+      [dealId],
+    );
+    if (current && shouldAdvanceToCimOnPack(coerceNextStage(current.stage))) {
+      await moveNextStage(dealId, member, "cim");
+    }
   }
   return { id, url };
 }
@@ -435,7 +448,13 @@ export async function saveNextCimLink(
     trimmed,
     dealId,
   ]);
-  await moveNextStage(dealId, member, "cim");
+  const current = await queryOne<{ stage: string }>(
+    "SELECT stage FROM deals_next WHERE id = $1",
+    [dealId],
+  );
+  if (current && shouldAdvanceToCimOnPack(coerceNextStage(current.stage))) {
+    await moveNextStage(dealId, member, "cim");
+  }
 }
 
 export async function getNextDealFile(id: number): Promise<{

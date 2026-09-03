@@ -125,3 +125,54 @@ export function defaultNextAction(stage: NextStageId): string | null {
       return null;
   }
 }
+
+/** Leftover NDA-lane copy: the pack is in, so we are no longer awaiting it. */
+export function isAwaitCimAction(value: unknown): boolean {
+  const text = sanitizeNextAction(value);
+  if (!text) return false;
+  return /await\s+cim|data\s*room/i.test(text);
+}
+
+/**
+ * Closed stays closed when a pack is stamped. Pursuing is already past CIM —
+ * do not pull it back. Every other live stage advances to CIM.
+ */
+export function shouldAdvanceToCimOnPack(stage: NextStageId): boolean {
+  return stage !== "closed" && stage !== "pursuing";
+}
+
+/**
+ * Read-path next action. A stamped CIM pack never displays "Await CIM / data room".
+ */
+export function resolveNextAction(
+  stage: NextStageId,
+  stored: unknown,
+  cimUrl?: string | null,
+): string | null {
+  const cleaned = sanitizeNextAction(stored);
+  const hasPack = Boolean(cimUrl && String(cimUrl).trim());
+  if (hasPack && isAwaitCimAction(cleaned)) {
+    if (stage === "pursuing") return defaultNextAction("pursuing");
+    if (stage === "closed") return defaultNextAction("closed");
+    return defaultNextAction("cim");
+  }
+  return cleaned ?? defaultNextAction(stage);
+}
+
+/** When moving to CIM because a pack arrived, drop stale pre-CIM defaults. */
+export function nextActionAfterCimPack(
+  stage: NextStageId,
+  stored: unknown,
+): string | null {
+  const cleaned = sanitizeNextAction(stored);
+  const fallback = defaultNextAction(stage);
+  if (cleaned == null) return fallback;
+  if (isAwaitCimAction(cleaned)) return fallback;
+  if (
+    stage === "cim" &&
+    (cleaned === "Sign the NDA" || cleaned === "Request NDA" || cleaned === "Review the card")
+  ) {
+    return fallback;
+  }
+  return cleaned;
+}

@@ -362,6 +362,7 @@ test("partial financials preserve existing fields; URL + financials + stage upda
       assert.equal(stamped.deal.deal_number, "TLY-092");
       assert.equal(stamped.deal.stage, "cim");
       assert.equal(stamped.deal.cim_url, FILE_URL);
+      assert.notEqual(stamped.deal.next_action, "Await CIM / data room");
       assert.deepEqual(stamped.deal.cim_verdicts, {});
     }
 
@@ -651,6 +652,33 @@ test("intake with city/state overwrites geo; omitted geo leaves existing city/st
       assert.equal(fromCountry.city, "Hamilton");
       assert.equal(fromCountry.state, "Bermuda");
     }
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("intake on a closed deal stamps the pack but does not reopen the card", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = TOKEN;
+  try {
+    await insertDeal("TLY-031", "Iron Bull", { stage: "closed" });
+    const stamped = await applyAuthorizedCimIntake({
+      authorization: `Bearer ${TOKEN}`,
+      fileName: "TLY-031 Iron Bull.pdf",
+      cimUrl: FILE_URL,
+    });
+    assert.equal(stamped.ok, true);
+    if (stamped.ok) {
+      assert.equal(stamped.stage, "closed");
+      assert.equal(stamped.cimUrl, FILE_URL);
+    }
+    const row = await query<{ stage: string; cim_url: string }>(
+      "SELECT stage, cim_url FROM deals_next WHERE deal_number = 'TLY-031'",
+    );
+    assert.equal(row[0].stage, "closed");
+    assert.equal(row[0].cim_url, FILE_URL);
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
