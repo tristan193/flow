@@ -1,7 +1,7 @@
 /**
- * Google Drive is the CIM home. The card stores a folder/file URL — we do not
- * upload packs to Vercel blob. Shared Drive folders look like
- * `TLY-XXX Headline` under the active CIM folder; Closed deals get archived.
+ * Google Drive is the CIM home. Dirk (Flow) creates the folder when a deal
+ * hits CIM. Simon only uploads the PDF into that folder. Auto-match of
+ * Simon-named folders is fallback for three existing packs only.
  */
 
 export const CIM_ACTIVE_FOLDER_URL =
@@ -10,6 +10,9 @@ export const CIM_ACTIVE_FOLDER_ID = "0ABYzLaaJ9ebAUk9PVA";
 export const CIM_ARCHIVE_FOLDER_URL =
   "https://drive.google.com/drive/folders/1ucszdZl6NVGbZdVWvnrVPmrLoHsKotkX";
 export const CIM_ARCHIVE_FOLDER_ID = "1ucszdZl6NVGbZdVWvnrVPmrLoHsKotkX";
+
+/** Packs Simon already named. Do not design new flow around Simon creating folders. */
+export const LEGACY_SIMON_CIM_DEALS = ["TLY-007", "TLY-031", "TLY-092"] as const;
 
 const FOLDER_RE = /drive\.google\.com\/(?:drive\/(?:u\/\d+\/)?folders\/|open\?id=)([a-zA-Z0-9_-]+)/i;
 const FILE_RE = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i;
@@ -51,9 +54,34 @@ export function driveFolderUrl(folderId: string): string {
   return `https://drive.google.com/drive/folders/${folderId}`;
 }
 
+/** Same URL Dirk sends Simon so he can upload the CIM PDF. */
+export function cimViewUrl(folderId: string): string {
+  return driveFolderUrl(folderId);
+}
+
+export function isLegacySimonCimDeal(dealNumber: string | null | undefined): boolean {
+  const n = String(dealNumber || "")
+    .trim()
+    .toUpperCase();
+  return (LEGACY_SIMON_CIM_DEALS as readonly string[]).includes(n);
+}
+
+/** Drive folder title: `TLY-XXX Headline`. Dirk creates this, not Simon. */
+export function cimFolderTitle(dealNumber: string, headline: string): string {
+  const number = String(dealNumber || "")
+    .trim()
+    .toUpperCase();
+  const clean = String(headline || "")
+    .replace(/[\r\n\\/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return clean ? `${number} ${clean}` : number;
+}
+
 /**
- * Pack folders are titled `TLY-XXX Headline`. Match the TLY- prefix only —
- * the headline can change without breaking the link.
+ * Fallback only: parse a Simon-named `TLY-XXX Headline` folder.
+ * New packs are created by Dirk — do not rely on this for new deals.
  */
 export function dealNumberFromFolderName(name: string): string | null {
   const match = String(name || "")

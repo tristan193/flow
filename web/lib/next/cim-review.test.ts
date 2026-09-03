@@ -2,7 +2,17 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 
 import { query } from "../db.ts";
-import { dealNumberFromFolderName, indexCimFolders } from "./cim-drive.ts";
+import {
+  cimFolderTitle,
+  dealNumberFromFolderName,
+  indexCimFolders,
+  isLegacySimonCimDeal,
+} from "./cim-drive.ts";
+import {
+  ensureCimFolderForDeal,
+  resolveCimDriveLinks,
+  setCimFolderCreatorForTests,
+} from "./cim-drive-sync.ts";
 import {
   applyAuthorizedCimLink,
   applyAuthorizedCimReview,
@@ -56,6 +66,25 @@ test("TLY- prefix from Drive folder names", () => {
   assert.equal(index.has("TLY-001"), false);
 });
 
+test("Dirk folder title is TLY-XXX Headline; slashes flatten", () => {
+  assert.equal(cimFolderTitle("TLY-014", "Foo / Bar"), "TLY-014 Foo Bar");
+  assert.equal(cimFolderTitle("tly-014", "  HVAC\\Midwest  "), "TLY-014 HVAC Midwest");
+  assert.equal(cimFolderTitle("TLY-003", ""), "TLY-003");
+});
+
+test("auto-match is only for the three Simon-named packs", () => {
+  assert.equal(isLegacySimonCimDeal("TLY-007"), true);
+  assert.equal(isLegacySimonCimDeal("tly-031"), true);
+  assert.equal(isLegacySimonCimDeal("TLY-092"), true);
+  assert.equal(isLegacySimonCimDeal("TLY-014"), false);
+  assert.equal(isLegacySimonCimDeal("TLY-100"), false);
+});
+
+test("resolveCimDriveLinks ignores non-legacy deal numbers", async () => {
+  const result = await resolveCimDriveLinks(["TLY-100"]);
+  assert.deepEqual(result, { scanned: 0, matched: 0, written: 0 });
+});
+
 test("token can set Drive CIM url and Simon review without a verdict", async () => {
   await resetNext();
   const previous = process.env.FLOW_IMPORT_TOKEN;
@@ -92,7 +121,10 @@ test("token can set Drive CIM url and Simon review without a verdict", async () 
       review: "Solid margin. Customer concentration is the flag.",
     });
     assert.equal(reviewed.ok, true);
-    if (reviewed.ok) assert.equal(reviewed.actor, "simon");
+    if (reviewed.ok) {
+      assert.equal(reviewed.actor, "simon");
+      assert.equal(reviewed.viewUrl, drive);
+    }
 
     const asMember = await applyAuthorizedNextNote({
       authorization: "Bearer test-cim-token",
@@ -172,6 +204,95 @@ test("both CIM Pass closes; Dirk stage still works", async () => {
       false,
     );
   } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("Dirk creates the CIM folder and stores viewUrl; does not recreate", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = "test-cim-token";
+  const created: Array<{ title: string; parentId: string }> = [];
+  setCimFolderCreatorForTests(async ({ title, parentId }) => {
+    created.push({ title, parentId });
+    return { id: `created-${created.length}` };
+  });
+  try {
+    await upsertNextDeals([{ title: "Foo / Bar", html: AXIAL_HTML }]);
+    const [row] = await query<{ id: number; deal_number: string }>(
+      "SELECT id, deal_number FROM deals_next",
+    );
+    assert.equal(cimFolderTitle(row.deal_number, "Foo / Bar"), `${row.deal_number} Foo Bar`);
+
+    const first = await ensureCimFolderForDeal(row.id);
+    assert.equal(first.ok, true);
+    assert.equal(first.created, true);
+    assert.equal(first.matched, false);
+    assert.equal(first.folderId, "created-1");
+    assert.equal(first.viewUrl, "https://drive.google.com/drive/folders/created-1");
+    assert.equal(first.folderTitle, `${row.deal_number} Foo Bar`);
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.title, `${row.deal_number} Foo Bar`);
+    assert.equal(created[0]?.parentId, "0ABYzLaaJ9ebAUk9PVA");
+
+    const deal = await getNextDeal(row.id);
+    assert.equal(deal?.cim_url, first.viewUrl);
+
+    const second = await ensureCimFolderForDeal(row.id);
+    assert.equal(second.ok, true);
+    assert.equal(second.created, false);
+    assert.equal(second.folderId, "created-1");
+    assert.equal(created.length, 1);
+
+    const staged = await applyAuthorizedNextStage({
+      authorization: "Bearer test-cim-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "cim",
+    });
+    assert.equal(staged.ok, true);
+    if (staged.ok) {
+      assert.equal(staged.viewUrl, first.viewUrl);
+    }
+    assert.equal(created.length, 1);
+  } finally {
+    setCimFolderCreatorForTests(null);
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("hitting CIM via Dirk stage creates the folder immediately", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = "test-cim-token";
+  let creates = 0;
+  setCimFolderCreatorForTests(async () => {
+    creates += 1;
+    return { id: "stageFolder", viewUrl: "https://drive.google.com/drive/folders/stageFolder" };
+  });
+  try {
+    await upsertNextDeals([{ title: "Needs a pack", html: AXIAL_HTML }]);
+    const [row] = await query<{ id: number; deal_number: string }>(
+      "SELECT id, deal_number FROM deals_next",
+    );
+    const moved = await applyAuthorizedNextStage({
+      authorization: "Bearer test-cim-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "cim",
+    });
+    assert.equal(moved.ok, true);
+    if (moved.ok) {
+      assert.equal(moved.viewUrl, "https://drive.google.com/drive/folders/stageFolder");
+    }
+    assert.equal(creates, 1);
+    const deal = await getNextDeal(row.id);
+    assert.equal(deal?.stage, "cim");
+    assert.equal(deal?.cim_url, "https://drive.google.com/drive/folders/stageFolder");
+  } finally {
+    setCimFolderCreatorForTests(null);
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
   }

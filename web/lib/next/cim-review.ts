@@ -20,6 +20,7 @@ export type AuthorizedCimWriteResult =
       dealId: number;
       dealNumber: string;
       cimUrl: string | null;
+      viewUrl: string | null;
       review: string | null;
       actor: string;
     }
@@ -60,6 +61,7 @@ export async function applyAuthorizedCimLink(
     dealId: ref.id,
     dealNumber: ref.dealNumber,
     cimUrl: deal?.cim_url ?? url,
+    viewUrl: deal?.cim_url ?? url,
     review: null,
     actor: who.actor,
   };
@@ -94,6 +96,7 @@ export async function applyAuthorizedNextNote(
     dealId: ref.id,
     dealNumber: ref.dealNumber,
     cimUrl: deal?.cim_url ?? null,
+    viewUrl: deal?.cim_url ?? null,
     review: body,
     actor,
   };
@@ -113,13 +116,16 @@ export async function applyAuthorizedCimReview(
   }
 
   let cimUrl: string | null = null;
+  let viewUrl: string | null = null;
   let actor = NEXT_REVIEW_ACTOR;
 
   if (!url) {
     const ref = await findNextDealRef({ dealId: input.dealId, dealNumber: input.dealNumber });
     if (ref) {
-      const { resolveCimDriveLinks } = await import("./cim-drive-sync");
-      await resolveCimDriveLinks([ref.dealNumber]);
+      const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
+      const ensured = await ensureCimFolderForDeal(ref.id);
+      viewUrl = ensured.viewUrl;
+      cimUrl = ensured.viewUrl;
     }
   }
 
@@ -127,6 +133,7 @@ export async function applyAuthorizedCimReview(
     const linked = await applyAuthorizedCimLink(input);
     if (!linked.ok) return linked;
     cimUrl = linked.cimUrl;
+    viewUrl = linked.viewUrl ?? linked.cimUrl;
     actor = linked.actor;
   }
 
@@ -139,6 +146,7 @@ export async function applyAuthorizedCimReview(
     return {
       ...noted,
       cimUrl: noted.cimUrl ?? cimUrl,
+      viewUrl: noted.viewUrl ?? viewUrl ?? noted.cimUrl ?? cimUrl,
     };
   }
 
@@ -149,6 +157,7 @@ export async function applyAuthorizedCimReview(
     dealId: ref.id,
     dealNumber: ref.dealNumber,
     cimUrl,
+    viewUrl: viewUrl ?? cimUrl,
     review: null,
     actor,
   };

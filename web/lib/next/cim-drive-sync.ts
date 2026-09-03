@@ -4,13 +4,29 @@ import { query, queryOne } from "../db";
 import {
   CIM_ACTIVE_FOLDER_ID,
   CIM_ARCHIVE_FOLDER_ID,
+  LEGACY_SIMON_CIM_DEALS,
+  cimFolderTitle,
+  cimViewUrl,
   driveFolderUrl,
   indexCimFolders,
+  isLegacySimonCimDeal,
   parseDriveFolderId,
   type IndexedCimFolder,
 } from "./cim-drive";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+export type CreateCimFolderFn = (input: {
+  title: string;
+  parentId: string;
+}) => Promise<{ id: string; viewUrl?: string | null }>;
+
+let createFolderForTests: CreateCimFolderFn | null = null;
+
+/** Test seam — production always uses Drive files.create (folder mimeType). */
+export function setCimFolderCreatorForTests(fn: CreateCimFolderFn | null): void {
+  createFolderForTests = fn;
+}
 
 function serviceAccountCredentials(): Record<string, unknown> | null {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
@@ -20,7 +36,7 @@ function serviceAccountCredentials(): Record<string, unknown> | null {
 }
 
 export function cimDriveConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
+  return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) || Boolean(createFolderForTests);
 }
 
 function cimDriveClient(write: boolean) {
@@ -59,26 +75,29 @@ export interface ResolveCimResult {
   error?: string;
 }
 
-/** Match `TLY-XXX Headline` child folders and cache cim_url. Does not move stage. */
+/**
+ * Fallback only for TLY-007, TLY-031, TLY-092 — folders Simon already named.
+ * New deals get a Dirk-created folder via ensureCimFolderForDeal.
+ */
 export async function resolveCimDriveLinks(dealNumbers?: string[]): Promise<ResolveCimResult> {
-  if (!cimDriveConfigured()) {
+  const requested = (dealNumbers ?? [...LEGACY_SIMON_CIM_DEALS])
+    .map((n) => n.trim().toUpperCase())
+    .filter(isLegacySimonCimDeal);
+  if (requested.length === 0) {
+    return { scanned: 0, matched: 0, written: 0 };
+  }
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) {
     return { scanned: 0, matched: 0, written: 0, error: "Drive is not configured." };
   }
   try {
     const folders = await listActiveCimFolders();
     const index = new Map(folders.map((folder) => [folder.dealNumber, folder]));
-    const wanted = dealNumbers?.map((n) => n.trim().toUpperCase()).filter(Boolean) ?? [];
-    const rows =
-      wanted.length > 0
-        ? await query<{ id: number; deal_number: string; cim_url: string | null }>(
-            `SELECT id, deal_number, cim_url FROM deals_next WHERE deal_number IN (${wanted
-              .map((_, i) => `$${i + 1}`)
-              .join(", ")})`,
-            wanted,
-          )
-        : await query<{ id: number; deal_number: string; cim_url: string | null }>(
-            `SELECT id, deal_number, cim_url FROM deals_next`,
-          );
+    const rows = await query<{ id: number; deal_number: string; cim_url: string | null }>(
+      `SELECT id, deal_number, cim_url FROM deals_next WHERE deal_number IN (${requested
+        .map((_, i) => `$${i + 1}`)
+        .join(", ")})`,
+      requested,
+    );
     let written = 0;
     let matched = 0;
     for (const row of rows) {
@@ -103,13 +122,138 @@ export async function resolveCimDriveLinks(dealNumbers?: string[]): Promise<Reso
   }
 }
 
-export async function resolveCimDriveForDeal(dealId: number): Promise<ResolveCimResult> {
-  const row = await queryOne<{ deal_number: string }>(
-    "SELECT deal_number FROM deals_next WHERE id = $1",
+export interface EnsureCimFolderResult {
+  ok: boolean;
+  created: boolean;
+  matched: boolean;
+  folderId: string | null;
+  viewUrl: string | null;
+  folderTitle: string | null;
+  error?: string;
+}
+
+async function createDriveFolder(title: string): Promise<{ id: string; viewUrl: string }> {
+  if (createFolderForTests) {
+    const created = await createFolderForTests({ title, parentId: CIM_ACTIVE_FOLDER_ID });
+    if (!created.id) throw new Error("Drive create_file returned no id.");
+    return { id: created.id, viewUrl: created.viewUrl?.trim() || cimViewUrl(created.id) };
+  }
+  const drive = cimDriveClient(true);
+  const created = await drive.files.create({
+    requestBody: {
+      name: title,
+      mimeType: FOLDER_MIME,
+      parents: [CIM_ACTIVE_FOLDER_ID],
+    },
+    supportsAllDrives: true,
+    fields: "id, name, webViewLink",
+  });
+  const id = created.data.id;
+  if (!id) throw new Error("Drive create_file returned no id.");
+  return { id, viewUrl: created.data.webViewLink || cimViewUrl(id) };
+}
+
+/**
+ * Dirk creates `TLY-XXX Headline` under the live CIM parent when a deal hits CIM.
+ * Google returns the folder id; we store it as cimUrl immediately.
+ * Legacy TLY-007 / 031 / 092 may match an existing Simon-named folder first.
+ */
+export async function ensureCimFolderForDeal(dealId: number): Promise<EnsureCimFolderResult> {
+  const row = await queryOne<{ deal_number: string; title: string; cim_url: string | null }>(
+    "SELECT deal_number, title, cim_url FROM deals_next WHERE id = $1",
     [dealId],
   );
-  if (!row) return { scanned: 0, matched: 0, written: 0 };
-  return resolveCimDriveLinks([String(row.deal_number)]);
+  if (!row) return { ok: false, created: false, matched: false, folderId: null, viewUrl: null, folderTitle: null, error: "Deal not found." };
+
+  const dealNumber = String(row.deal_number);
+  const folderTitle = cimFolderTitle(dealNumber, String(row.title ?? ""));
+  const existing = parseDriveFolderId(row.cim_url);
+  if (existing) {
+    return {
+      ok: true,
+      created: false,
+      matched: false,
+      folderId: existing,
+      viewUrl: row.cim_url,
+      folderTitle,
+    };
+  }
+
+  if (isLegacySimonCimDeal(dealNumber)) {
+    const matched = await resolveCimDriveLinks([dealNumber]);
+    if (matched.written > 0 || matched.matched > 0) {
+      const after = await queryOne<{ cim_url: string | null }>(
+        "SELECT cim_url FROM deals_next WHERE id = $1",
+        [dealId],
+      );
+      const folderId = parseDriveFolderId(after?.cim_url ?? null);
+      if (folderId) {
+        return {
+          ok: true,
+          created: false,
+          matched: true,
+          folderId,
+          viewUrl: after?.cim_url ?? cimViewUrl(folderId),
+          folderTitle,
+        };
+      }
+    }
+  }
+
+  if (!cimDriveConfigured()) {
+    return {
+      ok: false,
+      created: false,
+      matched: false,
+      folderId: null,
+      viewUrl: null,
+      folderTitle,
+      error: "Drive is not configured.",
+    };
+  }
+
+  try {
+    const created = await createDriveFolder(folderTitle);
+    await query(`UPDATE deals_next SET cim_url = $1, updated_at = now() WHERE id = $2`, [
+      created.viewUrl,
+      dealId,
+    ]);
+    return {
+      ok: true,
+      created: true,
+      matched: false,
+      folderId: created.id,
+      viewUrl: created.viewUrl,
+      folderTitle,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      created: false,
+      matched: false,
+      folderId: null,
+      viewUrl: null,
+      folderTitle,
+      error: error instanceof Error ? error.message : "Drive create_file failed.",
+    };
+  }
+}
+
+export async function ensureCimFoldersForDeals(dealIds: number[]): Promise<EnsureCimFolderResult[]> {
+  const out: EnsureCimFolderResult[] = [];
+  for (const id of dealIds) {
+    out.push(await ensureCimFolderForDeal(id));
+  }
+  return out;
+}
+
+export async function resolveCimDriveForDeal(dealId: number): Promise<ResolveCimResult> {
+  return ensureCimFolderForDeal(dealId).then((result) => ({
+    scanned: result.ok ? 1 : 0,
+    matched: result.matched || result.created ? 1 : 0,
+    written: result.created || result.matched ? 1 : 0,
+    error: result.error,
+  }));
 }
 
 export interface ArchiveCimResult {
@@ -129,7 +273,7 @@ export async function archiveCimFolderForDeal(dealId: number): Promise<ArchiveCi
   );
   const folderId = parseDriveFolderId(row?.cim_url ?? null);
   if (!folderId) return { ok: true, moved: false, folderId: null };
-  if (!cimDriveConfigured()) {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) {
     return { ok: false, moved: false, folderId, error: "Drive is not configured." };
   }
   try {

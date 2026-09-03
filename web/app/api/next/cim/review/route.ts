@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     dealId: result.dealId,
     dealNumber: result.dealNumber,
     cimUrl: result.cimUrl,
+    viewUrl: result.viewUrl ?? result.cimUrl,
     review: result.review,
     actor: result.actor,
   });

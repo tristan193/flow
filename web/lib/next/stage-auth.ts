@@ -1,6 +1,6 @@
 import { queryOne } from "../db";
 import { importTokenValid } from "../import-auth";
-import { addNextNote, moveNextStage } from "./deals";
+import { addNextNote, getNextDeal, moveNextStage } from "./deals";
 import { parseDealNumber } from "./identity";
 import { canonicalizeNextStage, isMemberId, type NextStageId } from "./model";
 import { NEXT_STAGE_ACTOR } from "./write-auth";
@@ -19,7 +19,14 @@ export interface AuthorizedStageInput {
 }
 
 export type AuthorizedStageResult =
-  | { ok: true; dealId: number; dealNumber: string; stage: NextStageId; actor: string }
+  | {
+      ok: true;
+      dealId: number;
+      dealNumber: string;
+      stage: NextStageId;
+      actor: string;
+      viewUrl: string | null;
+    }
   | { ok: false; error: string; status: number };
 
 function asPositiveInt(value: unknown): number | null {
@@ -97,11 +104,13 @@ export async function applyAuthorizedNextStage(
   await moveNextStage(ref.id, who.actor, stage);
   const extra = noteBody(input);
   if (extra) await addNextNote(ref.id, who.actor, extra);
+  const deal = stage === "cim" ? await getNextDeal(ref.id) : null;
   return {
     ok: true,
     dealId: ref.id,
     dealNumber: ref.dealNumber,
     stage,
     actor: who.actor,
+    viewUrl: deal?.cim_url ?? null,
   };
 }

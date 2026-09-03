@@ -1,5 +1,5 @@
 import { query } from "../db";
-import { closedCimArchive, parseDriveFolderId } from "./cim-drive";
+import { cimFolderTitle, closedCimArchive, parseDriveFolderId } from "./cim-drive";
 import { gmailAllHref } from "./identity";
 import {
   coerceNextStage,
@@ -65,8 +65,18 @@ export interface DirkFollowup {
   ndaUrl: string | null;
   cimUrl: string | null;
   driveFolderId: string | null;
+  viewUrl: string | null;
   simonReview: string | null;
   dueAt: string | null;
+}
+
+export interface DirkCimFolder {
+  dealNumber: string | null;
+  title: string;
+  folderTitle: string;
+  viewUrl: string | null;
+  folderId: string | null;
+  sendToSimon: string;
 }
 
 export interface DirkClosed {
@@ -86,6 +96,7 @@ export interface DirkFeed {
   inbound: DirkInbound[];
   verdicts: DirkVerdict[];
   followups: DirkFollowup[];
+  cimFolders: DirkCimFolder[];
   closed: DirkClosed[];
 }
 
@@ -180,6 +191,7 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),
       driveFolderId: parseDriveFolderId(row.cim_url == null ? null : String(row.cim_url)),
+      viewUrl: row.cim_url == null ? null : String(row.cim_url),
       simonReview: null,
       dueAt: row.due_at ? iso(row.due_at) : null,
     });
@@ -201,6 +213,7 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
       ndaUrl: row.nda_url == null ? null : String(row.nda_url),
       cimUrl: row.cim_url == null ? null : String(row.cim_url),
       driveFolderId: parseDriveFolderId(row.cim_url == null ? null : String(row.cim_url)),
+      viewUrl: row.cim_url == null ? null : String(row.cim_url),
       simonReview: null,
       dueAt: null,
     });
@@ -254,12 +267,39 @@ export async function listDirkClosed(limit = 40): Promise<DirkClosed[]> {
   });
 }
 
+export async function listDirkCimFolders(limit = 40): Promise<DirkCimFolder[]> {
+  const rows = await query<Record<string, unknown>>(
+    `SELECT deal_number, title, cim_url
+       FROM deals_next
+      WHERE stage = 'cim'
+      ORDER BY stage_changed_at DESC NULLS LAST, id DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows.map((row) => {
+    const dealNumber = row.deal_number == null ? null : String(row.deal_number);
+    const title = String(row.title ?? "");
+    const viewUrl = row.cim_url == null ? null : String(row.cim_url);
+    return {
+      dealNumber,
+      title,
+      folderTitle: cimFolderTitle(dealNumber ?? "", title),
+      viewUrl,
+      folderId: parseDriveFolderId(viewUrl),
+      sendToSimon: viewUrl
+        ? `Send Simon this viewUrl. He uploads the CIM PDF when the review is done.`
+        : `Folder not created yet — POST /api/next/cim/resolve { dealNumber } after Drive is configured.`,
+    };
+  });
+}
+
 export async function buildDirkFeed(): Promise<DirkFeed> {
-  const [inbound, verdicts, followups, closed] = await Promise.all([
+  const [inbound, verdicts, followups, cimFolders, closed] = await Promise.all([
     listDirkInbound(),
     listDirkVerdicts(),
     listDirkFollowups(),
+    listDirkCimFolders(),
     listDirkClosed(),
   ]);
-  return { inbound, verdicts, followups, closed };
+  return { inbound, verdicts, followups, cimFolders, closed };
 }

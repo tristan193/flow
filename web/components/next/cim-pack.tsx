@@ -37,7 +37,10 @@ export function CimPack({
       {cimUrl ? (
         <CimDriveLink url={cimUrl} />
       ) : (
-        <p className="text-ink-faint text-[12.5px]">No Drive folder linked yet.</p>
+        <p className="text-ink-faint text-[12.5px]">
+          Dirk creates the Drive folder when the deal hits CIM. Simon uploads the
+          CIM PDF when the review is done.
+        </p>
       )}
       {simonReview ? (
         <div>
@@ -85,7 +88,8 @@ export function CimDriveLink({ url, compact = false }: { url: string; compact?: 
       <p className="text-ink-faint break-all text-[11.5px]">{url}</p>
       {drive && (
         <p className="text-ink-faint text-[11px]">
-          Drive is the home for this pack. The card only stores the link.
+          Dirk created this folder. Simon uploads the CIM PDF here when the review
+          is done.
         </p>
       )}
     </div>

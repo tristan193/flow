@@ -356,7 +356,14 @@ export async function moveNextStage(
   }
 
   if (stage === "cim") {
-    void import("./cim-drive-sync").then((mod) => mod.resolveCimDriveForDeal(dealId)).catch(() => {});
+    // Await so cim_url is saved before Dirk reads viewUrl to send Simon.
+    // Stage move already committed — Drive failure must not roll it back.
+    try {
+      const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
+      await ensureCimFolderForDeal(dealId);
+    } catch {
+      /* folder can be created on the next Review → CIM load */
+    }
   }
   if (stage === "closed") {
     void import("./cim-drive-sync").then((mod) => mod.archiveCimFolderForDeal(dealId)).catch(() => {});
@@ -404,7 +411,7 @@ export async function saveNextDealFile(
   return { id, url };
 }
 
-/** Store the Drive folder URL without moving the card. Used by auto-match. */
+/** Store the Drive folder URL without moving the card. Used after Dirk create. */
 export async function setNextCimUrl(dealId: number, url: string): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;

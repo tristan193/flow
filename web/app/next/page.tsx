@@ -2,7 +2,7 @@ import { NextNav } from "@/components/next/nav";
 import { NextReviewClient } from "@/components/next/review-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { resolveCimDriveLinks } from "@/lib/next/cim-drive-sync";
+import { ensureCimFoldersForDeals } from "@/lib/next/cim-drive-sync";
 import { listNextCimDeals, listNextInboxDeals, listNextNotesForDeals } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
 import {
@@ -25,9 +25,9 @@ export default async function NextReviewPage() {
   const myDeck = nextInboxDeck(deals, member);
 
   let cimDeals = await listNextCimDeals();
-  const missing = cimDeals.filter((deal) => !deal.cim_url).map((deal) => deal.deal_number);
-  if (missing.length > 0) {
-    await resolveCimDriveLinks(missing);
+  const missingIds = cimDeals.filter((deal) => !deal.cim_url).map((deal) => deal.id);
+  if (missingIds.length > 0) {
+    await ensureCimFoldersForDeals(missingIds);
     cimDeals = await listNextCimDeals();
   }
   const notesMap = await listNextNotesForDeals(cimDeals.map((deal) => deal.id));
@@ -60,8 +60,9 @@ export default async function NextReviewPage() {
         />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers. CIM is packs at CIM — Drive folder plus Simon&apos;s written
-          review. Pipeline only shows progress. Super Like stays on the far right of New.
+          New is inbound teasers. CIM is packs at CIM — Dirk creates the Drive folder, Simon
+          uploads the PDF and writes a review. Pipeline only shows progress. Super Like stays
+          on the far right of New.
         </p>
       </main>
     </>

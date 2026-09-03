@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       url: result.cimUrl,
+      cimUrl: result.cimUrl,
+      viewUrl: result.viewUrl ?? result.cimUrl,
       dealId: result.dealId,
       dealNumber: result.dealNumber,
     });

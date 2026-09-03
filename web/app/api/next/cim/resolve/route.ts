@@ -3,11 +3,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { currentMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { importTokenValid } from "@/lib/import-auth";
-import { resolveCimDriveLinks } from "@/lib/next/cim-drive-sync";
+import { findNextDealRef } from "@/lib/next/stage-auth";
+import { ensureCimFolderForDeal, resolveCimDriveLinks } from "@/lib/next/cim-drive-sync";
 
 /**
- * Scan the live CIM Drive parent for `TLY-XXX Headline` folders and cache cim_url.
- * Bearer FLOW_IMPORT_TOKEN or member session.
+ * Dirk: create (or return) the CIM Drive folder and viewUrl.
+ * Legacy Simon-named folders (TLY-007 / 031 / 092) are matched, not recreated.
+ *
+ *   { "dealNumber": "TLY-014" }  → create `TLY-014 Headline`, save cimUrl, return viewUrl
  */
 export async function POST(request: NextRequest) {
   await ensureReady();
@@ -16,8 +19,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as { dealNumber?: string } | null;
-  const dealNumber = body?.dealNumber?.trim();
-  const result = await resolveCimDriveLinks(dealNumber ? [dealNumber] : undefined);
-  return NextResponse.json({ ok: !result.error, ...result });
+  const body = (await request.json().catch(() => null)) as { dealNumber?: string; dealId?: number } | null;
+  if (body?.dealNumber || body?.dealId != null) {
+    const ref = await findNextDealRef({ dealId: body.dealId, dealNumber: body.dealNumber });
+    if (!ref) return NextResponse.json({ error: "Deal not found." }, { status: 404 });
+    const ensured = await ensureCimFolderForDeal(ref.id);
+    return NextResponse.json({
+      ok: ensured.ok,
+      dealNumber: ref.dealNumber,
+      viewUrl: ensured.viewUrl,
+      folderId: ensured.folderId,
+      folderTitle: ensured.folderTitle,
+      created: ensured.created,
+      matched: ensured.matched,
+      error: ensured.error,
+    });
+  }
+
+  const legacy = await resolveCimDriveLinks();
+  return NextResponse.json({ ok: !legacy.error, legacy: true, ...legacy });
 }
