@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/cim-stamp` — DONE
+
+**Scope:** `/cim/TLY-XXX` redirects from a stamped Drive file URL; Dirk token-stamps `cimUrl`; no Google on Vercel
+**Risk:** low (nullable `cim_url` already on `deals_next`; token-only write; no Drive API)
+**Coords:** none — did **not** merge PR #12
+
+### Changed
+- `web/app/cim/[id]/page.tsx` + `web/lib/cim-open.ts` — look up deal by TLY; redirect to stored Drive file URL; missing → “CIM not in yet”; never “Drive is not connected”
+- `POST /api/next/cim-url` — `FLOW_IMPORT_TOKEN` only; body `{ dealNumber, cimUrl }` (file URL, not a folder)
+- `web/db/schema.sql` — `ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_url TEXT`
+- `/next` cards still link to `/cim/TLY-XXX`
+
+### Do not touch
+- PR #12 folder-create / Shortlist Drive write
+- `GOOGLE_SERVICE_ACCOUNT_JSON` (not required for this path)
+- Classic `/` Review, `/api/cim/extract`
+
+### Follow-ups
+- Dirk lists Shared Drive `0ABYzLaaJ9ebAUk9PVA`, matches `TLY-XXX Headline.pdf`, POSTs the file URL
+
 ## 2026-09-03 — `nm/web/cim-open` — DONE
 
 **Scope:** Thin CIM pack opener — `/cim/TLY-XXX` lists the shared Drive parent and redirects to the matching PDF
