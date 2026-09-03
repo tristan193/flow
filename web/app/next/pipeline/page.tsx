@@ -21,8 +21,8 @@ export default async function NextPipelinePage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Next Pipeline</h1>
             <p className="text-ink-dim text-[12.5px]">
-              Inbound stays in Next Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
-              Closed is passed or walked — not won.
+              Progress only: Shortlisted → NDA → CIM → Pursuing → Closed. CIM reading lives
+              in Review → CIM. Closed is passed or walked — not won.
             </p>
           </div>
           <AddFromCim createPath="/api/next/cim/create" />

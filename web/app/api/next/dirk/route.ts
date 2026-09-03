@@ -4,6 +4,7 @@ import { ensureReady } from "@/lib/boot";
 import { importTokenValid } from "@/lib/import-auth";
 import {
   buildDirkFeed,
+  listDirkClosed,
   listDirkFollowups,
   listDirkInbound,
   listDirkVerdicts,
@@ -14,7 +15,7 @@ import {
  * Same bearer as POST /api/next/import (FLOW_IMPORT_TOKEN).
  *
  *   GET /api/next/dirk            full feed
- *   GET /api/next/dirk?section=inbound|verdicts|followups
+ *   GET /api/next/dirk?section=inbound|verdicts|followups|closed
  */
 export async function GET(request: NextRequest) {
   if (!importTokenValid(request.headers.get("authorization"))) {
@@ -32,6 +33,9 @@ export async function GET(request: NextRequest) {
   }
   if (section === "followups") {
     return NextResponse.json({ ok: true, followups: await listDirkFollowups() });
+  }
+  if (section === "closed") {
+    return NextResponse.json({ ok: true, closed: await listDirkClosed() });
   }
 
   const feed = await buildDirkFeed();

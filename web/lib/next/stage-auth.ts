@@ -3,9 +3,9 @@ import { importTokenValid } from "../import-auth";
 import { addNextNote, moveNextStage } from "./deals";
 import { parseDealNumber } from "./identity";
 import { canonicalizeNextStage, isMemberId, type NextStageId } from "./model";
+import { NEXT_STAGE_ACTOR } from "./write-auth";
 
-/** Machine actor recorded on token-driven stage moves. */
-export const NEXT_STAGE_ACTOR = "dirk";
+export { NEXT_STAGE_ACTOR };
 
 export interface AuthorizedStageInput {
   authorization: string | null;

@@ -21,8 +21,13 @@ export function isMemberId(value: unknown): value is MemberId {
   return MEMBERS.some((m) => m.id === value);
 }
 
+const EXTRA_ACTOR_LABELS: Record<string, string> = {
+  simon: "Simon",
+  dirk: "Dirk",
+};
+
 export function memberLabel(id: string): string {
-  return MEMBERS.find((m) => m.id === id)?.label ?? id;
+  return MEMBERS.find((m) => m.id === id)?.label ?? EXTRA_ACTOR_LABELS[id] ?? id;
 }
 
 export function otherMember(id: MemberId): MemberId {

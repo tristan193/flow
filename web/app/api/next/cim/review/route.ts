@@ -3,44 +3,48 @@ import { z } from "zod";
 
 import { currentMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { applyAuthorizedNextNote } from "@/lib/next/cim-review";
+import { applyAuthorizedCimReview } from "@/lib/next/cim-review";
+
+/**
+ * Dirk/Simon write: Drive CIM folder + Simon's written review.
+ * Same bearer as POST /api/next/stage (FLOW_IMPORT_TOKEN).
+ *
+ *   { "dealNumber": "TLY-007", "url": "https://drive.google.com/drive/folders/...",
+ *     "review": "Solid margin, customer concentration is the flag." }
+ *
+ * Review is attributed to Simon. Never a Pursue/Pass/Hold verdict.
+ */
 
 const schema = z
   .object({
     dealId: z.union([z.number(), z.string()]).optional(),
     dealNumber: z.string().optional(),
-    body: z.string().trim().min(1).max(4000).optional(),
-    review: z.string().trim().min(1).max(4000).optional(),
+    url: z.string().optional(),
+    review: z.string().optional(),
+    body: z.string().optional(),
     actor: z.string().optional(),
   })
   .refine((value) => value.dealId != null || Boolean(value.dealNumber?.trim()), {
     message: "dealId or dealNumber required",
-  })
-  .refine((value) => Boolean(value.body?.trim() || value.review?.trim()), {
-    message: "Need a note body.",
   });
 
-/**
- * Add a note. Member session posts as Tristan/Jim.
- * Bearer FLOW_IMPORT_TOKEN + actor=simon posts Simon's written CIM review
- * (not a Pursue/Pass/Hold verdict).
- */
 export async function POST(request: NextRequest) {
   await ensureReady();
   const sessionMember = await currentMember();
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid note." }, { status: 400 });
+    return NextResponse.json({ error: "Need dealId or dealNumber." }, { status: 400 });
   }
 
-  const result = await applyAuthorizedNextNote({
+  const result = await applyAuthorizedCimReview({
     authorization: request.headers.get("authorization"),
     sessionMember,
     dealId: parsed.data.dealId,
     dealNumber: parsed.data.dealNumber,
-    body: parsed.data.body,
+    url: parsed.data.url,
     review: parsed.data.review,
+    body: parsed.data.body,
     actor: parsed.data.actor,
   });
   if (!result.ok) {
@@ -50,6 +54,8 @@ export async function POST(request: NextRequest) {
     ok: true,
     dealId: result.dealId,
     dealNumber: result.dealNumber,
+    cimUrl: result.cimUrl,
+    review: result.review,
     actor: result.actor,
   });
 }

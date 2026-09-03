@@ -341,6 +341,20 @@ CREATE TABLE IF NOT EXISTS verdicts_next (
 
 CREATE INDEX IF NOT EXISTS ix_verdicts_next_member ON verdicts_next (member);
 
+-- CIM-lane votes. Separate from Review verdicts so a Shortlist Like cannot
+-- auto-Pursue once the card is at CIM. Simon never writes this table.
+CREATE TABLE IF NOT EXISTS cim_verdicts_next (
+  deal_id     INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
+  member      TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('short', 'pass', 'discuss')),
+  note        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (deal_id, member)
+);
+
+CREATE INDEX IF NOT EXISTS ix_cim_verdicts_next_member ON cim_verdicts_next (member);
+
 CREATE TABLE IF NOT EXISTS stage_events_next (
   id          SERIAL PRIMARY KEY,
   deal_id     INTEGER NOT NULL REFERENCES deals_next (id) ON DELETE CASCADE,
