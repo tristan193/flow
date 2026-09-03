@@ -159,6 +159,13 @@ CREATE TABLE IF NOT EXISTS drive_files_seen (
 -- changes the column list behind d.*, and Postgres refuses OR REPLACE when that
 -- would rename view columns in place (42P16: cannot change name of view column
 -- "earnings" to "source").
+-- Latest CIM link (Drive / URL paste). Updated by outreach debrief.
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS cim_url TEXT;
+
+-- Pursuit lane: NDA sign URL and Gmail thread deep link (human signs; app links).
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS nda_url TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS gmail_thread_url TEXT;
+
 DROP VIEW IF EXISTS v_deals;
 CREATE VIEW v_deals AS
 SELECT
@@ -178,13 +185,6 @@ SELECT
     ELSE NULL
   END AS margin
 FROM deals d;
-
--- Latest CIM link (Drive / URL paste). Updated by outreach debrief.
-ALTER TABLE deals ADD COLUMN IF NOT EXISTS cim_url TEXT;
-
--- Pursuit lane: NDA sign URL and Gmail thread deep link (human signs; app links).
-ALTER TABLE deals ADD COLUMN IF NOT EXISTS nda_url TEXT;
-ALTER TABLE deals ADD COLUMN IF NOT EXISTS gmail_thread_url TEXT;
 
 -- Post-shortlist debrief: what happened after Open on Axial (or other playbook).
 -- Prompting actions, not a status CRM — chips + optional note/CIM link.

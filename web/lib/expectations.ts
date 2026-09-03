@@ -4,6 +4,7 @@
  */
 
 import { query, queryOne } from "./db";
+import { normalizeGmailThreadUrl } from "./gmail-thread";
 import type { MemberId, OutreachOutcomeId } from "./model";
 
 export type ExpectationKind = "nda" | "cim" | "broker_reply";
@@ -168,7 +169,9 @@ export async function listOpenExpectations(): Promise<DealExpectation[]> {
     title: String(r.title),
     nickname: r.nickname == null ? null : String(r.nickname),
     stage: String(r.stage),
-    gmail_thread_url: r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+    gmail_thread_url: normalizeGmailThreadUrl(
+      r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+    ),
     nda_url: r.nda_url == null ? null : String(r.nda_url),
   }));
 }

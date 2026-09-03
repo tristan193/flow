@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/gmail-authuser` — DONE
+
+**Scope:** Every Gmail deep link Tristan sees in Flow forces `dirk@tullyinvesting.com` (never `/mail/u/0`)
+**Risk:** low (href rewrite + read-path normalize; no new secrets)
+**Coords:** none
+
+### Changed
+- `web/lib/gmail-thread.ts` — shared canonical helper; `gmailAllHref` is the same function
+- `web/lib/next/identity.ts` — Next/Dirk no longer emit `/mail/u/0`
+- `web/lib/deals.ts` / `expectations.ts` / `crm-pursuit.ts` — rewrite stored `gmail_thread_url` on read
+- `web/lib/boot.ts` — one-time backfill of legacy stored URLs
+- `pipeline/crm_pursuit.py` — `gmail_catcher_thread_url()` matches the TS helper
+
+### Do not touch
+- CIM intake contract
+- Drive / GCP on Vercel
+- Vote / stage combine rules
+
+### Follow-ups
+- none
+
 ## 2026-09-03 — `nm/web/cim-intake` — DONE
 
 **Scope:** Token POST `/api/next/cim-intake` stamps Drive file URL + optional pack numbers + stage CIM on the existing TLY `deals_next` row; CIM Review lists every stage CIM card

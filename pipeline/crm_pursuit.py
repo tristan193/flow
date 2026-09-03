@@ -70,6 +70,20 @@ LISTING_ID_RES = [
     re.compile(r"axial\.net/[^\s]*opportunity/([a-f0-9-]{8,})", re.I),
 ]
 
+DIRK_GMAIL = "dirk@tullyinvesting.com"
+
+
+def gmail_catcher_thread_url(thread_id: str | None) -> str:
+    """Canonical Flow Gmail link. Matches web/lib/gmail-thread.ts."""
+    tid = (thread_id or "").strip()
+    if not tid:
+        return ""
+    return (
+        "https://mail.google.com/mail/?authuser="
+        "dirk%40tullyinvesting.com"
+        f"#all/{tid}"
+    )
+
 
 def extract_listing_ids(*parts: str) -> list[str]:
     hay = "\n".join(p for p in parts if p)
@@ -299,14 +313,8 @@ def build_events(days: int) -> list[dict]:
         event: dict[str, Any] = {
             "gmailMessageId": mid,
             "gmailThreadId": thread_id,
-            # authuser=dirk — /u/0 opens Tristan's default browser account
-            "gmailThreadUrl": (
-                "https://mail.google.com/mail/?authuser="
-                "dirk%40tullyinvesting.com"
-                f"#all/{thread_id}"
-            )
-            if thread_id
-            else None,
+            # Same canonical form as web/lib/gmail-thread.ts (Dirk authuser, not u/N)
+            "gmailThreadUrl": gmail_catcher_thread_url(thread_id) or None,
             "subject": subject,
             "fromAddress": sender,
             "bodyText": (body or "")[:6000],

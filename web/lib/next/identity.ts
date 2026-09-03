@@ -517,10 +517,7 @@ export function isNonDealMail(input: {
   return false;
 }
 
-export function gmailAllHref(threadId: string): string {
-  const id = threadId.trim();
-  return `https://mail.google.com/mail/u/0/#all/${id}`;
-}
+export { gmailAllHref } from "../gmail-thread";
 
 /** Axial hex stored as the nickname pill (not the provider label "Axial"). */
 export function axialHexFromNickname(nickname: string | null | undefined): string | null {

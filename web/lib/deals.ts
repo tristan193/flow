@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db";
+import { normalizeGmailThreadUrl } from "./gmail-thread";
 import {
   type Deal,
   type DealRow,
@@ -56,7 +57,9 @@ function normalizeDeal(row: Record<string, unknown>): DealRow {
     url: normalizeAxialHref(rawUrl) ?? rawUrl,
     cim_url: row.cim_url == null ? null : String(row.cim_url),
     nda_url: row.nda_url == null ? null : String(row.nda_url),
-    gmail_thread_url: row.gmail_thread_url == null ? null : String(row.gmail_thread_url),
+    gmail_thread_url: normalizeGmailThreadUrl(
+      row.gmail_thread_url == null ? null : String(row.gmail_thread_url),
+    ),
     earnings_is_sde: Boolean(row.earnings_is_sde),
   };
 }

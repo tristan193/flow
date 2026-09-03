@@ -442,7 +442,9 @@ export async function confirmCrmReview(
   if (!deal) return { ok: false, detail: "Deal not found" };
 
   const ndaUrl = row.nda_url == null ? null : String(row.nda_url);
-  const threadUrl = row.gmail_thread_url == null ? null : String(row.gmail_thread_url);
+  const threadUrl = normalizeGmailThreadUrl(
+    row.gmail_thread_url == null ? null : String(row.gmail_thread_url),
+  );
   const eventType = String(row.event_type);
 
   const updates: string[] = [];
@@ -520,7 +522,9 @@ export async function listCrmAttention(): Promise<{
       status: String(r.status),
       created_at: String(r.created_at),
       proposed_title: r.proposed_title == null ? null : String(r.proposed_title),
-      gmail_thread_url: r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+      gmail_thread_url: normalizeGmailThreadUrl(
+        r.gmail_thread_url == null ? null : String(r.gmail_thread_url),
+      ),
       nda_url: r.nda_url == null ? null : String(r.nda_url),
     })),
   };

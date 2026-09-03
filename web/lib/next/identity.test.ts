@@ -190,7 +190,10 @@ test("Action Summary is not a deal; threads accumulate", () => {
     true,
   );
   assert.deepEqual(mergeThreadIds(["aaa"], ["bbb", "aaa"]), ["aaa", "bbb"]);
-  assert.equal(gmailAllHref("18f0abc"), "https://mail.google.com/mail/u/0/#all/18f0abc");
+  assert.equal(
+    gmailAllHref("18f0abc"),
+    "https://mail.google.com/mail/?authuser=dirk%40tullyinvesting.com#all/18f0abc",
+  );
   assert.equal(buildIdentity({ title: "X" }).dealNumber, null);
   assert.equal(isHarvestExtId("axial.teaser:18abc:0"), true);
   assert.equal(isHarvestExtId("format:gmail_msg:2"), true);

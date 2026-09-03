@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/cim-intake`
+Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/gmail-authuser`
 
 ## 1. Product in one paragraph
 
@@ -144,6 +144,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | CIM pack opener | `/cim/[id]` — looks up `deals_next.cim_url` (Drive **file** URL stamped by Dirk) and redirects. No Google credentials on Vercel. Missing URL → “CIM not in yet”. |
 | CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
+| Gmail deep links | Every href Tristan sees uses `web/lib/gmail-thread.ts` (`gmailAllHref` / `normalizeGmailThreadUrl`). Canonical: `https://mail.google.com/mail/?authuser=dirk@tullyinvesting.com#all/{threadId}`. Never `/mail/u/0`. Stored `gmail_thread_url` rewritten on read (+ boot backfill). Dirk API `gmailLinks` same helper. |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |
 | Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |
 

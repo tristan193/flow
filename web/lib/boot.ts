@@ -1,4 +1,5 @@
 import { applySchema, getDb, query } from "./db";
+import { normalizeGmailThreadUrl } from "./gmail-thread";
 import { seedIfEmpty } from "./import";
 import { seedNextIfEmpty } from "./next/import";
 
@@ -11,6 +12,7 @@ import { seedNextIfEmpty } from "./next/import";
 const globalForBoot = globalThis as unknown as {
   __flowReady?: Promise<void>;
   __axialUrlsFixed?: boolean;
+  __gmailUrlsFixed?: boolean;
 };
 
 /** Pass→Pursue param swap on stored Axial URLs (same deal id). Idempotent. */
@@ -36,6 +38,32 @@ async function fixAxialPassUrls(): Promise<void> {
   }
 }
 
+/** Rewrite stored Gmail links that open Tristan's /u/0 instead of dirk@. */
+async function fixGmailThreadUrls(): Promise<void> {
+  if (globalForBoot.__gmailUrlsFixed) return;
+  try {
+    const tables = [
+      { table: "deals", col: "gmail_thread_url" },
+      { table: "crm_events", col: "gmail_thread_url" },
+    ] as const;
+    for (const { table, col } of tables) {
+      const rows = await query<{ id: number; url: string }>(
+        `SELECT id, ${col} AS url FROM ${table}
+          WHERE ${col} IS NOT NULL AND btrim(${col}) <> ''`,
+      );
+      for (const row of rows) {
+        const next = normalizeGmailThreadUrl(row.url);
+        if (!next || next === row.url) continue;
+        const stamp = table === "deals" ? ", updated_at = now()" : "";
+        await query(`UPDATE ${table} SET ${col} = $1${stamp} WHERE id = $2`, [next, row.id]);
+      }
+    }
+    globalForBoot.__gmailUrlsFixed = true;
+  } catch {
+    // Read-path rewrite still covers UI if a table is missing on an old DB.
+  }
+}
+
 export async function ensureReady(): Promise<void> {
   if (!globalForBoot.__flowReady) {
     globalForBoot.__flowReady = (async () => {
@@ -50,4 +78,5 @@ export async function ensureReady(): Promise<void> {
   await globalForBoot.__flowReady;
   await applySchema();
   await fixAxialPassUrls();
+  await fixGmailThreadUrls();
 }
