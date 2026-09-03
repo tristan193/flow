@@ -18,10 +18,12 @@ import {
   businessModelLabel,
   defaultNextAction,
   earningsLabel,
+  isCimStageForNotes,
   locationLabel,
   memberLabel,
   money,
   nextStageLabel,
+  partnerNotesOnly,
 } from "@/lib/next/model";
 
 export const dynamic = "force-dynamic";
@@ -165,7 +167,9 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
             </a>
           )}
 
-          <NextNotes dealId={deal.id} notes={notes} />
+          {isCimStageForNotes(deal) ? (
+            <NextNotes dealId={deal.id} notes={partnerNotesOnly(notes)} />
+          ) : null}
 
           {events.length > 0 && (
             <section>

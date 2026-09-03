@@ -10,6 +10,7 @@ import {
   NEXT_BOARD_STAGES,
   type MemberId,
   type NextDeal,
+  type NextNoteRow,
   type NextStageId,
   memberLabel,
   nextStageLabel,
@@ -18,6 +19,7 @@ import { nextDealHeadline } from "@/lib/next/display";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
 import { DealTitleStack, Earnings, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
+import { CimPartnerNotes } from "./notes";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -27,7 +29,15 @@ const STAGE_TONE: Record<string, string> = {
   closed: "text-ink-faint",
 };
 
-export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member: MemberId }) {
+export function NextPipelineBoard({
+  deals,
+  notesByDealId = {},
+  member,
+}: {
+  deals: NextDeal[];
+  notesByDealId?: Record<number, NextNoteRow[]>;
+  member: MemberId;
+}) {
   const router = useRouter();
   const [stages, setStages] = useState<Record<number, NextStageId>>({});
   const [filter, setFilter] = useState<NextStageId | "all">("all");
@@ -185,6 +195,11 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                       </p>
                     )}
                   </div>
+
+                  <CimPartnerNotes
+                    deal={{ stage: stageOf(deal) }}
+                    notes={notesByDealId[deal.id]}
+                  />
 
                   <VerdictChips deal={deal} member={member} />
 

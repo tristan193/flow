@@ -4,7 +4,45 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { NextNoteRow } from "@/lib/next/model";
-import { memberLabel } from "@/lib/next/model";
+import { cimStagePartnerNotes, memberLabel, MEMBERS } from "@/lib/next/model";
+
+/**
+ * Read-only Tristan / Jim notes on a CIM-stage card. Hidden entirely before
+ * CIM, when empty, and for Simon (or any other writer).
+ */
+export function CimPartnerNotes({
+  deal,
+  notes,
+}: {
+  deal: { stage: string };
+  notes?: NextNoteRow[] | null;
+}) {
+  const visible = cimStagePartnerNotes(deal, notes);
+  if (visible.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      {MEMBERS.map((member) => {
+        const theirs = visible.filter((note) => note.member === member.id);
+        if (theirs.length === 0) return null;
+        return (
+          <div key={member.id}>
+            <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">
+              {member.label} notes
+            </p>
+            <ol className="mt-1 max-h-28 space-y-1 overflow-y-auto">
+              {theirs.map((note) => (
+                <li key={note.id} className="text-[13px] leading-relaxed">
+                  {note.body}
+                </li>
+              ))}
+            </ol>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
 
 export function NextNotes({ dealId, notes }: { dealId: number; notes: NextNoteRow[] }) {
   const router = useRouter();

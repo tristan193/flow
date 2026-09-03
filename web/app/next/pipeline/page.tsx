@@ -3,8 +3,8 @@ import { NextPipelineBoard } from "@/components/next/pipeline-board";
 import { AddFromCim } from "@/components/add-from-cim";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { listNextBoardDeals } from "@/lib/next/deals";
-import { memberLabel } from "@/lib/next/model";
+import { listNextBoardDeals, listNextNotesForDeals } from "@/lib/next/deals";
+import { memberLabel, partnerNotesOnly, type NextNoteRow } from "@/lib/next/model";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,10 @@ export default async function NextPipelinePage() {
   await ensureReady();
   const member = await requireMember();
   const deals = await listNextBoardDeals();
+  const notesMap = await listNextNotesForDeals(deals.map((deal) => deal.id));
+  const notesByDealId: Record<number, NextNoteRow[]> = Object.fromEntries(
+    [...notesMap].map(([id, notes]) => [id, partnerNotesOnly(notes)]),
+  );
 
   return (
     <>
@@ -34,7 +38,7 @@ export default async function NextPipelinePage() {
           </p>
         )}
 
-        <NextPipelineBoard deals={deals} member={member} />
+        <NextPipelineBoard deals={deals} notesByDealId={notesByDealId} member={member} />
       </main>
     </>
   );

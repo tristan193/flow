@@ -8,9 +8,11 @@ import {
   getNextDeal,
   listNextCimDeals,
   listNextInboxDeals,
+  listNextNotesForDeals,
   setNextCimVerdict,
   setNextVerdict,
 } from "./deals.ts";
+import { cimStagePartnerNotes } from "./model.ts";
 import { upsertNextDeals } from "./import.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
 import { nextCimDeck } from "./model.ts";
@@ -185,12 +187,65 @@ test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", (
   assert.doesNotMatch(review, /Browse everything in List view/);
   assert.doesNotMatch(review, /setMode|"swipe" \| "list"/);
   assert.match(review, /FitStrip/);
+  assert.match(client, /CimPartnerNotes/);
   assert.doesNotMatch(client, /\/api\/next\/notes/);
-  assert.doesNotMatch(client, /partnerNotesOnly/);
   assert.doesNotMatch(client, /FitStrip/);
   assert.doesNotMatch(client, /No financials|no earnings/);
   assert.match(client, /SuperLikeStar/);
   assert.match(client, /CimPackMetrics/);
   assert.doesNotMatch(client, /Written review/);
-  assert.doesNotMatch(page, /listNextNotesForDeals|partnerNotesOnly|notesByDealId/);
+  assert.match(page, /listNextNotesForDeals/);
+  assert.match(page, /partnerNotesOnly/);
+  assert.match(page, /notesByDealId/);
+  assert.doesNotMatch(review, /CimPartnerNotes/);
+});
+
+test("stored notes_next: CIM cards see Tristan/Jim only; NDA cards see none", async () => {
+  await resetNext();
+  await upsertNextDeals([{ title: "At CIM", html: AXIAL_HTML, stage: "cim" }]);
+  await upsertNextDeals([
+    {
+      title: "Still NDA",
+      html: '<a href="https://network.axial.net/app/opportunity/bbbbccccddddeeee?action=pursue">Pursue</a>',
+      stage: "nda",
+    },
+  ]);
+  const cim = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = 'At CIM'");
+  const nda = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = 'Still NDA'");
+  await query(`INSERT INTO notes_next (deal_id, member, body) VALUES
+    ($1, 'tristan', 'like the pack'),
+    ($1, 'partner', 'hold for margin'),
+    ($1, 'simon', 'specialist writeup'),
+    ($2, 'tristan', 'early nda thought')`, [cim[0].id, nda[0].id]);
+
+  const map = await listNextNotesForDeals([cim[0].id, nda[0].id]);
+  const cimShown = cimStagePartnerNotes({ stage: "cim" }, map.get(cim[0].id));
+  const ndaShown = cimStagePartnerNotes({ stage: "nda" }, map.get(nda[0].id));
+  assert.deepEqual(
+    cimShown.map((note) => note.member).sort(),
+    ["partner", "tristan"],
+  );
+  assert.equal(
+    cimShown.some((note) => /specialist/i.test(note.body)),
+    false,
+  );
+  assert.deepEqual(ndaShown, []);
+});
+
+test("CIM-stage cards show partner notes; earlier stages and Simon stay hidden", () => {
+  const notesUi = readFileSync(path.join(process.cwd(), "components/next/notes.tsx"), "utf8");
+  const board = readFileSync(path.join(process.cwd(), "components/next/pipeline-board.tsx"), "utf8");
+  const pipeline = readFileSync(path.join(process.cwd(), "app/next/pipeline/page.tsx"), "utf8");
+  const detail = readFileSync(path.join(process.cwd(), "app/next/deals/[id]/page.tsx"), "utf8");
+  const model = readFileSync(path.join(process.cwd(), "lib/next/model.ts"), "utf8");
+
+  assert.match(notesUi, /cimStagePartnerNotes/);
+  assert.match(notesUi, /CimPartnerNotes/);
+  assert.doesNotMatch(notesUi, /member === ["']simon["']/);
+  assert.match(board, /CimPartnerNotes/);
+  assert.match(pipeline, /listNextNotesForDeals/);
+  assert.match(pipeline, /partnerNotesOnly/);
+  assert.match(detail, /isCimStageForNotes/);
+  assert.match(detail, /partnerNotesOnly/);
+  assert.match(model, /coerceNextStage\(deal\.stage\) === "cim"/);
 });

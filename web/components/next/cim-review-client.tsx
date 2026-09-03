@@ -11,15 +11,19 @@ import {
   nextCimDeck,
   type MemberId,
   type NextDeal,
+  type NextNoteRow,
   type VerdictAction,
 } from "@/lib/next/model";
 import { CimPackMetrics, DealTitleStack, SuperLikeStar, VerdictChips, Where } from "./deal-card";
+import { CimPartnerNotes } from "./notes";
 
 export function CimReviewClient({
   deals,
+  notesByDealId = {},
   member,
 }: {
   deals: NextDeal[];
+  notesByDealId?: Record<number, NextNoteRow[]>;
   member: MemberId;
 }) {
   const router = useRouter();
@@ -139,6 +143,8 @@ export function CimReviewClient({
             titleClassName="text-[18px] leading-snug font-semibold"
           />
           <Where deal={top} />
+
+          <CimPartnerNotes deal={top} notes={notesByDealId[top.id]} />
 
           <VerdictChips deal={top} member={member} lane="cim" />
 
