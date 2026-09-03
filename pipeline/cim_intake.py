@@ -11,6 +11,7 @@ Does not talk to Google Drive.
     --cim-url "https://drive.google.com/file/d/FILE_ID/view" \\
     [--deal-number TLY-092] \\
     [--cim-name "Project Cactus"] \\
+    [--city Austin] [--state TX] [--country Bermuda] [--location "Austin, TX"] \\
     [--revenue 4200000] [--ebitda 920000] [--margin 0.22] [--asking 6500000]
 
 Token: FLOW_IMPORT_TOKEN (required). Base URL: FLOW_APP_URL or --base.
@@ -37,6 +38,16 @@ def build_payload(args: argparse.Namespace) -> dict:
         payload["dealNumber"] = args.deal_number
     if args.cim_name:
         payload["cimName"] = args.cim_name
+    if args.city:
+        payload["city"] = args.city
+    if args.state:
+        payload["state"] = args.state
+    if args.country:
+        payload["country"] = args.country
+    if args.location:
+        payload["location"] = args.location
+    if args.county:
+        payload["county"] = args.county
     if args.revenue is not None:
         payload["revenue"] = args.revenue
     if args.ebitda is not None:
@@ -83,6 +94,20 @@ def main() -> int:
         "--cim-name",
         help="CIM company / project / nickname (JSON key cimName → deals_next.cim_name)",
     )
+    ap.add_argument("--city", help="HQ city (JSON key city → deals_next.city)")
+    ap.add_argument(
+        "--state",
+        help="HQ state / region (JSON key state → deals_next.state). Foreign HQ can go here.",
+    )
+    ap.add_argument(
+        "--country",
+        help="Foreign HQ country. No deals_next.country column — writes state when state is omitted.",
+    )
+    ap.add_argument(
+        "--location",
+        help='Optional "City, ST" string parsed into city/state when those are missing',
+    )
+    ap.add_argument("--county", help="Optional county (never required)")
     ap.add_argument("--revenue", type=float)
     ap.add_argument("--ebitda", type=float)
     ap.add_argument("--margin", type=float, help="Ratio 0-1, or percent > 1 (22 → 0.22)")
