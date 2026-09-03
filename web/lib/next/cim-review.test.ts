@@ -43,9 +43,11 @@ before(async () => {
 
 test("CIM deck includes stage CIM and stamped cim_url; New inbound stays out", async () => {
   await resetNext();
-  await upsertNextDeals([{ title: "Project Cactus", html: AXIAL_HTML, stage: "cim" }]);
-  await upsertNextDeals([{ title: "Iron Bull", html: AXIAL_HTML, stage: "nda" }]);
-  await upsertNextDeals([{ title: "Inbound teaser", html: AXIAL_HTML, ebitda: 600_000 }]);
+  const html = (hex: string) =>
+    `<a href="https://network.axial.net/app/opportunity/${hex}?action=pursue">Pursue</a>`;
+  await upsertNextDeals([{ title: "Project Cactus", html: html("aaaabbbbcccc0001"), stage: "cim" }]);
+  await upsertNextDeals([{ title: "Iron Bull", html: html("aaaabbbbcccc0002"), stage: "nda" }]);
+  await upsertNextDeals([{ title: "Inbound teaser", html: html("aaaabbbbcccc0003"), ebitda: 600_000 }]);
 
   const cactus = await query<{ id: number; deal_number: string }>(
     "SELECT id, deal_number FROM deals_next WHERE title = 'Project Cactus'",

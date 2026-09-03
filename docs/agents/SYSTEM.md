@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/cim-open`
+Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/review-cim`
 
 ## 1. Product in one paragraph
 
@@ -140,7 +140,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Stage operator is Dirk, not a browser session. Writes `deals_next` only. Board: Shortlisted → NDA → CIM → Pursuing → Closed (`inbox` is Next Review swipe, inbound only). |
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
-| Review UI | `web/components/review-client.tsx`, `deal-card.tsx` · `/next` Review is `listNextInboxDeals()` (stage `inbox` only). Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). |
+| Review UI | `web/components/next/review-client.tsx` · `/next` Review has **New** and **CIM**. New is `listNextInboxDeals()` (stage `inbox` only). Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). CIM is `listNextCimDeals()` — stamped `cim_url` and/or stage CIM. Votes live in `cim_verdicts_next` (Pass / Hold / Pursue). The board card stays CIM until Tristan and Jim both Pass (→ Closed) or both Pursue (→ Pursuing). Hold, mixed, or one vote stay CIM. Simon does not vote. Pack open is `/cim/TLY-XXX` from stamped `cim_url` (token `POST /api/next/cim-url`). No Google calls from Vercel. |
 | CIM pack opener | `/cim/[id]` — Shared Drive parent `0ABYzLaaJ9ebAUk9PVA` prefix list → Drive file view. Read only. |
 | CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
