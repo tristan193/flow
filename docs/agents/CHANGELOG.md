@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/review-cim-fix` — DONE
+
+**Scope:** CIM Review cards show pack numbers; Dirk token-stamps them by TLY; no stage moves
+**Risk:** medium (writes `deals_next.revenue` / `ebitda` / `asking` / `margin`; never `stage`)
+**Coords:** none — did not merge PR #12; did not reset CIM/Pursuing
+
+### Changed
+- `web/components/next/cim-review-client.tsx` — CIM card: no teaser FitStrip (Priority / No financials); Super Like **star**; pack metrics revenue / EBITDA / margin / asking (omit missing); **View CIM** new tab; no notes UI
+- `POST /api/next/cim-financials` — `FLOW_IMPORT_TOKEN` only; body `{ dealNumber, revenue?, ebitda?, margin?, asking? }`; COALESCE unspecified; never writes stage
+- `web/db/schema.sql` — stored `deals_next.margin` (ratio); `v_deals_next` no longer computes a duplicate `margin` column
+- New Review stays swipe-only; CIM deck still requires stamped `cim_url` (TLY-001 off the deck)
+
+### Do not touch
+- PR #12 Drive folder create / googleapis-on-Vercel
+- Pipeline stages / CIM→NDA reset (cancelled)
+- New inbound FitStrip / List (there is no List)
+- Classic `/` Review
+
+### Follow-ups
+- none
+
 ## 2026-09-03 — `nm/web/review-cim` — DONE
 
 **Scope:** `/next` Review New | CIM modes; dual-agree CIM votes; no Drive writes
