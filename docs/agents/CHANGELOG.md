@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/cim-notes` — DONE
+
+**Scope:** CIM cards always show Tristan notes and Jim notes fields; empty no longer hides the section
+**Risk:** low (same `notes_next` / `POST /api/next/notes`; no schema change)
+**Coords:** none — merged #25; prod READY `0e6e979`
+
+### Changed
+- `cimPartnerNoteFields()` — two labeled fields at CIM even when empty; Simon filtered; null before CIM
+- `CimPartnerNotes` — own-note composer on the card; partner empty state “None yet”
+- CIM Review, `/next` CIM board cards, CIM-stage deal detail
+
+### Do not touch
+- New / Shortlist / NDA note sections (stay hidden)
+- Simon votes
+- Drive / GCP on Vercel
+
+### Follow-ups
+- none
+
 ## 2026-09-03 — `nm/web/root-redirect` — DONE
 
 **Scope:** `/` permanently redirects to `/next` so Tristan lands on Next Review by default
