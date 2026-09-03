@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/root-redirect` — DONE
+
+**Scope:** `/` permanently redirects to `/next` so Tristan lands on Next Review by default
+**Risk:** low (routing only; no schema, votes, or secrets)
+**Coords:** none — merged #24; prod READY `c9ae8e6`
+
+### Changed
+- `web/next.config.ts` — permanent `/` → `/next`
+- `web/middleware.ts` — 308 `/` → `/next` before auth
+- `web/app/page.tsx` — `permanentRedirect("/next")`
+- Next nav “Classic” → `/pipeline`
+
+### Do not touch
+- `/login` and token API allowlists
+- Classic `/pipeline` board
+- CIM intake / notes
+
+### Follow-ups
+- none
+
 ## 2026-09-03 — `nm/web/cim-headline` — DONE
 
 **Scope:** Tristan / Jim `notes_next` on CIM-stage cards only; Simon never rendered

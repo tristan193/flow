@@ -39,7 +39,7 @@ Agent handoff (intent, findings, docs):
 
 | | **Original (fallback)** | **Next (experimental)** |
 |---|---|---|
-| UI | `/` Review · `/pipeline` | `/next` Review · `/next/pipeline` |
+| UI | `/pipeline` (classic board; `/` 308s to `/next`) | `/next` Review · `/next/pipeline` |
 | Import | `POST /api/import` — live harvest still posts here | `POST /api/next/import` |
 | Dirk poll | none | `GET /api/next/dirk` |
 | Stage move | session cookie | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
