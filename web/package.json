@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test lib/cim-pack.test.ts lib/gmail-thread.test.ts lib/deals-gmail.test.ts lib/next/**/*.test.ts"
+    "test": "tsx --test lib/cim-pack.test.ts lib/cim-new-tab.test.ts lib/gmail-thread.test.ts lib/deals-gmail.test.ts lib/next/**/*.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

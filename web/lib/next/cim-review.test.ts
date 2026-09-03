@@ -178,8 +178,8 @@ test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", (
   const review = readFileSync(path.join(process.cwd(), "components/next/review-client.tsx"), "utf8");
   const verdict = readFileSync(path.join(process.cwd(), "app/api/next/cim/verdict/route.ts"), "utf8");
   assert.match(client, /View CIM/);
-  assert.match(client, /target="_blank"/);
-  assert.match(client, /rel="noopener noreferrer"/);
+  assert.match(client, /CimNewTabLink/);
+  assert.match(client, /href=\{packHref\}/);
   assert.match(client, /cimPackPath/);
   assert.doesNotMatch(client, /googleapis|files\.create|GOOGLE_SERVICE_ACCOUNT/);
   assert.doesNotMatch(page, /googleapis|resolveCimDriveLinks|GOOGLE_SERVICE_ACCOUNT/);

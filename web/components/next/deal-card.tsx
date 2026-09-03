@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CimNewTabLink } from "../cim-new-tab-link";
 import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import { dealIdLines, nextDealHeadline, nextDealSubline, sourceDisplayName } from "@/lib/next/display";
@@ -287,15 +288,9 @@ export function CimPackLink({
   const href = cimPackPath(dealNumber);
   if (!href) return null;
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={className}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
+    <CimNewTabLink href={href} className={className}>
       {children}
-    </a>
+    </CimNewTabLink>
   );
 }
 

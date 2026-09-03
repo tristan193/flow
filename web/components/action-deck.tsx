@@ -13,6 +13,7 @@ import {
   stageLabel,
 } from "@/lib/model";
 import { isActionableDeal, resolvePlaybook } from "@/lib/playbooks";
+import { CimNewTabLink } from "./cim-new-tab-link";
 import {
   CardFooter,
   FitStrip,
@@ -289,14 +290,9 @@ export function ActionDeck({ deals, member }: { deals: Deal[]; member: MemberId 
           Full deal
         </Link>
         {(debriefFor ?? top).cim_url && (
-          <a
-            href={(debriefFor ?? top).cim_url!}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-discuss"
-          >
+          <CimNewTabLink href={(debriefFor ?? top).cim_url!} className="text-discuss">
             Open CIM →
-          </a>
+          </CimNewTabLink>
         )}
       </div>
     </div>
@@ -450,9 +446,9 @@ function DebriefPanel({
             <p className="text-ink text-[13px] font-medium">{cimName} · ready</p>
           )}
           {!cimName && cimUrl && !uploading && (
-            <a href={cimUrl} className="text-discuss text-[13px]" target="_blank" rel="noreferrer">
+            <CimNewTabLink href={cimUrl} className="text-discuss text-[13px]">
               Existing CIM link →
-            </a>
+            </CimNewTabLink>
           )}
           {uploadError && <p className="text-pass text-[12px]">{uploadError}</p>}
           <p className="text-ink-faint text-[11px]">PDF or Word · max 4MB · Jim can open it on the deal</p>

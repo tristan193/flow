@@ -14,6 +14,7 @@ import {
   type NextNoteRow,
   type VerdictAction,
 } from "@/lib/next/model";
+import { CimNewTabLink } from "../cim-new-tab-link";
 import { CimPackMetrics, DealTitleStack, SuperLikeStar, VerdictChips, Where } from "./deal-card";
 import { CimPartnerNotes } from "./notes";
 
@@ -127,14 +128,12 @@ export function CimReviewClient({
         ) : null}
         <div className="space-y-3 p-4">
           {packHref ? (
-            <a
+            <CimNewTabLink
               href={packHref}
-              target="_blank"
-              rel="noopener noreferrer"
               className="bg-ink text-canvas hover:brightness-110 block rounded-xl px-4 py-3 text-center text-[15px] font-semibold"
             >
               View CIM
-            </a>
+            </CimNewTabLink>
           ) : null}
           <CimPackMetrics deal={top} />
           <DealTitleStack

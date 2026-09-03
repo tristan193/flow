@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import { CimNewTabLink } from "./cim-new-tab-link";
+
 /** CIM on an existing deal — board is View/Add only; detail also allows Replace. */
 export function AttachCim({
   dealId,
@@ -66,14 +68,12 @@ export function AttachCim({
       <span className="inline-flex flex-wrap items-center gap-2">
         {fileInput}
         {openUrl ? (
-          <a
+          <CimNewTabLink
             href={openUrl}
-            target="_blank"
-            rel="noopener noreferrer"
             className={`${buttonClass} border-flag/40 bg-flag-bg text-flag hover:brightness-110`}
           >
             View CIM
-          </a>
+          </CimNewTabLink>
         ) : (
           <button
             type="button"
@@ -95,14 +95,9 @@ export function AttachCim({
         <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">CIM</p>
         <div className="flex items-center gap-3">
           {openUrl && (
-            <a
-              href={openUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-flag text-[12.5px] font-semibold"
-            >
+            <CimNewTabLink href={openUrl} className="text-flag text-[12.5px] font-semibold">
               View CIM
-            </a>
+            </CimNewTabLink>
           )}
           <button
             type="button"
