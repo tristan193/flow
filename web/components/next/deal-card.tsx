@@ -4,8 +4,11 @@ import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import { dealIdLines, sourceDisplayName } from "@/lib/next/display";
 import {
+  CIM_VERDICT_LABELS,
+  VERDICT_LABELS,
   type MemberId,
   type NextDeal,
+  type VerdictAction,
   businessModelLabel,
   earningsLabel,
   locationLabel,
@@ -218,18 +221,30 @@ export function NeedsTags({ deal }: { deal: NextDeal }) {
   );
 }
 
-export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberId }) {
-  const mine = deal.verdicts[member];
-  const theirs = deal.verdicts[otherMember(member)];
+export function VerdictChips({
+  deal,
+  member,
+  lane,
+}: {
+  deal: NextDeal;
+  member: MemberId;
+  lane?: "review" | "cim";
+}) {
+  const cim = lane === "cim" || deal.stage === "cim";
+  const votes = cim ? (deal.cim_verdicts ?? {}) : deal.verdicts;
+  const labels = cim ? CIM_VERDICT_LABELS : VERDICT_LABELS;
+  const mine = votes[member];
+  const theirs = votes[otherMember(member)];
   if (!mine && !theirs) return null;
 
   const conflict = mine && theirs && mine.action !== theirs.action;
+  const labelOf = (action: VerdictAction) => labels[action] ?? action;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
       {mine && (
         <span className="bg-surface-raised text-ink-dim rounded px-2 py-1 font-semibold">
-          You: {mine.action}
+          You: {labelOf(mine.action)}
           {mine.reason ? ` · ${mine.reason}` : ""}
           {mine.note ? ` · “${mine.note.length > 40 ? `${mine.note.slice(0, 40)}…` : mine.note}”` : ""}
         </span>
@@ -240,7 +255,7 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
             conflict ? "bg-flag-bg text-flag" : "bg-surface-raised text-ink-dim"
           }`}
         >
-          {memberLabel(otherMember(member))}: {theirs.action}
+          {memberLabel(otherMember(member))}: {labelOf(theirs.action)}
           {theirs.note
             ? ` · “${theirs.note.length > 40 ? `${theirs.note.slice(0, 40)}…` : theirs.note}”`
             : ""}
@@ -254,15 +269,17 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
 export function CimPackLink({
   dealNumber,
   className = "text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors",
+  children = "CIM",
 }: {
   dealNumber?: string | null;
   className?: string;
+  children?: React.ReactNode;
 }) {
   const href = cimPackPath(dealNumber);
   if (!href) return null;
   return (
     <Link href={href} className={className} onPointerDown={(event) => event.stopPropagation()}>
-      CIM
+      {children}
     </Link>
   );
 }
