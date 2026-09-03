@@ -241,6 +241,15 @@ export async function setNextSuperLike(
   return at;
 }
 
+async function createDriveFolderOnFirstShortlist(dealId: number): Promise<void> {
+  try {
+    const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
+    await ensureCimFolderForDeal(dealId);
+  } catch {
+    /* 6am harvest lists the parent once and gap-fills a missed save */
+  }
+}
+
 /** Apply Tristan/Jim combine rules. Only moves inbound cards forward. */
 export async function applyNextReviewOutcome(dealId: number, actor: string): Promise<void> {
   const deal = await getNextDeal(dealId);
@@ -252,6 +261,11 @@ export async function applyNextReviewOutcome(dealId: number, actor: string): Pro
   });
   if (outcome === "inbox") return;
   await moveNextStage(dealId, actor, outcome, { onlyFrom: "inbox" });
+  // Same event as the combine rule. APP creates the Drive folder here —
+  // Like / Super Like / both ?. Do not wait for Dirk to poll.
+  if (outcome === "shortlist") {
+    await createDriveFolderOnFirstShortlist(dealId);
+  }
 }
 
 export async function setNextCimVerdict(
@@ -356,14 +370,8 @@ export async function moveNextStage(
   }
 
   if (stage === "shortlist") {
-    // Shortlist, not CIM — Simon needs the drop folder before he's done.
-    // Stage move already committed — Drive failure must not roll it back.
-    try {
-      const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
-      await ensureCimFolderForDeal(dealId);
-    } catch {
-      /* folder can be created on the next Pipeline load */
-    }
+    // First Shortlist via Dirk/import stage — same APP create, not a Dirk poll.
+    await createDriveFolderOnFirstShortlist(dealId);
   }
   if (stage === "closed") {
     void import("./cim-drive-sync").then((mod) => mod.archiveCimFolderForDeal(dealId)).catch(() => {});

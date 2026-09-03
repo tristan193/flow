@@ -119,16 +119,6 @@ export async function applyAuthorizedCimReview(
   let viewUrl: string | null = null;
   let actor = NEXT_REVIEW_ACTOR;
 
-  if (!url) {
-    const ref = await findNextDealRef({ dealId: input.dealId, dealNumber: input.dealNumber });
-    if (ref) {
-      const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
-      const ensured = await ensureCimFolderForDeal(ref.id);
-      viewUrl = ensured.viewUrl;
-      cimUrl = ensured.viewUrl;
-    }
-  }
-
   if (url) {
     const linked = await applyAuthorizedCimLink(input);
     if (!linked.ok) return linked;

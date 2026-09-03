@@ -7,11 +7,8 @@ import { findNextDealRef } from "@/lib/next/stage-auth";
 import { ensureCimFolderForDeal, resolveCimDriveLinks } from "@/lib/next/cim-drive-sync";
 
 /**
- * Dirk: create (or return) the Drive drop folder and viewUrl.
- * Created at Shortlist in the normal flow — this is the explicit / backfill path.
- * Legacy Simon-named folders (TLY-007 / 031 / 092) are matched, not recreated.
- *
- *   { "dealNumber": "TLY-014" }  → create `TLY-014 Headline`, save cimUrl, return viewUrl
+ * Explicit create / return of the Drive drop folder. Not a cron.
+ * The APP creates on first Shortlist; 6am harvest lists the parent once.
  */
 export async function POST(request: NextRequest) {
   await ensureReady();

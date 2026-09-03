@@ -22,10 +22,21 @@ export type CreateCimFolderFn = (input: {
 }) => Promise<{ id: string; viewUrl?: string | null }>;
 
 let createFolderForTests: CreateCimFolderFn | null = null;
+let listFoldersForTests: (() => Promise<IndexedCimFolder[]>) | null = null;
 
 /** Test seam — production always uses Drive files.create (folder mimeType). */
 export function setCimFolderCreatorForTests(fn: CreateCimFolderFn | null): void {
   createFolderForTests = fn;
+}
+
+/** Test seam — production lists the live parent once (6am gap-fill). */
+export function setCimFolderListerForTests(fn: (() => Promise<IndexedCimFolder[]>) | null): void {
+  listFoldersForTests = fn;
+}
+
+/** Existing 6am harvest cron (`20 11 * * *` UTC ≈ 6:20 AM CT). Not a second cron. */
+export function isMorningCimGapFill(now: Date = new Date()): boolean {
+  return now.getUTCHours() === 11;
 }
 
 function serviceAccountCredentials(): Record<string, unknown> | null {
@@ -36,7 +47,11 @@ function serviceAccountCredentials(): Record<string, unknown> | null {
 }
 
 export function cimDriveConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) || Boolean(createFolderForTests);
+  return (
+    Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) ||
+    Boolean(createFolderForTests) ||
+    Boolean(listFoldersForTests)
+  );
 }
 
 function cimDriveClient(write: boolean) {
@@ -56,6 +71,7 @@ function cimDriveClient(write: boolean) {
 }
 
 export async function listActiveCimFolders(): Promise<IndexedCimFolder[]> {
+  if (listFoldersForTests) return listFoldersForTests();
   const drive = cimDriveClient(false);
   const listed = await drive.files.list({
     q: `'${CIM_ACTIVE_FOLDER_ID}' in parents and trashed = false and mimeType = '${FOLDER_MIME}'`,
@@ -76,8 +92,51 @@ export interface ResolveCimResult {
 }
 
 /**
+ * Dirk 6am gap-fill: ONE list of the live parent. Attach existing TLY folders
+ * onto Shortlisted / NDA / CIM deals (and the three Simon-named packs) that
+ * are missing cimUrl. Does not create folders. Not a cron of its own.
+ */
+export async function gapFillCimFoldersFromParentList(): Promise<ResolveCimResult> {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() && !listFoldersForTests) {
+    return { scanned: 0, matched: 0, written: 0, error: "Drive is not configured." };
+  }
+  try {
+    const folders = await listActiveCimFolders();
+    const index = new Map(folders.map((folder) => [folder.dealNumber, folder]));
+    const rows = await query<{ id: number; deal_number: string; cim_url: string | null }>(
+      `SELECT id, deal_number, cim_url FROM deals_next
+        WHERE cim_url IS NULL
+          AND (
+            deal_number IN ('TLY-007', 'TLY-031', 'TLY-092')
+            OR stage IN ('shortlist', 'shortlisted', 'nda', 'nda_to_sign', 'nda_signed', 'cim')
+          )`,
+    );
+    let written = 0;
+    let matched = 0;
+    for (const row of rows) {
+      const hit = index.get(String(row.deal_number).toUpperCase());
+      if (!hit) continue;
+      matched += 1;
+      await query(`UPDATE deals_next SET cim_url = $1, updated_at = now() WHERE id = $2`, [
+        hit.url,
+        row.id,
+      ]);
+      written += 1;
+    }
+    return { scanned: folders.length, matched, written };
+  } catch (error) {
+    return {
+      scanned: 0,
+      matched: 0,
+      written: 0,
+      error: error instanceof Error ? error.message : "Drive gap-fill failed.",
+    };
+  }
+}
+
+/**
  * Fallback only for TLY-007, TLY-031, TLY-092 — folders Simon already named.
- * New deals get a Dirk-created folder via ensureCimFolderForDeal.
+ * New deals get an APP-created folder on first Shortlist.
  */
 export async function resolveCimDriveLinks(dealNumbers?: string[]): Promise<ResolveCimResult> {
   const requested = (dealNumbers ?? [...LEGACY_SIMON_CIM_DEALS])
@@ -154,10 +213,9 @@ async function createDriveFolder(title: string): Promise<{ id: string; viewUrl: 
 }
 
 /**
- * Dirk creates `TLY-XXX Headline` under the live parent when a deal is Shortlisted.
- * Google returns the folder id; we store it as cimUrl immediately.
- * CIM is too late — Simon needs the drop folder before he's done.
- * Legacy TLY-007 / 031 / 092 may match an existing Simon-named folder first.
+ * APP creates `TLY-XXX Headline` under the live parent on first Shortlist
+ * (same event as combineNextReview). Google returns the folder id; we store
+ * it as cimUrl immediately. Dirk does not poll to create — 6am lists once.
  */
 export async function ensureCimFolderForDeal(dealId: number): Promise<EnsureCimFolderResult> {
   const row = await queryOne<{ deal_number: string; title: string; cim_url: string | null }>(

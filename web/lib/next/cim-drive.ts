@@ -1,6 +1,7 @@
 /**
- * Google Drive is the CIM home. Dirk (Flow) creates the folder when a deal
- * is Shortlisted — CIM is too late; Simon needs the drop folder first.
+ * Google Drive is the CIM home. The APP creates the folder when a deal first
+ * becomes Shortlisted (Like / Super Like / both ?) — same event as combine.
+ * Dirk does not poll to create. Once at 6am he lists the parent folder.
  * Simon only uploads the PDF. Auto-match of Simon-named folders is fallback
  * for three existing packs only.
  */

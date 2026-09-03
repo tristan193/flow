@@ -10,8 +10,11 @@ import {
 } from "./cim-drive.ts";
 import {
   ensureCimFolderForDeal,
+  gapFillCimFoldersFromParentList,
+  isMorningCimGapFill,
   resolveCimDriveLinks,
   setCimFolderCreatorForTests,
+  setCimFolderListerForTests,
 } from "./cim-drive-sync.ts";
 import {
   applyAuthorizedCimLink,
@@ -84,6 +87,48 @@ test("auto-match is only for the three Simon-named packs", () => {
 test("resolveCimDriveLinks ignores non-legacy deal numbers", async () => {
   const result = await resolveCimDriveLinks(["TLY-100"]);
   assert.deepEqual(result, { scanned: 0, matched: 0, written: 0 });
+});
+
+test("6am harvest is the only Drive list window", () => {
+  assert.equal(isMorningCimGapFill(new Date("2026-09-03T11:20:00Z")), true);
+  assert.equal(isMorningCimGapFill(new Date("2026-09-03T15:20:00Z")), false);
+  assert.equal(isMorningCimGapFill(new Date("2026-09-03T10:59:00Z")), false);
+});
+
+test("6am gap-fill lists the parent once and does not create", async () => {
+  await resetNext();
+  let lists = 0;
+  let creates = 0;
+  setCimFolderCreatorForTests(async () => {
+    creates += 1;
+    return { id: "should-not-create" };
+  });
+  setCimFolderListerForTests(async () => {
+    lists += 1;
+    return [
+      {
+        id: "legacy007",
+        name: "TLY-007 Security pack",
+        url: "https://drive.google.com/drive/folders/legacy007",
+        dealNumber: "TLY-007",
+      },
+    ];
+  });
+  try {
+    await upsertNextDeals([{ title: "Already named", html: AXIAL_HTML }]);
+    await query(`UPDATE deals_next SET deal_number = 'TLY-007', stage = 'shortlist', cim_url = NULL`);
+    const filled = await gapFillCimFoldersFromParentList();
+    assert.equal(lists, 1);
+    assert.equal(creates, 0);
+    assert.equal(filled.scanned, 1);
+    assert.equal(filled.matched, 1);
+    assert.equal(filled.written, 1);
+    const [row] = await query<{ cim_url: string | null }>("SELECT cim_url FROM deals_next");
+    assert.equal(row.cim_url, "https://drive.google.com/drive/folders/legacy007");
+  } finally {
+    setCimFolderCreatorForTests(null);
+    setCimFolderListerForTests(null);
+  }
 });
 
 test("token can set Drive CIM url and Simon review without a verdict", async () => {
@@ -314,7 +359,7 @@ test("Shortlist creates the Drive folder; CIM does not", async () => {
   }
 });
 
-test("Like and Super Like create the folder on Shortlist, not later", async () => {
+test("combine Shortlist (Like / Super Like / both ?) creates the folder", async () => {
   await resetNext();
   let creates = 0;
   setCimFolderCreatorForTests(async () => {
@@ -347,6 +392,24 @@ test("Like and Super Like create the folder on Shortlist, not later", async () =
     assert.equal(afterSuper?.stage, "shortlist");
     assert.equal(afterSuper?.cim_url, "https://drive.google.com/drive/folders/like-2");
     assert.equal(creates, 2);
+
+    await upsertNextDeals([
+      {
+        title: "Both discuss",
+        html: '<a href="https://network.axial.net/app/opportunity/ccccddddeeeeffff?action=pursue">Pursue</a>',
+      },
+    ]);
+    const discussed = await query<{ id: number }>(
+      "SELECT id FROM deals_next WHERE title = 'Both discuss'",
+    );
+    await setNextVerdict(discussed[0].id, "tristan", "discuss", null);
+    assert.equal((await getNextDeal(discussed[0].id))?.stage, "inbox");
+    assert.equal(creates, 2);
+    await setNextVerdict(discussed[0].id, "partner", "discuss", null);
+    const afterBoth = await getNextDeal(discussed[0].id);
+    assert.equal(afterBoth?.stage, "shortlist");
+    assert.equal(afterBoth?.cim_url, "https://drive.google.com/drive/folders/like-3");
+    assert.equal(creates, 3);
   } finally {
     setCimFolderCreatorForTests(null);
   }
