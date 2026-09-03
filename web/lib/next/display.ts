@@ -207,6 +207,34 @@ export function listingIdLabel(deal: DisplayDeal): string | null {
   return labels.length ? labels.join(" · ") : null;
 }
 
+export type DealTitleDeal = {
+  title?: string | null;
+  cim_name?: string | null;
+};
+
+/**
+ * Primary card headline. CIM company / project / nickname wins when present;
+ * otherwise the teaser listing title.
+ */
+export function nextDealHeadline(deal: DealTitleDeal): string {
+  const cim = (deal.cim_name || "").trim();
+  if (cim) return cim;
+  return (deal.title || "").trim();
+}
+
+/**
+ * Quieter teaser under the CIM headline. Null when there is no CIM name,
+ * or when the teaser is empty / identical to the CIM name.
+ */
+export function nextDealSubline(deal: DealTitleDeal): string | null {
+  const cim = (deal.cim_name || "").trim();
+  if (!cim) return null;
+  const teaser = (deal.title || "").trim();
+  if (!teaser) return null;
+  if (teaser.toLowerCase() === cim.toLowerCase()) return null;
+  return teaser;
+}
+
 /** Stacked card lines: TLY first, then each listing id on its own line. */
 export function dealIdLines(deal: DisplayDeal): string[] {
   const tly = deal.deal_number?.trim();

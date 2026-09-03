@@ -4,7 +4,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { query } from "../db.ts";
-import { applyAuthorizedCimIntake, parseCimIntakeBody, parseTlyFromFileName } from "./cim-intake.ts";
+import {
+  applyAuthorizedCimIntake,
+  parseCimIntakeBody,
+  parseOptionalCimName,
+  parseTlyFromFileName,
+} from "./cim-intake.ts";
+import { nextDealHeadline, nextDealSubline } from "./display.ts";
 import { listNextCimDeals } from "./deals.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
 import { isNextCimReviewCard } from "./model.ts";
@@ -81,6 +87,30 @@ test("parseCimIntakeBody requires filename TLY and Drive file URL; posted dealNu
     assert.deepEqual(ok.patch, { ebitda: 920_000, margin: 0.22 });
   }
 
+  const named = parseCimIntakeBody({
+    fileName: "TLY-092 Project Cactus.pdf",
+    cimUrl: FILE_URL,
+    cimName: "  Project Cactus  ",
+  });
+  assert.equal(named.ok, true);
+  if (named.ok) assert.equal(named.patch.cimName, "Project Cactus");
+
+  const aliasKey = parseCimIntakeBody({
+    fileName: "TLY-014 Iron Bull.pdf",
+    cimUrl: FILE_URL,
+    companyName: "Iron Bull",
+  });
+  assert.equal(aliasKey.ok, true);
+  if (aliasKey.ok) assert.equal(aliasKey.patch.cimName, "Iron Bull");
+
+  const blankName = parseCimIntakeBody({
+    fileName: "TLY-092 Project Cactus.pdf",
+    cimUrl: FILE_URL,
+    cimName: "   ",
+  });
+  assert.equal(blankName.ok, true);
+  if (blankName.ok) assert.equal(blankName.patch.cimName, undefined);
+
   const noMatch = parseCimIntakeBody({
     fileName: "TLY-092 Project Cactus.pdf",
     cimUrl: FILE_URL,
@@ -103,6 +133,14 @@ test("parseCimIntakeBody requires filename TLY and Drive file URL; posted dealNu
 
   const missingFile = parseCimIntakeBody({ cimUrl: FILE_URL });
   assert.equal(missingFile.ok, false);
+});
+
+test("parseOptionalCimName trims, omits blanks, rejects oversized names", () => {
+  assert.deepEqual(parseOptionalCimName(undefined), { ok: true });
+  assert.deepEqual(parseOptionalCimName(""), { ok: true });
+  assert.deepEqual(parseOptionalCimName("  Cora Constructors  "), { ok: true, value: "Cora Constructors" });
+  const long = parseOptionalCimName("x".repeat(241));
+  assert.equal(long.ok, false);
 });
 
 test("token required; session or missing token cannot intake", async () => {
@@ -297,11 +335,126 @@ test("CIM deck reads the same canonical row after intake and after stage transit
   }
 });
 
+test("cim_name column exists on deals_next", async () => {
+  const cols = await query<{ column_name: string }>(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_name = 'deals_next' AND column_name = 'cim_name'`,
+  );
+  assert.equal(cols.length, 1);
+});
+
+test("intake with cimName writes cim_name, keeps teaser title, and does not insert a row", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = TOKEN;
+  try {
+    await insertDeal("TLY-092", "Specialty HVAC — Austin metro", { stage: "nda" });
+    await insertDeal("TLY-014", "Unrelated decoy", { stage: "shortlist" });
+    const countBefore = await query<{ n: string }>("SELECT count(*)::text AS n FROM deals_next");
+
+    const stamped = await applyAuthorizedCimIntake({
+      authorization: `Bearer ${TOKEN}`,
+      fileName: "TLY-092 Project Cactus.pdf",
+      cimUrl: FILE_URL,
+      cimName: "Project Cactus",
+    });
+    assert.equal(stamped.ok, true);
+    if (stamped.ok) {
+      assert.equal(stamped.cimName, "Project Cactus");
+      assert.equal(stamped.deal.title, "Specialty HVAC — Austin metro");
+      assert.equal(stamped.deal.cim_name, "Project Cactus");
+      assert.equal(nextDealHeadline(stamped.deal), "Project Cactus");
+      assert.equal(nextDealSubline(stamped.deal), "Specialty HVAC — Austin metro");
+    }
+
+    const countAfter = await query<{ n: string }>("SELECT count(*)::text AS n FROM deals_next");
+    assert.equal(countAfter[0].n, countBefore[0].n);
+    assert.equal(countAfter[0].n, "2");
+
+    const row = await query<{
+      title: string;
+      cim_name: string | null;
+      alias_names: unknown;
+      stage: string;
+    }>("SELECT title, cim_name, alias_names, stage FROM deals_next WHERE deal_number = 'TLY-092'");
+    assert.equal(row[0].title, "Specialty HVAC — Austin metro");
+    assert.equal(row[0].cim_name, "Project Cactus");
+    assert.equal(row[0].stage, "cim");
+    const aliases = Array.isArray(row[0].alias_names)
+      ? row[0].alias_names.map(String)
+      : JSON.parse(String(row[0].alias_names));
+    assert.equal(
+      aliases.some((name: string) => /specialty hvac/i.test(name)),
+      true,
+    );
+    assert.equal(
+      aliases.some((name: string) => /project cactus/i.test(name)),
+      true,
+    );
+
+    const decoy = await query<{ title: string; cim_name: string | null; stage: string }>(
+      "SELECT title, cim_name, stage FROM deals_next WHERE deal_number = 'TLY-014'",
+    );
+    assert.equal(decoy[0].title, "Unrelated decoy");
+    assert.equal(decoy[0].cim_name, null);
+    assert.equal(decoy[0].stage, "shortlist");
+
+    const votes = await query("SELECT 1 FROM cim_verdicts_next");
+    assert.equal(votes.length, 0);
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("intake without cimName leaves title and cim_name alone", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = TOKEN;
+  try {
+    await insertDeal("TLY-092", "Specialty HVAC — Austin metro", { stage: "nda" });
+
+    const stamped = await applyAuthorizedCimIntake({
+      authorization: `Bearer ${TOKEN}`,
+      fileName: "TLY-092 Headline.pdf",
+      cimUrl: FILE_URL,
+    });
+    assert.equal(stamped.ok, true);
+    if (stamped.ok) {
+      assert.equal(stamped.cimName, null);
+      assert.equal(stamped.deal.title, "Specialty HVAC — Austin metro");
+      assert.equal(stamped.deal.cim_name, null);
+      assert.equal(nextDealHeadline(stamped.deal), "Specialty HVAC — Austin metro");
+      assert.equal(nextDealSubline(stamped.deal), null);
+    }
+
+    const blank = await applyAuthorizedCimIntake({
+      authorization: `Bearer ${TOKEN}`,
+      fileName: "TLY-092 Headline.pdf",
+      cimUrl: FILE_URL,
+      cimName: "   ",
+    });
+    assert.equal(blank.ok, true);
+    if (blank.ok) {
+      assert.equal(blank.deal.title, "Specialty HVAC — Austin metro");
+      assert.equal(blank.deal.cim_name, null);
+    }
+
+    const rows = await query<{ n: string }>("SELECT count(*)::text AS n FROM deals_next");
+    assert.equal(rows[0].n, "1");
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
 test("CIM intake route is token-only, middleware-allowlisted, and does not create deals or call Google", () => {
   const route = readFileSync(path.join(process.cwd(), "app/api/next/cim-intake/route.ts"), "utf8");
   const auth = readFileSync(path.join(process.cwd(), "lib/next/cim-intake.ts"), "utf8");
   const middleware = readFileSync(path.join(process.cwd(), "middleware.ts"), "utf8");
   const client = readFileSync(path.join(process.cwd(), "components/next/cim-review-client.tsx"), "utf8");
+  const card = readFileSync(path.join(process.cwd(), "components/next/deal-card.tsx"), "utf8");
   const cli = readFileSync(path.join(process.cwd(), "..", "pipeline", "cim_intake.py"), "utf8");
 
   assert.match(route, /FLOW_IMPORT_TOKEN/);
@@ -321,6 +474,14 @@ test("CIM intake route is token-only, middleware-allowlisted, and does not creat
   assert.doesNotMatch(client, /Written review|Simon/);
   assert.match(cli, /FLOW_IMPORT_TOKEN/);
   assert.match(cli, /\/api\/next\/cim-intake/);
+  assert.match(cli, /--cim-name/);
+  assert.match(cli, /cimName/);
   assert.doesNotMatch(cli, /googleapis|files\.create/);
   assert.match(cli, /Never print the token/);
+  assert.match(auth, /cim_name = COALESCE/);
+  assert.match(auth, /cimName/);
+  assert.doesNotMatch(auth, /SET title =/);
+  assert.match(card, /nextDealHeadline/);
+  assert.match(card, /nextDealSubline/);
+  assert.match(route, /cimName/);
 });

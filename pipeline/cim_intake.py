@@ -10,6 +10,7 @@ Does not talk to Google Drive.
     --file-name "TLY-092 Project Cactus.pdf" \\
     --cim-url "https://drive.google.com/file/d/FILE_ID/view" \\
     [--deal-number TLY-092] \\
+    [--cim-name "Project Cactus"] \\
     [--revenue 4200000] [--ebitda 920000] [--margin 0.22] [--asking 6500000]
 
 Token: FLOW_IMPORT_TOKEN (required). Base URL: FLOW_APP_URL or --base.
@@ -34,6 +35,8 @@ def build_payload(args: argparse.Namespace) -> dict:
     }
     if args.deal_number:
         payload["dealNumber"] = args.deal_number
+    if args.cim_name:
+        payload["cimName"] = args.cim_name
     if args.revenue is not None:
         payload["revenue"] = args.revenue
     if args.ebitda is not None:
@@ -76,6 +79,10 @@ def main() -> int:
     ap.add_argument("--file-name", required=True, help="Drive filename, e.g. TLY-092 Headline.pdf")
     ap.add_argument("--cim-url", required=True, help="Google Drive file view URL")
     ap.add_argument("--deal-number", help="Optional TLY-XXX; must match the filename")
+    ap.add_argument(
+        "--cim-name",
+        help="CIM company / project / nickname (JSON key cimName → deals_next.cim_name)",
+    )
     ap.add_argument("--revenue", type=float)
     ap.add_argument("--ebitda", type=float)
     ap.add_argument("--margin", type=float, help="Ratio 0-1, or percent > 1 (22 → 0.22)")

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
-import { dealIdLines, sourceDisplayName } from "@/lib/next/display";
+import { dealIdLines, nextDealHeadline, nextDealSubline, sourceDisplayName } from "@/lib/next/display";
 import {
   CIM_VERDICT_LABELS,
   VERDICT_LABELS,
@@ -167,8 +167,9 @@ export function DealIdStack({ deal }: { deal: NextDeal }) {
 }
 
 /**
- * Title on its own full-width line, IDs stacked underneath. flex-col so a parent
- * flex-row cannot pull hex/TLY to the left of the company name.
+ * CIM name as headline when present, teaser title as a quieter subline, IDs
+ * stacked underneath. flex-col so a parent flex-row cannot pull hex/TLY beside
+ * the company name.
  */
 export function DealTitleStack({
   deal,
@@ -181,9 +182,16 @@ export function DealTitleStack({
   titleAs?: "h1" | "h2" | "span";
   titleClassName: string;
 }) {
+  const headline = nextDealHeadline(deal);
+  const subline = nextDealSubline(deal);
   const inner = (
     <>
-      <Tag className={`block w-full min-w-0 ${titleClassName}`}>{deal.title}</Tag>
+      <Tag className={`block w-full min-w-0 ${titleClassName}`}>{headline}</Tag>
+      {subline ? (
+        <div className="text-ink-faint mt-0.5 block w-full min-w-0 text-[12px] font-medium leading-snug">
+          {subline}
+        </div>
+      ) : null}
       <DealIdStack deal={deal} />
     </>
   );

@@ -67,6 +67,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     next_action: sanitizeNextAction(row.next_action),
     is_demo: Boolean(row.is_demo),
     title: String(row.title ?? ""),
+    cim_name: row.cim_name == null || String(row.cim_name).trim() === "" ? null : String(row.cim_name).trim(),
     blurb: row.blurb == null ? null : String(row.blurb),
     source: row.source == null ? null : String(row.source),
     sub_source: row.sub_source == null ? null : String(row.sub_source),

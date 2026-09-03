@@ -14,6 +14,7 @@ import {
   memberLabel,
   nextStageLabel,
 } from "@/lib/next/model";
+import { nextDealHeadline } from "@/lib/next/display";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
 import { DealTitleStack, Earnings, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
@@ -202,7 +203,7 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                   </div>
 
                   <label className="mt-3 block">
-                    <span className="sr-only">Move {deal.title} to another stage</span>
+                    <span className="sr-only">Move {nextDealHeadline(deal)} to another stage</span>
                     <select
                       value={stageOf(deal)}
                       onChange={(event) => {

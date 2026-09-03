@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Fit, type FitLevel } from "@/lib/fit";
 import { assessNextFit, byPinnedThenFit } from "@/lib/next/fit";
+import { nextDealHeadline } from "@/lib/next/display";
 import { type MemberId, type NextDeal, isNextReviewStage, type VerdictAction } from "@/lib/next/model";
 import { CimReviewClient } from "./cim-review-client";
 import {
@@ -158,7 +159,7 @@ export function NextReviewClient({
       setSkipped((prev) => prev.filter((id) => id !== deal.id));
       apply(deal, action);
       if (action === "short" || action === "discuss") {
-        setNotePrompt({ id: deal.id, title: deal.title, action });
+        setNotePrompt({ id: deal.id, title: nextDealHeadline(deal), action });
       } else {
         setNotePrompt(null);
       }

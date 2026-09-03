@@ -195,6 +195,8 @@ export interface NextDealRow {
   next_action: string | null;
   is_demo: boolean;
   title: string;
+  /** CIM company / project / nickname. Null until Simon stamps intake. */
+  cim_name: string | null;
   blurb: string | null;
   source: string | null;
   sub_source: string | null;
