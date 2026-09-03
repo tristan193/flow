@@ -4,7 +4,14 @@ import { importTokenValid } from "../import-auth";
 import { parseOptionalMargin, parseOptionalMoney } from "./cim-financials-auth";
 import { getNextDeal } from "./deals";
 import { formatDealNumber, mergeAliasNames, parseDealNumber } from "./identity";
-import { type NextDeal, coerceNextStage, defaultNextAction, nextFollowupKind } from "./model";
+import {
+  type NextDeal,
+  type NextStageId,
+  coerceNextStage,
+  nextActionAfterCimPack,
+  nextFollowupKind,
+  shouldAdvanceToCimOnPack,
+} from "./model";
 
 /** Machine actor for token-driven CIM intake (same family as /api/next/stage). */
 export const CIM_INTAKE_ACTOR = "dirk";
@@ -62,7 +69,7 @@ export type AuthorizedCimIntakeResult =
       ok: true;
       dealId: number;
       dealNumber: string;
-      stage: "cim";
+      stage: NextStageId;
       cimUrl: string;
       revenue: number | null;
       ebitda: number | null;
@@ -284,7 +291,9 @@ async function applyIntakeRow(
   const row = rows[0];
   const from = coerceNextStage(row.stage);
   const actor = CIM_INTAKE_ACTOR;
-  const nextAction = defaultNextAction("cim");
+  const advance = shouldAdvanceToCimOnPack(from);
+  const dest: NextStageId = advance ? "cim" : from;
+  const nextAction = nextActionAfterCimPack(dest, null);
   const cimName = patch.cimName?.trim() || null;
   const aliases = cimName
     ? mergeAliasNames(asStringArray(row.alias_names), cimName, row.title)
@@ -305,10 +314,22 @@ async function applyIntakeRow(
             city = COALESCE($8, city),
             state = COALESCE($9, state),
             county = COALESCE($10, county),
-            stage = 'cim',
-            stage_changed_at = CASE WHEN stage IS DISTINCT FROM 'cim' THEN now() ELSE stage_changed_at END,
-            stage_changed_by = CASE WHEN stage IS DISTINCT FROM 'cim' THEN $11 ELSE stage_changed_by END,
-            next_action = COALESCE(next_action, $12),
+            stage = CASE WHEN $14::text = 'cim' THEN 'cim' ELSE stage END,
+            stage_changed_at = CASE
+              WHEN $14::text = 'cim' AND stage IS DISTINCT FROM 'cim' THEN now()
+              ELSE stage_changed_at
+            END,
+            stage_changed_by = CASE
+              WHEN $14::text = 'cim' AND stage IS DISTINCT FROM 'cim' THEN $11
+              ELSE stage_changed_by
+            END,
+            next_action = CASE
+              WHEN next_action ILIKE '%await%cim%' OR next_action ILIKE '%data room%' THEN $12::text
+              WHEN $12::text IS NULL THEN next_action
+              WHEN next_action IS NULL THEN $12::text
+              WHEN $14::text = 'cim' AND next_action IN ('Sign the NDA', 'Request NDA', 'Review the card') THEN $12::text
+              ELSE next_action
+            END,
             updated_at = now()
       WHERE id = $13`,
     [
@@ -325,10 +346,11 @@ async function applyIntakeRow(
       actor,
       nextAction,
       row.id,
+      dest,
     ],
   );
 
-  if (from !== "cim") {
+  if (advance && from !== "cim") {
     await q(
       `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
        VALUES ($1, $2, $3, $4)`,
@@ -353,8 +375,9 @@ async function applyIntakeRow(
 
 /**
  * Token-only CIM intake. Updates the existing TLY row in one transaction:
- * cim_url + provided financials + optional cim_name + optional city/state + stage CIM.
- * Never inserts a deal or a vote. Never matches on title. Never talks to Google.
+ * cim_url + provided financials + optional cim_name + optional city/state + stage CIM
+ * (closed stays closed; pursuing stays past CIM). Never inserts a deal or a vote.
+ * Never matches on title. Never talks to Google. Never clears cim_url.
  * When cimName is present, title (teaser) is left in place and cim_name is set.
  * Omitted geo fields leave existing city/state/county alone. There is no
  * deals_next.country column — optional `country` writes `state` when state is omitted.
@@ -415,7 +438,7 @@ export async function applyAuthorizedCimIntake(
     ok: true,
     dealId: deal.id,
     dealNumber: deal.deal_number,
-    stage: "cim",
+    stage: deal.stage,
     cimUrl: deal.cim_url ?? parsed.cimUrl,
     revenue: deal.revenue,
     ebitda: deal.ebitda,

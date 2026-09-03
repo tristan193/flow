@@ -456,3 +456,27 @@ UPDATE deals_next SET next_action = 'Request NDA', updated_at = now()
     OR next_action ILIKE 'Request NDA or send POF';
 UPDATE deals_next SET next_action = 'Continue pursuit', updated_at = now()
  WHERE next_action = 'Continue active review';
+
+-- A stamped CIM pack means the deal is at CIM. Do not reopen Closed or pull
+-- Pursuing back. Do not clear cim_url when a deal later leaves CIM.
+UPDATE deals_next
+   SET stage = 'cim',
+       stage_changed_at = CASE WHEN stage IS DISTINCT FROM 'cim' THEN now() ELSE stage_changed_at END,
+       stage_changed_by = CASE WHEN stage IS DISTINCT FROM 'cim' THEN 'dirk' ELSE stage_changed_by END,
+       updated_at = now()
+ WHERE cim_url IS NOT NULL AND btrim(cim_url) <> ''
+   AND lower(stage) IN (
+         'inbox', 'inbound',
+         'shortlist', 'shortlisted',
+         'nda', 'nda_to_sign', 'nda_signed', 'nda signed',
+         'pof', 'proof_of_funds'
+       );
+UPDATE deals_next
+   SET next_action = 'Review CIM against buy box',
+       updated_at = now()
+ WHERE cim_url IS NOT NULL AND btrim(cim_url) <> ''
+   AND (
+     next_action ILIKE '%await%cim%'
+     OR next_action ILIKE '%data room%'
+   )
+   AND lower(stage) NOT IN ('pursuing', 'closed', 'dead', 'pass', 'passed');

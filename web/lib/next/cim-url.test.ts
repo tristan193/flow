@@ -5,7 +5,11 @@ import path from "node:path";
 
 import { resolveStoredCim } from "../cim-open.ts";
 import { query } from "../db.ts";
+import { applyAuthorizedCimIntake } from "./cim-intake.ts";
 import { applyAuthorizedCimUrl } from "./cim-url-auth.ts";
+import { getNextDeal } from "./deals.ts";
+import { listDirkFollowups } from "./dirk.ts";
+import { defaultNextAction } from "./stages.ts";
 
 const FILE_URL = "https://drive.google.com/file/d/abcFile092/view";
 const FOLDER_URL = "https://drive.google.com/drive/folders/0ABYzLaaJ9ebAUk9PVA";
@@ -123,6 +127,7 @@ test("token can set cimUrl; session or missing token cannot", async () => {
     if (stamped.ok) {
       assert.equal(stamped.dealNumber, "TLY-092");
       assert.equal(stamped.cimUrl, FILE_URL);
+      assert.equal(stamped.stage, "cim");
     }
 
     const opened = await resolveStoredCim("TLY-092");
@@ -131,6 +136,93 @@ test("token can set cimUrl; session or missing token cannot", async () => {
       dealNumber: "TLY-092",
       viewUrl: FILE_URL,
     });
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("cim-url stamp from NDA moves to CIM and drops Await CIM copy; intake still moves to CIM", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = "test-dirk-cim-token";
+  try {
+    await query(
+      `INSERT INTO deals_next (deal_number, title, stage, next_action)
+       VALUES ($1, $2, $3, $4)`,
+      ["TLY-031", "Iron Bull", "nda", "Await CIM / data room"],
+    );
+    await query(
+      `INSERT INTO deals_next (deal_number, title, stage, next_action)
+       VALUES ($1, $2, $3, $4)`,
+      ["TLY-092", "Project Cactus", "nda", "Await CIM / data room"],
+    );
+    await query(
+      `INSERT INTO deals_next (deal_number, title, stage, next_action)
+       VALUES ($1, $2, $3, $4)`,
+      ["TLY-014", "Already walked", "closed", "Await CIM / data room"],
+    );
+    await query(
+      `INSERT INTO next_followups (deal_id, kind, status, armed_by)
+       SELECT id, 'cim', 'open', 'dirk' FROM deals_next WHERE deal_number = 'TLY-031'`,
+    );
+
+    const stamped = await applyAuthorizedCimUrl({
+      authorization: "Bearer test-dirk-cim-token",
+      dealNumber: "TLY-031",
+      cimUrl: FILE_URL,
+    });
+    assert.equal(stamped.ok, true);
+    if (stamped.ok) {
+      assert.equal(stamped.stage, "cim");
+      assert.equal(stamped.cimUrl, FILE_URL);
+    }
+
+    const iron = await getNextDeal(
+      Number(
+        (await query<{ id: number }>("SELECT id FROM deals_next WHERE deal_number = 'TLY-031'"))[0]
+          .id,
+      ),
+    );
+    assert.ok(iron);
+    assert.equal(iron.stage, "cim");
+    assert.equal(iron.cim_url, FILE_URL);
+    assert.equal(iron.next_action, defaultNextAction("cim"));
+    assert.notEqual(iron.next_action, "Await CIM / data room");
+    assert.ok(iron.stage_changed_at);
+    assert.equal(iron.stage_changed_by, "dirk");
+
+    const followups = await listDirkFollowups();
+    const ironFollow = followups.find((row) => row.dealNumber === "TLY-031");
+    assert.ok(ironFollow);
+    assert.notEqual(ironFollow.nextAction, "Await CIM / data room");
+    assert.doesNotMatch(ironFollow.nextAction ?? "", /await\s+cim|data\s*room/i);
+
+    const intake = await applyAuthorizedCimIntake({
+      authorization: "Bearer test-dirk-cim-token",
+      fileName: "TLY-092 Project Cactus.pdf",
+      cimUrl: FILE_URL,
+    });
+    assert.equal(intake.ok, true);
+    if (intake.ok) {
+      assert.equal(intake.stage, "cim");
+      assert.equal(intake.cimUrl, FILE_URL);
+      assert.equal(intake.deal.stage, "cim");
+      assert.equal(intake.deal.next_action, defaultNextAction("cim"));
+    }
+
+    const closed = await applyAuthorizedCimUrl({
+      authorization: "Bearer test-dirk-cim-token",
+      dealNumber: "TLY-014",
+      cimUrl: FILE_URL,
+    });
+    assert.equal(closed.ok, true);
+    if (closed.ok) assert.equal(closed.stage, "closed");
+    const walked = await query<{ stage: string; cim_url: string; next_action: string | null }>(
+      "SELECT stage, cim_url, next_action FROM deals_next WHERE deal_number = 'TLY-014'",
+    );
+    assert.equal(walked[0].stage, "closed");
+    assert.equal(walked[0].cim_url, FILE_URL);
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;

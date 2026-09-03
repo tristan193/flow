@@ -11,6 +11,7 @@ import { applyAuthorizedCimUrl } from "@/lib/next/cim-url-auth";
  *   { "dealNumber": "TLY-092", "cimUrl": "https://drive.google.com/file/d/FILE_ID/view" }
  *
  * Token only — a browser session is not enough. Does not call Google.
+ * Sets stage CIM on a live deal (closed stays closed; pursuing stays past CIM).
  */
 
 const schema = z
@@ -48,5 +49,6 @@ export async function POST(request: NextRequest) {
     dealId: result.dealId,
     dealNumber: result.dealNumber,
     cimUrl: result.cimUrl,
+    stage: result.stage,
   });
 }

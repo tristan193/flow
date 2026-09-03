@@ -6,11 +6,15 @@ import {
   canonicalizeNextStage,
   coerceNextStage,
   defaultNextAction,
+  isAwaitCimAction,
   isNextReviewStage,
   mapNextStage,
+  nextActionAfterCimPack,
   nextFollowupKind,
   nextStageLabel,
+  resolveNextAction,
   sanitizeNextAction,
+  shouldAdvanceToCimOnPack,
 } from "./stages.ts";
 
 test("board is exactly Shortlisted, NDA, CIM, Pursuing, Closed", () => {
@@ -73,6 +77,28 @@ test("next-action copy has no POF", () => {
   assert.equal(sanitizeNextAction("Send proof of funds"), "Request NDA");
   assert.equal(sanitizeNextAction("Continue active review"), "Continue pursuit");
   assert.equal(sanitizeNextAction("Follow up with broker"), "Follow up with broker");
+});
+
+test("a stamped CIM pack never shows Await CIM / data room", () => {
+  assert.equal(isAwaitCimAction("Await CIM / data room"), true);
+  assert.equal(isAwaitCimAction("await CIM"), true);
+  assert.equal(isAwaitCimAction("Review CIM against buy box"), false);
+  assert.equal(resolveNextAction("nda", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Review CIM against buy box");
+  assert.equal(resolveNextAction("nda", "Await CIM / data room", null), "Await CIM / data room");
+  assert.equal(resolveNextAction("pursuing", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Continue pursuit");
+  assert.equal(resolveNextAction("closed", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), null);
+  assert.equal(nextActionAfterCimPack("cim", "Await CIM / data room"), "Review CIM against buy box");
+  assert.equal(nextActionAfterCimPack("cim", "Sign the NDA"), "Review CIM against buy box");
+  assert.equal(nextActionAfterCimPack("cim", "Follow up with broker"), "Follow up with broker");
+});
+
+test("stamping a pack advances live deals to CIM; closed and pursuing stay put", () => {
+  assert.equal(shouldAdvanceToCimOnPack("inbox"), true);
+  assert.equal(shouldAdvanceToCimOnPack("shortlist"), true);
+  assert.equal(shouldAdvanceToCimOnPack("nda"), true);
+  assert.equal(shouldAdvanceToCimOnPack("cim"), true);
+  assert.equal(shouldAdvanceToCimOnPack("pursuing"), false);
+  assert.equal(shouldAdvanceToCimOnPack("closed"), false);
 });
 
 test("follow-ups arm on NDA, CIM, and Pursuing only", () => {
