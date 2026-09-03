@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/review-cim-fix`
+Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/cim-intake`
 
 ## 1. Product in one paragraph
 
@@ -32,7 +32,7 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**CIM packs:** `GET /cim/TLY-XXX` (session) redirects from `deals_next.cim_url` (Drive **file** URL stamped by Dirk). No Google calls from Vercel. Missing URL → “CIM not in yet”. Token stamp: `POST /api/next/cim-url`. Pack numbers: `POST /api/next/cim-financials`.
+**CIM packs:** `GET /cim/TLY-XXX` (session) redirects from `deals_next.cim_url` (Drive **file** URL). No Google calls from Vercel. Missing URL → “CIM not in yet”. Token stamp: `POST /api/next/cim-url`. Pack numbers: `POST /api/next/cim-financials`. Combined intake (filename + URL + optional numbers + stage CIM on the existing TLY row): `POST /api/next/cim-intake`. Simon’s helper: `pipeline/cim_intake.py`.
 
 **Also:** CSV Drive sync is legacy/optional (`FLOW_DRIVE_FOLDER_ID`). Local PGlite is for dummy/dev only.
 
@@ -137,10 +137,10 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Area | Paths |
 |------|--------|
 | Import API | `web/app/api/import/` · auth `FLOW_IMPORT_TOKEN` |
-| Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/cim-url`, `POST /api/next/cim-financials`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Middleware `PUBLIC_PATHS` must include each of these or a valid token 307s to `/login`. Stage operator is Dirk, not a browser session. Writes `deals_next` only. Board: Shortlisted → NDA → CIM → Pursuing → Closed (`inbox` is Next Review swipe, inbound only). `cim-financials` never writes `stage`. |
+| Next Dirk loop | `POST /api/next/import`, `POST /api/next/stage`, `POST /api/next/cim-url`, `POST /api/next/cim-financials`, `POST /api/next/cim-intake`, `POST /api/next/merge`, `GET /api/next/dirk` · same bearer. Middleware `PUBLIC_PATHS` must include each of these or a valid token 307s to `/login`. Stage operator is Dirk, not a browser session. Writes `deals_next` only. Board: Shortlisted → NDA → CIM → Pursuing → Closed (`inbox` is Next Review swipe, inbound only). `cim-financials` never writes `stage`. `cim-intake` updates the existing TLY row in one transaction (cim_url + provided financials + stage CIM); never inserts a deal or vote. |
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
-| Review UI | `web/components/next/review-client.tsx` · `/next` Review has **New** and **CIM**. New is swipe-only (`listNextInboxDeals()`, stage `inbox`); no List / no Swipe toggle. Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). CIM is `listNextCimDeals()` — stamped Drive **file** `cim_url` only (stage CIM alone is not enough; TLY-001 stays off the deck until a pack exists). CIM card: no teaser FitStrip; Super Like **star**; pack numbers revenue / EBITDA / margin / asking (omit missing); **View CIM** opens `/cim/TLY-XXX` in a new tab. Votes live in `cim_verdicts_next` (Pass / Hold / Pursue). The board card stays CIM until Tristan and Jim both Pass (→ Closed) or both Pursue (→ Pursuing). Hold, mixed, or one vote stay CIM. Simon does not vote. No notes UI. No Google calls from Vercel. |
+| Review UI | `web/components/next/review-client.tsx` · `/next` Review has **New** and **CIM**. New is swipe-only (`listNextInboxDeals()`, stage `inbox`); no List / no Swipe toggle. Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). CIM is `listNextCimDeals()` on the same `deals_next` rows — every stage CIM card, plus open board rows with a stamped Drive **file** `cim_url`. Intake or a stage move to CIM makes the card available immediately. CIM card: no teaser FitStrip; Super Like **star**; pack numbers revenue / EBITDA / margin / asking (omit missing); **View CIM** opens `/cim/TLY-XXX` in a new tab. Votes live in `cim_verdicts_next` (Pass / Hold / Pursue). The board card stays CIM until Tristan and Jim both Pass (→ Closed) or both Pursue (→ Pursuing). Hold, mixed, or one vote stay CIM. Simon does not vote. No notes UI. No Google calls from Vercel. |
 | CIM pack opener | `/cim/[id]` — looks up `deals_next.cim_url` (Drive **file** URL stamped by Dirk) and redirects. No Google credentials on Vercel. Missing URL → “CIM not in yet”. |
 | CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |

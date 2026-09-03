@@ -41,7 +41,7 @@ before(async () => {
   await query("SELECT 1");
 });
 
-test("CIM deck requires stamped cim_url; TLY-001 stage CIM without a pack is out", async () => {
+test("CIM deck includes every stage CIM row and stamped-URL board rows", async () => {
   await resetNext();
   const html = (hex: string) =>
     `<a href="https://network.axial.net/app/opportunity/${hex}?action=pursue">Pursue</a>`;
@@ -75,10 +75,10 @@ test("CIM deck requires stamped cim_url; TLY-001 stage CIM without a pack is out
 
   const cim = await listNextCimDeals();
   const numbers = cim.map((deal) => deal.deal_number).sort();
-  assert.deepEqual(numbers, ["TLY-031", "TLY-092"]);
+  assert.deepEqual(numbers, ["TLY-001", "TLY-031", "TLY-092"]);
   assert.equal(
-    cim.some((deal) => deal.deal_number === "TLY-001" || deal.title === "Water Infrastructure"),
-    false,
+    cim.some((deal) => deal.deal_number === "TLY-001" && deal.title === "Water Infrastructure"),
+    true,
   );
   const waterAfter = await query<{ stage: string; cim_url: string | null }>(
     "SELECT stage, cim_url FROM deals_next WHERE deal_number = 'TLY-001'",

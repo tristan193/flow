@@ -146,8 +146,10 @@ export function cimCombineHint(
 }
 
 /**
- * CIM Review membership. A card belongs only if Dirk stamped a Drive *file*
- * URL on `cim_url`. Stage CIM alone is not enough (TLY-001 has no pack).
+ * CIM Review membership. Every deals_next row at stage CIM belongs here —
+ * intake and /api/next/stage both make the card available immediately.
+ * A stamped Drive file URL on a still-open board row (NDA / Shortlist)
+ * also belongs so a pack is reviewable before the stage catch-up.
  * Inbound stays in New; Pursuing / Closed already left.
  */
 export function isNextCimReviewCard(deal: {
@@ -155,6 +157,7 @@ export function isNextCimReviewCard(deal: {
   cim_url?: string | null;
 }): boolean {
   const stage = coerceNextStage(deal.stage);
+  if (stage === "cim") return true;
   if (stage === "inbox" || stage === "closed" || stage === "pursuing") return false;
   return isDriveFileUrl(deal.cim_url);
 }

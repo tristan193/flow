@@ -53,6 +53,14 @@ Next deal numbers mint `TLY-001` on first touch. Join order: deal number → sou
 
 Dirk is the stage operator (`FLOW_IMPORT_TOKEN` on `POST /api/next/stage` or import `stage` / `proposedStage`). Canonical board: `shortlist` → `nda` → `cim` → `pursuing` → `closed` (`inbox` is Next Review, not a column). Closed = passed / dead / walked, not won. Legacy aliases: `pof` / `nda_to_sign` / `nda_signed` → `nda`; `awaiting_reply` / `active` → `pursuing`; `dead` / `pass` / `passed` → `closed`.
 
+CIM intake (Simon, after the PDF is already in the shared Drive parent):
+
+```powershell
+python pipeline/cim_intake.py --file-name "TLY-092 Headline.pdf" --cim-url "https://drive.google.com/file/d/FILE_ID/view"
+```
+
+`POST /api/next/cim-intake` with the same bearer. Updates the existing `TLY-XXX` `deals_next` row only (`cim_url`, provided financials, stage CIM). Does not create a card or vote. No Google credentials on Vercel.
+
 ## What Flow App does
 
 - **Review** — swipe or list; shortlist / discuss / pass with live shared verdicts
@@ -96,7 +104,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `FLOW_PASSCODE_TRISTAN` | Tristan Tully's passcode |
 | `FLOW_PASSCODE_PARTNER` | Jim Evans's passcode (same `/login` — own Review deck) |
 | `FLOW_MEMBER_PARTNER_LABEL` | Optional UI label (default **Jim Evans**; id stays `partner`) |
-| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `GET /api/next/dirk` |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `POST /api/next/cim-intake` / `GET /api/next/dirk` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 
 ## Manual push (dev / one-off)

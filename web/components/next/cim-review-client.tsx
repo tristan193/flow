@@ -85,8 +85,8 @@ export function CimReviewClient({
       <div className="border-line bg-surface rounded-xl border p-4 text-sm">
         <p className="font-medium">Nothing at CIM</p>
         <p className="text-ink-dim mt-1.5 leading-relaxed">
-          Cards reach this deck when they have a stamped Drive file URL (<code>cim_url</code>).
-          Stage CIM alone is not enough. Pipeline stays a progress board.
+          Cards reach this deck when their stage is CIM, or when a Drive file URL
+          is stamped on an open board row. Pipeline stays a progress board.
         </p>
       </div>
     );

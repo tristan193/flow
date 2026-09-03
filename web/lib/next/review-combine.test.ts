@@ -90,12 +90,12 @@ test("combineNextCim stays CIM unless both Pass or both Pursue", () => {
   }
 });
 
-test("CIM deck requires a stamped Drive file URL; stage CIM alone is not enough", () => {
+test("CIM deck includes every stage CIM row; stamped URL still pulls open board rows", () => {
   const file = "https://drive.google.com/file/d/abcFile031/view";
   const folder = "https://drive.google.com/drive/folders/0ABYzLaaJ9ebAUk9PVA";
-  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: null }), false);
-  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: "" }), false);
-  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: folder }), false);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: null }), true);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: "" }), true);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: folder }), true);
   assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: file }), true);
   assert.equal(isNextCimReviewCard({ stage: "nda", cim_url: file }), true);
   assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: file }), false);
@@ -115,11 +115,11 @@ test("nextCimDeck hides a card only after this member's CIM vote", () => {
   ];
   assert.deepEqual(
     nextCimDeck(deals, "tristan").map((row) => row.id),
-    [1, 4],
+    [1, 4, 5],
   );
   assert.deepEqual(
     nextCimDeck(deals, "partner").map((row) => row.id),
-    [1, 2, 4],
+    [1, 2, 4, 5],
   );
 });
 

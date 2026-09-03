@@ -41,7 +41,7 @@ function bodyField(body: Record<string, unknown>, ...keys: string[]): unknown {
   return undefined;
 }
 
-function parseOptionalMoney(
+export function parseOptionalMoney(
   raw: unknown,
   label: string,
 ): { ok: true; value?: number } | { ok: false; error: string } {

@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/cim-intake` — DONE
+
+**Scope:** Token POST `/api/next/cim-intake` stamps Drive file URL + optional pack numbers + stage CIM on the existing TLY `deals_next` row; CIM Review lists every stage CIM card
+**Risk:** medium (writes `cim_url` / financials / `stage` on `deals_next`; never inserts a deal or vote)
+**Coords:** none — did not merge PR #12; no GCP/Drive auth on Vercel
+
+### Changed
+- `POST /api/next/cim-intake` — `FLOW_IMPORT_TOKEN` only; body `{ fileName, cimUrl, dealNumber?, revenue?, ebitda?, margin?, asking? }`; TLY from filename; posted dealNumber must match; one transaction
+- `web/middleware.ts` — allowlist `/api/next/cim-intake`
+- `listNextCimDeals()` / `isNextCimReviewCard` — every stage CIM row (plus open-board rows with a stamped file URL)
+- `pipeline/cim_intake.py` — Simon CLI (token from env; one POST)
+
+### Do not touch
+- PR #12 Drive folder create / googleapis-on-Vercel
+- Per-deal folders
+- New inbound swipe / FitStrip
+- Classic `/` Review
+
+### Follow-ups
+- Simon POSTs after each `TLY-XXX Headline.pdf` lands in the shared Drive parent
+
 ## 2026-09-03 — `nm/web/review-cim-fix` — DONE
 
 **Scope:** Middleware allowlist for token POST `/api/next/cim-financials` (was 307 to /login)

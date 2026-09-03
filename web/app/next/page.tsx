@@ -33,7 +33,7 @@ export default async function NextReviewPage() {
             {demoCount > 0 ? ` · ${demoCount} DEMO` : ""}
             {" · "}
             CIM · {myCim.length} to review
-            {cimDeals.length !== myCim.length ? ` · ${cimDeals.length} with a pack` : ""}
+            {cimDeals.length !== myCim.length ? ` · ${cimDeals.length} at CIM` : ""}
             {" · "}a Pass on New stays in {memberLabel(otherMember(member))}&apos;s deck
           </p>
         </div>
@@ -41,7 +41,8 @@ export default async function NextReviewPage() {
         <NextReviewClient deals={deals} cimDeals={cimDeals} member={member} />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers — swipe only. CIM is packs with a stamped Drive file URL.
+          New is inbound teasers — swipe only. CIM is every deal at stage CIM
+          (same <code>deals_next</code> row the intake stamps).
           View CIM opens <code>/cim/TLY-XXX</code> in a new tab. Pipeline only shows progress.
           Super Like stays on the far right of New.
         </p>
