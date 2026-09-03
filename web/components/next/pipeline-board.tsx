@@ -197,8 +197,10 @@ export function NextPipelineBoard({
                   </div>
 
                   <CimPartnerNotes
+                    dealId={deal.id}
                     deal={{ stage: stageOf(deal) }}
                     notes={notesByDealId[deal.id]}
+                    member={member}
                   />
 
                   <VerdictChips deal={deal} member={member} />

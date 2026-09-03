@@ -268,6 +268,35 @@ export function cimStagePartnerNotes<T extends { member: string }>(
   return partnerNotesOnly(notes ?? []);
 }
 
+/** Card labels: "Tristan notes" / "Jim notes" (first token of the member label). */
+export function cimNoteSectionLabel(id: MemberId): string {
+  const name = memberLabel(id).trim().split(/\s+/)[0] || memberLabel(id);
+  return `${name} notes`;
+}
+
+export type CimPartnerNoteField<T> = {
+  member: MemberId;
+  label: string;
+  notes: T[];
+};
+
+/**
+ * Always two fields at CIM (Tristan, then Jim) so an empty card still shows
+ * both labels. Null before / after CIM. Simon never appears in either field.
+ */
+export function cimPartnerNoteFields<T extends { member: string }>(
+  deal: { stage: string },
+  notes: T[] | null | undefined,
+): CimPartnerNoteField<T>[] | null {
+  if (!isCimStageForNotes(deal)) return null;
+  const visible = partnerNotesOnly(notes ?? []);
+  return MEMBERS.map((who) => ({
+    member: who.id,
+    label: cimNoteSectionLabel(who.id),
+    notes: visible.filter((note) => note.member === who.id),
+  }));
+}
+
 export interface NextStageEventRow {
   id: number;
   deal_id: number;

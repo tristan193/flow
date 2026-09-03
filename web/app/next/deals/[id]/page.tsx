@@ -8,7 +8,7 @@ import { NextDealActions } from "@/components/next/deal-actions";
 import { DealTitleStack, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
 import { listingIdLabel, sourceDisplayName } from "@/lib/next/display";
 import { NextNav } from "@/components/next/nav";
-import { NextNotes } from "@/components/next/notes";
+import { CimPartnerNotes } from "@/components/next/notes";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { gmailAllHref } from "@/lib/next/identity";
@@ -168,7 +168,12 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           )}
 
           {isCimStageForNotes(deal) ? (
-            <NextNotes dealId={deal.id} notes={partnerNotesOnly(notes)} />
+            <CimPartnerNotes
+              dealId={deal.id}
+              deal={deal}
+              notes={partnerNotesOnly(notes)}
+              member={member}
+            />
           ) : null}
 
           {events.length > 0 && (

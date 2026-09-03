@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cimNoteSectionLabel,
+  cimPartnerNoteFields,
   cimStagePartnerNotes,
   combineNextCim,
   combineNextReview,
@@ -191,4 +193,43 @@ test("cimStagePartnerNotes shows partner notes only at CIM and never Simon", () 
   }
   assert.deepEqual(cimStagePartnerNotes({ stage: "cim" }, []), []);
   assert.deepEqual(cimStagePartnerNotes({ stage: "cim" }, null), []);
+});
+
+test("empty CIM card still exposes Tristan notes and Jim notes fields", () => {
+  if (!process.env.FLOW_MEMBER_TRISTAN_LABEL) {
+    assert.equal(cimNoteSectionLabel("tristan"), "Tristan notes");
+  }
+  if (!process.env.FLOW_MEMBER_PARTNER_LABEL) {
+    assert.equal(cimNoteSectionLabel("partner"), "Jim notes");
+  }
+
+  const empty = cimPartnerNoteFields({ stage: "cim" }, []);
+  assert.ok(empty);
+  assert.deepEqual(
+    empty.map((field) => field.label),
+    [cimNoteSectionLabel("tristan"), cimNoteSectionLabel("partner")],
+  );
+  assert.deepEqual(
+    empty.map((field) => field.notes),
+    [[], []],
+  );
+
+  const simonOnly = cimPartnerNoteFields(
+    { stage: "cim" },
+    [{ id: 1, member: "simon", body: "specialist writeup" }],
+  );
+  assert.ok(simonOnly);
+  assert.equal(simonOnly.length, 2);
+  assert.deepEqual(
+    simonOnly.flatMap((field) => field.notes),
+    [],
+  );
+  assert.equal(
+    simonOnly.some((field) => field.notes.some((note) => /specialist/i.test(note.body))),
+    false,
+  );
+
+  for (const stage of ["inbox", "shortlist", "nda", "pursuing", "closed"]) {
+    assert.equal(cimPartnerNoteFields({ stage }, [{ member: "tristan", body: "early" }]), null);
+  }
 });

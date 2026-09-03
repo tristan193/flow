@@ -144,7 +144,12 @@ export function CimReviewClient({
           />
           <Where deal={top} />
 
-          <CimPartnerNotes deal={top} notes={notesByDealId[top.id]} />
+          <CimPartnerNotes
+            dealId={top.id}
+            deal={top}
+            notes={notesByDealId[top.id]}
+            member={member}
+          />
 
           <VerdictChips deal={top} member={member} lane="cim" />
 
