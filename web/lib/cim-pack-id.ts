@@ -1,11 +1,11 @@
 import { formatDealNumber, parseDealNumber } from "./next/identity";
 
 /**
- * Shared Drive that holds CIM PDFs. Same id as the drive and as the parent
- * folder — list only that folder, never create children.
+ * Shared Drive that holds CIM PDFs. Dirk lists this folder via his Drive
+ * connector and stamps the matching file URL onto the deal. The app never
+ * calls Drive for `/cim/TLY-XXX`.
  *
  * This file is safe for client components (CIM link on /next cards).
- * Drive API lives in cim-pack.ts and must not be imported from the client.
  */
 export const CIM_DRIVE_PARENT_ID = "0ABYzLaaJ9ebAUk9PVA";
 
@@ -31,6 +31,52 @@ export function cimPackPath(dealNumber: string | null | undefined): string | nul
 
 export function driveFileViewUrl(fileId: string): string {
   return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+const DRIVE_HOSTS = new Set(["drive.google.com", "www.drive.google.com"]);
+const FILE_PATH = /^\/file\/d\/([a-zA-Z0-9_-]+)(?:\/|$)/;
+const FOLDER_PATH = /\/folders\//;
+const FILE_ID = /^[a-zA-Z0-9_-]+$/;
+
+function parseHttpUrl(raw: string): URL | null {
+  try {
+    return new URL(raw.trim());
+  } catch {
+    return null;
+  }
+}
+
+export function isDriveFolderUrl(raw: string | null | undefined): boolean {
+  const url = parseHttpUrl(raw ?? "");
+  if (!url || url.protocol !== "https:") return false;
+  if (!DRIVE_HOSTS.has(url.hostname.toLowerCase())) return false;
+  return FOLDER_PATH.test(url.pathname);
+}
+
+/** Drive *file* link (view / open / uc). Folders never match. */
+export function driveFileIdFromUrl(raw: string | null | undefined): string | null {
+  const url = parseHttpUrl(raw ?? "");
+  if (!url || url.protocol !== "https:") return null;
+  if (!DRIVE_HOSTS.has(url.hostname.toLowerCase())) return null;
+  if (FOLDER_PATH.test(url.pathname)) return null;
+
+  const fromPath = url.pathname.match(FILE_PATH);
+  if (fromPath) return fromPath[1];
+
+  if (url.pathname === "/open" || url.pathname === "/uc") {
+    const id = url.searchParams.get("id")?.trim() ?? "";
+    return FILE_ID.test(id) ? id : null;
+  }
+  return null;
+}
+
+export function isDriveFileUrl(raw: string | null | undefined): boolean {
+  return driveFileIdFromUrl(raw) != null;
+}
+
+export function canonicalDriveFileUrl(raw: string | null | undefined): string | null {
+  const id = driveFileIdFromUrl(raw);
+  return id ? driveFileViewUrl(id) : null;
 }
 
 /** Case-insensitive prefix: `TLY-092 Project Cactus.pdf` matches TLY-092. */

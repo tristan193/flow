@@ -250,7 +250,7 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
   );
 }
 
-/** Opens `/cim/TLY-XXX` — the app looks up the PDF in Drive. */
+/** Opens `/cim/TLY-XXX` — the app 302s to the stamped Drive file URL. */
 export function CimPackLink({
   dealNumber,
   className = "text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors",

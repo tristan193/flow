@@ -3,44 +3,22 @@ import assert from "node:assert/strict";
 
 import {
   CIM_DRIVE_PARENT_ID,
-  cimDriveConfigured,
+  canonicalDriveFileUrl,
   cimPackPath,
+  driveFileIdFromUrl,
   driveFileViewUrl,
   fileNameMatchesDeal,
-  lookupCimPack,
+  isDriveFileUrl,
+  isDriveFolderUrl,
   parseCimDealId,
   pickCimPackFile,
   type CimPackFile,
-  type DriveFilesClient,
-} from "./cim-pack.ts";
+} from "./cim-pack-id.ts";
 
 function file(
   partial: Partial<CimPackFile> & Pick<CimPackFile, "id" | "name">,
 ): CimPackFile {
   return { mimeType: "application/pdf", modifiedTime: "2026-01-01T00:00:00.000Z", ...partial };
-}
-
-function mockDrive(
-  files: CimPackFile[],
-  onCall?: (params: Record<string, unknown>) => void,
-): { drive: DriveFilesClient; created: number; calls: string[] } {
-  const calls: string[] = [];
-  let created = 0;
-  const drive: DriveFilesClient = {
-    files: {
-      list: async (params) => {
-        calls.push("list");
-        onCall?.(params);
-        return { data: { files } };
-      },
-      create: async () => {
-        created += 1;
-        calls.push("create");
-        throw new Error("files.create must never run on the CIM opener");
-      },
-    },
-  };
-  return { drive, created, calls };
 }
 
 test("parseCimDealId normalizes case and requires TLY-digits", () => {
@@ -109,74 +87,19 @@ test("pickCimPackFile returns null when nothing matches", () => {
   );
 });
 
-test("lookupCimPack finds a prefix match and never calls files.create", async () => {
-  const { drive, created, calls } = mockDrive([
-    file({ id: "abc123", name: "TLY-092 Project Cactus.pdf" }),
-  ]);
-  const result = await lookupCimPack("tly-092", { drive });
-  assert.deepEqual(result, {
-    status: "found",
-    dealNumber: "TLY-092",
-    fileId: "abc123",
-    name: "TLY-092 Project Cactus.pdf",
-    viewUrl: driveFileViewUrl("abc123"),
-  });
-  assert.equal(created, 0);
-  assert.deepEqual(calls, ["list"]);
-  assert.ok(!calls.includes("create"));
-});
+test("Drive file URLs are accepted; folder URLs are not", () => {
+  const fileUrl = driveFileViewUrl("abc123XYZ");
+  assert.equal(isDriveFileUrl(fileUrl), true);
+  assert.equal(isDriveFileUrl(`${fileUrl}?usp=sharing`), true);
+  assert.equal(isDriveFileUrl("https://drive.google.com/open?id=abc123XYZ"), true);
+  assert.equal(isDriveFileUrl("https://drive.google.com/uc?id=abc123XYZ&export=download"), true);
+  assert.equal(driveFileIdFromUrl(fileUrl), "abc123XYZ");
+  assert.equal(canonicalDriveFileUrl("https://drive.google.com/open?id=abc123XYZ"), fileUrl);
 
-test("lookupCimPack lists only the shared-drive parent", async () => {
-  let params: Record<string, unknown> | null = null;
-  const { drive } = mockDrive([], (p) => {
-    params = p;
-  });
-  const result = await lookupCimPack("TLY-031", { drive });
-  assert.equal(result.status, "missing");
-  assert.ok(params);
-  assert.equal(params.corpora, "drive");
-  assert.equal(params.driveId, CIM_DRIVE_PARENT_ID);
-  assert.equal(params.supportsAllDrives, true);
-  assert.equal(params.includeItemsFromAllDrives, true);
-  assert.match(String(params.q), new RegExp(`'${CIM_DRIVE_PARENT_ID}' in parents`));
-  assert.match(String(params.q), /name contains 'TLY-031'/);
-  assert.equal(params.fields, "nextPageToken, files(id, name, mimeType, modifiedTime)");
-});
-
-test("lookupCimPack missing file is not a crash", async () => {
-  const { drive, created } = mockDrive([]);
-  const result = await lookupCimPack("TLY-031", { drive });
-  assert.deepEqual(result, { status: "missing", dealNumber: "TLY-031" });
-  assert.equal(created, 0);
-});
-
-test("lookupCimPack is disconnected when the service account env is missing", async () => {
-  const prev = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  try {
-    const result = await lookupCimPack("TLY-031", { credentialsJson: null });
-    assert.equal(result.status, "disconnected");
-    assert.equal(cimDriveConfigured(null), false);
-    assert.equal(cimDriveConfigured(""), false);
-  } finally {
-    if (prev === undefined) delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-    else process.env.GOOGLE_SERVICE_ACCOUNT_JSON = prev;
-  }
-});
-
-test("lookupCimPack rejects invalid ids before talking to Drive", async () => {
-  let listed = 0;
-  const drive: DriveFilesClient = {
-    files: {
-      list: async () => {
-        listed += 1;
-        return { data: { files: [] } };
-      },
-      create: async () => {
-        throw new Error("files.create must never run");
-      },
-    },
-  };
-  assert.deepEqual(await lookupCimPack("nope", { drive }), { status: "invalid" });
-  assert.equal(listed, 0);
+  const folder = `https://drive.google.com/drive/folders/${CIM_DRIVE_PARENT_ID}`;
+  assert.equal(isDriveFolderUrl(folder), true);
+  assert.equal(isDriveFileUrl(folder), false);
+  assert.equal(isDriveFileUrl("https://example.com/file.pdf"), false);
+  assert.equal(isDriveFileUrl("/api/next/cim-files/1"), false);
+  assert.equal(canonicalDriveFileUrl(folder), null);
 });

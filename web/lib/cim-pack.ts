@@ -1,3 +1,10 @@
+/**
+ * UNUSED on the live `/cim/TLY-XXX` path.
+ * Production redirects from deals_next.cim_url (see cim-open.ts) and must not
+ * call Drive or require GOOGLE_SERVICE_ACCOUNT_JSON.
+ *
+ * Left as a dead helper — list-only, never files.create.
+ */
 /** Server-only: googleapis cannot ship in the /next card client bundle. */
 import { google } from "googleapis";
 
