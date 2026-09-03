@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cimStagePartnerNotes,
   combineNextCim,
   combineNextReview,
+  isCimStageForNotes,
   isNextCimReviewCard,
   memberLabel,
   nextCimDeck,
@@ -161,4 +163,32 @@ test("partnerNotesOnly keeps Tristan and Jim, drops Simon", () => {
     partnerNotesOnly(notes).map((note) => note.member),
     ["tristan", "partner"],
   );
+});
+
+test("cimStagePartnerNotes shows partner notes only at CIM and never Simon", () => {
+  const notes = [
+    { id: 1, member: "tristan", body: "like the pack" },
+    { id: 2, member: "simon", body: "specialist writeup" },
+    { id: 3, member: "partner", body: "hold for margin" },
+  ];
+  assert.equal(isCimStageForNotes({ stage: "cim" }), true);
+  assert.equal(isCimStageForNotes({ stage: "nda" }), false);
+  assert.equal(isCimStageForNotes({ stage: "inbox" }), false);
+  assert.equal(isCimStageForNotes({ stage: "shortlist" }), false);
+
+  const atCim = cimStagePartnerNotes({ stage: "cim" }, notes);
+  assert.deepEqual(
+    atCim.map((note) => note.member),
+    ["tristan", "partner"],
+  );
+  assert.equal(
+    atCim.some((note) => /specialist/i.test(note.body)),
+    false,
+  );
+
+  for (const stage of ["inbox", "shortlist", "nda", "pursuing", "closed"]) {
+    assert.deepEqual(cimStagePartnerNotes({ stage }, notes), []);
+  }
+  assert.deepEqual(cimStagePartnerNotes({ stage: "cim" }, []), []);
+  assert.deepEqual(cimStagePartnerNotes({ stage: "cim" }, null), []);
 });

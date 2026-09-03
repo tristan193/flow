@@ -251,6 +251,23 @@ export function partnerNotesOnly<T extends { member: string }>(notes: T[]): T[] 
   return notes.filter((note) => isMemberId(note.member));
 }
 
+/** Notes on cards / detail only after the deal itself is at stage CIM. */
+export function isCimStageForNotes(deal: { stage: string }): boolean {
+  return coerceNextStage(deal.stage) === "cim";
+}
+
+/**
+ * Tristan / Jim notes for a CIM-stage card. Empty before CIM (New, Shortlist,
+ * NDA, …) and after it leaves CIM. Simon is never included.
+ */
+export function cimStagePartnerNotes<T extends { member: string }>(
+  deal: { stage: string },
+  notes: T[] | null | undefined,
+): T[] {
+  if (!isCimStageForNotes(deal)) return [];
+  return partnerNotesOnly(notes ?? []);
+}
+
 export interface NextStageEventRow {
   id: number;
   deal_id: number;
