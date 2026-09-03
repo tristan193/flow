@@ -4,7 +4,7 @@ import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { listNextInboxDeals } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
-import { memberLabel } from "@/lib/next/model";
+import { memberLabel, nextInboxDeck, otherMember } from "@/lib/next/model";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,7 @@ export default async function NextReviewPage() {
   const deals = inboxDeals.filter((deal) => assessNextFit(deal).surfaced);
   const hidden = inboxDeals.length - deals.length;
   const demoCount = deals.filter((d) => d.is_demo).length;
+  const myDeck = nextInboxDeck(deals, member);
 
   return (
     <>
@@ -23,9 +24,11 @@ export default async function NextReviewPage() {
         <div className="mb-3">
           <h1 className="text-lg font-semibold tracking-tight">Next Review</h1>
           <p className="text-ink-dim text-[12.5px]">
-            Inbound only · {deals.length} listings
+            Your deck · {myDeck.length} left
+            {deals.length !== myDeck.length ? ` · ${deals.length} still inbound` : ""}
             {hidden > 0 ? ` · ${hidden} under floor hidden` : ""}
-            {demoCount > 0 ? ` · ${demoCount} DEMO` : ""} · shortlist moves onto the Next board
+            {demoCount > 0 ? ` · ${demoCount} DEMO` : ""} · a Pass here stays in{" "}
+            {memberLabel(otherMember(member))}&apos;s deck
           </p>
         </div>
 

@@ -85,16 +85,17 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Person  | Passcode (local `.env.local`) |
 |---------|-------------------------------|
-| Tristan | `nails`  |
-| Jimmy   | `mercy`  |
+| Tristan Tully | `nails`  |
+| Jim Evans (`partner`) | `mercy`  |
 
 ## Flow App environment (Vercel)
 
 | Variable | Purpose |
 |----------|---------|
 | `FLOW_SESSION_SECRET` | Random 32+ char string for signed cookies |
-| `FLOW_PASSCODE_TRISTAN` | Tristan's passcode |
-| `FLOW_PASSCODE_PARTNER` | Partner's passcode |
+| `FLOW_PASSCODE_TRISTAN` | Tristan Tully's passcode |
+| `FLOW_PASSCODE_PARTNER` | Jim Evans's passcode (same `/login` — own Review deck) |
+| `FLOW_MEMBER_PARTNER_LABEL` | Optional UI label (default **Jim Evans**; id stays `partner`) |
 | `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `GET /api/next/dirk` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 

@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
   if (isPublic(pathname)) {
     // Signed-in members have no reason to see the login screen again.
     if (pathname === "/login" && member) {
-      return NextResponse.redirect(new URL("/", request.url));
+      const dest = request.nextUrl.searchParams.get("next");
+      return NextResponse.redirect(new URL(dest && dest.startsWith("/") ? dest : "/next", request.url));
     }
     return NextResponse.next();
   }

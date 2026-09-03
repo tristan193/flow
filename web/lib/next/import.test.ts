@@ -116,6 +116,11 @@ test("ingest stage and verdicts move inbox via moveNextStage path", async () => 
     { dealNumber: inbox.deal_number, member: "tristan", action: "pass" },
   ]);
   assert.equal(applied, 1);
+  const [stillInbox] = await query<{ stage: string }>("SELECT stage FROM deals_next");
+  assert.equal(stillInbox.stage, "inbox");
+  await applyNextVerdicts([
+    { dealNumber: inbox.deal_number, member: "partner", action: "pass" },
+  ]);
   const [closed] = await query<{ stage: string }>("SELECT stage FROM deals_next");
   assert.equal(closed.stage, "closed");
 

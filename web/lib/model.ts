@@ -10,7 +10,9 @@
  */
 export const MEMBERS = [
   { id: "tristan", label: process.env.FLOW_MEMBER_TRISTAN_LABEL || "Tristan" },
-  { id: "partner", label: process.env.FLOW_MEMBER_PARTNER_LABEL || "Jimmy" },
+  // Jim Evans (jimevans14408@gmail.com). Id stays `partner` so existing
+  // verdicts stay attributed; only the UI label is configurable.
+  { id: "partner", label: process.env.FLOW_MEMBER_PARTNER_LABEL || "Jim Evans" },
 ] as const;
 
 export type MemberId = (typeof MEMBERS)[number]["id"];
