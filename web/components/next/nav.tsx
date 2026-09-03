@@ -52,8 +52,8 @@ export function NextNav({ memberLabel }: { memberLabel: string }) {
           >
             {memberLabel}
           </button>
-          <Link href="/" className="text-ink-faint hover:text-ink-dim text-[11px] leading-none">
-            Original
+          <Link href="/pipeline" className="text-ink-faint hover:text-ink-dim text-[11px] leading-none">
+            Classic
           </Link>
         </div>
       </div>

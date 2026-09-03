@@ -30,6 +30,12 @@ function isPublic(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  // Default landing is Next Review. Permanent so `/` is not a second home.
+  if (pathname === "/") {
+    return NextResponse.redirect(new URL("/next", request.url), 308);
+  }
+
   const member = await readSession(request.cookies.get(SESSION_COOKIE)?.value);
 
   if (isPublic(pathname)) {
@@ -43,7 +49,7 @@ export async function middleware(request: NextRequest) {
 
   if (!member) {
     const login = new URL("/login", request.url);
-    if (pathname !== "/") login.searchParams.set("next", `${pathname}${search}`);
+    login.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(login);
   }
 
