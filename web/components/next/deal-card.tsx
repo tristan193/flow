@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { cimPackPath } from "@/lib/cim-pack";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import { dealIdLines, sourceDisplayName } from "@/lib/next/display";
 import {
@@ -249,6 +250,23 @@ export function VerdictChips({ deal, member }: { deal: NextDeal; member: MemberI
   );
 }
 
+/** Opens `/cim/TLY-XXX` — the app looks up the PDF in Drive. */
+export function CimPackLink({
+  dealNumber,
+  className = "text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors",
+}: {
+  dealNumber?: string | null;
+  className?: string;
+}) {
+  const href = cimPackPath(dealNumber);
+  if (!href) return null;
+  return (
+    <Link href={href} className={className} onPointerDown={(event) => event.stopPropagation()}>
+      CIM
+    </Link>
+  );
+}
+
 export function SuperLikeMark({ deal }: { deal: NextDeal }) {
   if (!deal.super_liked_at) return null;
   return (
@@ -307,16 +325,19 @@ export function DealListCard({
 
         <CardFooter deal={deal} />
 
-        {deal.url ? (
-          <a
-            href={deal.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors"
-          >
-            Original listing →
-          </a>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {deal.url ? (
+            <a
+              href={deal.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors"
+            >
+              Original listing →
+            </a>
+          ) : null}
+          <CimPackLink dealNumber={deal.deal_number} />
+        </div>
 
         {children}
 

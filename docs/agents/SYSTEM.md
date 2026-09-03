@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/review-parallel`
+Last reviewed: 2026-09-03 · Primary author this pass: `nm/web/cim-open`
 
 ## 1. Product in one paragraph
 
@@ -32,7 +32,9 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Not live:** Google Drive sync (legacy/optional). Local PGlite is for dummy/dev only.
+**CIM packs:** `GET /cim/TLY-XXX` (session) lists Shared Drive parent `0ABYzLaaJ9ebAUk9PVA` for a file named `TLY-XXX*` and redirects to the Drive file view. Read/list only — never `files.create`. Env: `GOOGLE_SERVICE_ACCOUNT_JSON`. Missing file → “CIM not in yet”; missing env → “Drive is not connected”.
+
+**Also:** CSV Drive sync is legacy/optional (`FLOW_DRIVE_FOLDER_ID`). Local PGlite is for dummy/dev only.
 
 ## 3. Attribution triad (everywhere)
 
@@ -139,6 +141,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Seed (local PGlite) | `web/db/seed-data.json` via `seedIfEmpty()` when no `DATABASE_URL` |
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
 | Review UI | `web/components/review-client.tsx`, `deal-card.tsx` · `/next` Review is `listNextInboxDeals()` (stage `inbox` only). Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). |
+| CIM pack opener | `/cim/[id]` — Shared Drive parent `0ABYzLaaJ9ebAUk9PVA` prefix list → Drive file view. Read only. |
 | CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |

@@ -16,6 +16,7 @@ import {
 } from "@/lib/next/model";
 import {
   CardFooter,
+  CimPackLink,
   DealTitleStack,
   DealListCard,
   FitStrip,
@@ -729,18 +730,20 @@ function SwipeDeck({
                     <VerdictChips deal={deal} member={member} />
                     <CardFooter deal={deal} />
                     <div className="border-line flex items-center justify-between gap-2 border-t pt-2.5">
-                      {deal.url ? (
-                        <a
-                          href={deal.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-discuss text-[11.5px]"
-                        >
-                          Original listing →
-                        </a>
-                      ) : (
-                        <span />
-                      )}
+                      <div className="flex flex-wrap items-center gap-x-3">
+                        {deal.url ? (
+                          <a
+                            href={deal.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-discuss text-[11.5px]"
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
+                            Original listing →
+                          </a>
+                        ) : null}
+                        <CimPackLink dealNumber={deal.deal_number} className="text-discuss text-[11.5px]" />
+                      </div>
                       <div className="flex items-center gap-3">
                         {isTop && (
                           <button
