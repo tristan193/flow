@@ -676,7 +676,7 @@ test("CIM intake route is token-only, middleware-allowlisted, and does not creat
   assert.doesNotMatch(auth, /INSERT INTO (cim_)?verdicts_next/);
   assert.doesNotMatch(auth, /normalizeTeaserName|title-string|fuzzy title/);
   assert.match(client, /View CIM/);
-  assert.match(client, /target="_blank"/);
+  assert.match(client, /CimNewTabLink/);
   assert.match(client, /SuperLikeStar/);
   assert.match(client, /CimPackMetrics/);
   assert.doesNotMatch(client, /Written review|Simon/);
