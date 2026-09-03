@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/cim-headline` — DONE
+
+**Scope:** Dedicated `deals_next.cim_name` for Simon’s CIM company/project/nickname; cards swap it in as the headline and keep teaser `title` as the quieter subline
+**Risk:** low (nullable column + display helper; intake still updates one TLY row; no Drive/GCP; no votes)
+**Coords:** none
+
+### Changed
+- `web/db/schema.sql` — `deals_next.cim_name TEXT` (ALTER IF NOT EXISTS)
+- `POST /api/next/cim-intake` — JSON key **`cimName`** (aliases `cim_name`, `companyName`, `company_name`, `headline`) writes `cim_name`; teaser `title` is never overwritten; both names fold into `alias_names`
+- `pipeline/cim_intake.py` — `--cim-name`
+- `DealTitleStack` — New Review, CIM Review, `/next` board, deal detail show headline + subline
+- README / SYSTEM — Simon contract
+
+### Do not touch
+- PR #12 Drive folder create / googleapis-on-Vercel
+- Simon votes
+- Classic `/` Review
+
+### Follow-ups
+- Simon includes `cimName` on each intake POST going forward
+
 ## 2026-09-03 — `nm/web/gmail-authuser` — DONE
 
 **Scope:** Every Gmail deep link Tristan sees in Flow forces `dirk@tullyinvesting.com` (never `/mail/u/0`)
