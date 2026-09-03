@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/review-parallel` — DONE
+
+**Scope:** Parallel `/next` Review decks for Tristan and Jim Evans; combine rules on one shared board
+**Risk:** medium (`verdicts_next` combine; inbound Pass no longer auto-closes)
+**Coords:** none — merged #11 onto `main` after #9 Super Like and #10 ✓✓✓-right
+
+### Changed
+- `web/lib/next/model.ts` `combineNextReview` — either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed; one Pass/`?` stays inbox
+- `web/lib/next/deals.ts` + import verdicts — `setNextVerdict` / Super Like apply combine; a single Pass does not archive
+- `web/lib/model.ts` — partner label default **Jim Evans** (id stays `partner`); same `/login` passcodes
+- `web/app/login/login-form.tsx` + `middleware.ts` — default landing `/next`
+- Swipe row stays **✕ · ? · ✓ · ✓✓✓** (Super Like rightmost, from #10)
+
+### Do not touch
+- Classic `/` Review (`deals` table)
+- Dirk later-stage moves via `POST /api/next/stage`
+- Super Like pin behavior (clears on Pass / Pursue / Closed)
+
+### Follow-ups
+- If prod still has `FLOW_MEMBER_PARTNER_LABEL=Jimmy`, set it to `Jim Evans` (id unchanged)
+
 ## 2026-09-02 — `nm/web/tly-match` — DONE
 
 **Scope:** `/next` Review swipe inbound-only; CIM add lands on `/next` at CIM; stop minting Axial twins
