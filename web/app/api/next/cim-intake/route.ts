@@ -18,14 +18,27 @@ import { applyAuthorizedCimIntake } from "@/lib/next/cim-intake";
  *     "ebitda": 920000,
  *     "margin": 0.22,
  *     "asking": 6500000,
- *     "cimName": "Project Cactus"
+ *     "cimName": "Project Cactus",
+ *     "city": "Austin",
+ *     "state": "TX"
  *   }
  *
- * fileName and cimUrl required. dealNumber, financials, and cimName optional.
+ * fileName and cimUrl required. dealNumber, financials, cimName, and geo optional.
  * Canonical JSON key for the CIM company / project / nickname is `cimName`
  * (aliases: cim_name, companyName, company_name, headline). Empty/omitted
  * leaves title and cim_name alone. When present, writes deals_next.cim_name
  * and keeps the teaser in title (card headline / subline).
+ *
+ * Geo (primary): `city`, `state`. Optional: `country`, `county`, `location`.
+ *   city     aliases: City
+ *   state    aliases: State, region, Region
+ *   country  aliases: Country — no deals_next.country column; writes `state`
+ *            when state is omitted (foreign HQ, e.g. country="Bermuda")
+ *   county   aliases: County — accepted, never required
+ *   location aliases: Location — best-effort parse into city/state when those
+ *            are missing ("Austin, TX" → Austin / TX). Does not invent geo.
+ * Non-empty trimmed values overwrite deals_next.city / state / county.
+ * Omitted or blank geo fields leave the existing DB values alone.
  * TLY comes from the filename; posted dealNumber must match if present.
  * Token only — a browser session is not enough.
  */
@@ -49,6 +62,18 @@ const schema = z.object({
   companyName: z.unknown().optional(),
   company_name: z.unknown().optional(),
   headline: z.unknown().optional(),
+  city: z.unknown().optional(),
+  City: z.unknown().optional(),
+  state: z.unknown().optional(),
+  State: z.unknown().optional(),
+  region: z.unknown().optional(),
+  Region: z.unknown().optional(),
+  county: z.unknown().optional(),
+  County: z.unknown().optional(),
+  country: z.unknown().optional(),
+  Country: z.unknown().optional(),
+  location: z.unknown().optional(),
+  Location: z.unknown().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -73,6 +98,18 @@ export async function POST(request: NextRequest) {
     companyName: parsed.data.companyName,
     company_name: parsed.data.company_name,
     headline: parsed.data.headline,
+    city: parsed.data.city,
+    City: parsed.data.City,
+    state: parsed.data.state,
+    State: parsed.data.State,
+    region: parsed.data.region,
+    Region: parsed.data.Region,
+    county: parsed.data.county,
+    County: parsed.data.County,
+    country: parsed.data.country,
+    Country: parsed.data.Country,
+    location: parsed.data.location,
+    Location: parsed.data.Location,
   });
 
   if (!result.ok) {
@@ -89,6 +126,9 @@ export async function POST(request: NextRequest) {
     margin: result.margin,
     asking: result.asking,
     cimName: result.cimName,
+    city: result.city,
+    state: result.state,
+    county: result.county,
     deal: result.deal,
   });
 }

@@ -56,12 +56,14 @@ Dirk is the stage operator (`FLOW_IMPORT_TOKEN` on `POST /api/next/stage` or imp
 CIM intake (Simon, after the PDF is already in the shared Drive parent):
 
 ```powershell
-python pipeline/cim_intake.py --file-name "TLY-092 Headline.pdf" --cim-url "https://drive.google.com/file/d/FILE_ID/view" --cim-name "Project Cactus"
+python pipeline/cim_intake.py --file-name "TLY-092 Headline.pdf" --cim-url "https://drive.google.com/file/d/FILE_ID/view" --cim-name "Project Cactus" --city Austin --state TX
 ```
 
-`POST /api/next/cim-intake` with the same bearer. Updates the existing `TLY-XXX` `deals_next` row only (`cim_url`, provided financials, optional `cimName` → `deals_next.cim_name`, stage CIM). Does not create a card or vote. No Google credentials on Vercel.
+`POST /api/next/cim-intake` with the same bearer. Updates the existing `TLY-XXX` `deals_next` row only (`cim_url`, provided financials, optional `cimName` → `deals_next.cim_name`, optional city/state, stage CIM). Does not create a card or vote. No Google credentials on Vercel.
 
 Simon’s CIM display name JSON key is **`cimName`** (aliases: `cim_name`, `companyName`, `company_name`, `headline`). When present and non-empty it writes `deals_next.cim_name`. Cards then show that as the headline and keep the teaser in `title` as the quieter subline. Omitted/empty leaves both fields alone. Teaser `title` is never overwritten, so aliases/search still match the old listing name.
+
+Simon’s geo JSON keys are **`city`** and **`state`** (aliases: `City`; `State` / `region` / `Region`). Optional **`country`** (alias `Country`) is for foreign HQ only — there is no `deals_next.country` column, so `country` writes `state` when `state` is omitted (e.g. `country: "Bermuda"` → `state = Bermuda`). Optional `location` / `Location` is best-effort parsed into city/state when those are missing (`"Austin, TX"` → Austin / TX); nothing is invented. Optional `county` is accepted but never required. Non-empty values overwrite; omitted/blank geo fields leave the existing row alone.
 
 ## What Flow App does
 
