@@ -172,8 +172,11 @@ test("token can patch CIM financials by TLY; session cannot; stage stays put", a
 test("CIM financials route is token-only and does not write stage", () => {
   const route = readFileSync(path.join(process.cwd(), "app/api/next/cim-financials/route.ts"), "utf8");
   const auth = readFileSync(path.join(process.cwd(), "lib/next/cim-financials-auth.ts"), "utf8");
+  const middleware = readFileSync(path.join(process.cwd(), "middleware.ts"), "utf8");
   assert.match(route, /FLOW_IMPORT_TOKEN/);
   assert.match(route, /applyAuthorizedCimFinancials/);
   assert.doesNotMatch(auth, /SET stage|stage =/);
   assert.match(auth, /Never writes stage/);
+  assert.match(middleware, /\/api\/next\/cim-financials/);
+  assert.match(middleware, /\/api\/next\/cim-url/);
 });
