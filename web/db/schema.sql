@@ -289,6 +289,8 @@ CREATE TABLE IF NOT EXISTS deals_next (
   ebitda              DOUBLE PRECISION,
   sde                 DOUBLE PRECISION,
   asking              DOUBLE PRECISION,
+  -- Pack margin ratio (0.22 = 22%). Dirk stamps this after Simon reads the CIM.
+  margin              DOUBLE PRECISION,
 
   business_model_type TEXT NOT NULL DEFAULT '',
   needs_llm           JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -318,6 +320,7 @@ CREATE INDEX IF NOT EXISTS ix_deals_next_fingerprint ON deals_next (fingerprint)
 CREATE INDEX IF NOT EXISTS ix_deals_next_source_deal_id ON deals_next (source_deal_id);
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_url TEXT;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS super_liked_at TIMESTAMPTZ;
+ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS margin DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS ix_deals_next_super_liked ON deals_next (super_liked_at DESC NULLS LAST);
 -- Unique source_deal_id is applied from lib/next/merge.ts once duplicate rows
 -- are collapsed. Putting CREATE UNIQUE INDEX here would fail applySchema while
@@ -429,12 +432,7 @@ SELECT
     WHEN d.sde    IS NOT NULL THEN 'SDE'
     ELSE NULL
   END AS earnings_basis,
-  (d.ebitda IS NULL AND d.sde IS NOT NULL) AS earnings_is_sde,
-  CASE
-    WHEN d.revenue > 0
-      THEN ROUND((COALESCE(d.ebitda, d.sde) / d.revenue)::numeric, 4)::float8
-    ELSE NULL
-  END AS margin
+  (d.ebitda IS NULL AND d.sde IS NOT NULL) AS earnings_is_sde
 FROM deals_next d;
 
 -- Canonical /next board: inbox (review queue) + shortlist, nda, cim, pursuing, closed.

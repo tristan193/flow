@@ -97,8 +97,23 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
         ? row.earnings_basis
         : null,
     earnings_is_sde: Boolean(row.earnings_is_sde),
-    margin: row.margin == null ? null : Number(row.margin),
+    margin: resolveMargin(row),
   };
+}
+
+/** Dirk-stamped deals_next.margin wins; otherwise ebitda|sde / revenue (old view). */
+function resolveMargin(row: Record<string, unknown>): number | null {
+  if (row.margin != null && row.margin !== "") {
+    const stored = Number(row.margin);
+    if (Number.isFinite(stored)) return stored;
+  }
+  const revenue = row.revenue == null ? null : Number(row.revenue);
+  const earnings =
+    row.ebitda != null ? Number(row.ebitda) : row.sde != null ? Number(row.sde) : null;
+  if (revenue != null && revenue > 0 && earnings != null && Number.isFinite(earnings)) {
+    return Math.round((earnings / revenue) * 1e4) / 1e4;
+  }
+  return null;
 }
 
 function normalizeVerdict(row: Record<string, unknown>): NextVerdictRow | null {

@@ -6,13 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Fit, type FitLevel } from "@/lib/fit";
 import { assessNextFit, byPinnedThenFit } from "@/lib/next/fit";
-import {
-  type MemberId,
-  type NextDeal,
-  type NextNoteRow,
-  isNextReviewStage,
-  type VerdictAction,
-} from "@/lib/next/model";
+import { type MemberId, type NextDeal, isNextReviewStage, type VerdictAction } from "@/lib/next/model";
 import { CimReviewClient } from "./cim-review-client";
 import {
   CardFooter,
@@ -34,12 +28,10 @@ type NotePrompt = { id: number; title: string; action: "short" | "discuss" };
 export function NextReviewClient({
   deals,
   cimDeals = [],
-  notesByDealId = {},
   member,
 }: {
   deals: NextDeal[];
   cimDeals?: NextDeal[];
-  notesByDealId?: Record<number, NextNoteRow[]>;
   member: MemberId;
 }) {
   const router = useRouter();
@@ -254,7 +246,7 @@ export function NextReviewClient({
       </div>
 
       {lane === "cim" ? (
-        <CimReviewClient deals={cimDeals} notesByDealId={notesByDealId} member={member} />
+        <CimReviewClient deals={cimDeals} member={member} />
       ) : (
         <>
           <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />

@@ -5,45 +5,30 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { cimPackPath } from "@/lib/cim-pack-id";
-import { assessNextFit } from "@/lib/next/fit";
 import {
   CIM_VERDICT_LABELS,
   cimCombineHint,
-  memberLabel,
   nextCimDeck,
-  partnerNotesOnly,
   type MemberId,
   type NextDeal,
-  type NextNoteRow,
   type VerdictAction,
 } from "@/lib/next/model";
-import { DealTitleStack, FitStrip, MetricRow, VerdictChips, Where } from "./deal-card";
-
-type NotesMap = Record<number, NextNoteRow[]>;
+import { CimPackMetrics, DealTitleStack, SuperLikeStar, VerdictChips, Where } from "./deal-card";
 
 export function CimReviewClient({
   deals,
-  notesByDealId,
   member,
 }: {
   deals: NextDeal[];
-  notesByDealId: NotesMap;
   member: MemberId;
 }) {
   const router = useRouter();
   const [overrides, setOverrides] = useState<Record<number, VerdictAction | null>>({});
   const [skipped, setSkipped] = useState<number[]>([]);
   const [failed, setFailed] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteBusy, setNoteBusy] = useState(false);
-
-  const scored = useMemo(
-    () => deals.map((deal) => ({ ...deal, fit: assessNextFit(deal) })),
-    [deals],
-  );
 
   const queue = useMemo(() => {
-    const withOverrides = scored.map((deal) => {
+    const withOverrides = deals.map((deal) => {
       if (!Object.prototype.hasOwnProperty.call(overrides, deal.id)) return deal;
       const action = overrides[deal.id];
       return {
@@ -65,7 +50,7 @@ export function CimReviewClient({
       };
     });
     return nextCimDeck(withOverrides, member).filter((deal) => !skipped.includes(deal.id));
-  }, [scored, overrides, skipped, member]);
+  }, [deals, overrides, skipped, member]);
 
   const top = queue[0];
 
@@ -91,30 +76,9 @@ export function CimReviewClient({
     (deal: NextDeal, action: VerdictAction) => {
       setOverrides((prev) => ({ ...prev, [deal.id]: action }));
       void send(deal.id, action);
-      setNoteDraft("");
     },
     [send],
   );
-
-  async function saveNote(dealId: number) {
-    const body = noteDraft.trim();
-    if (!body) return;
-    setNoteBusy(true);
-    try {
-      const response = await fetch("/api/next/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId, body }),
-      });
-      if (!response.ok) throw new Error("rejected");
-      setNoteDraft("");
-      router.refresh();
-    } catch {
-      setFailed(true);
-    } finally {
-      setNoteBusy(false);
-    }
-  }
 
   if (deals.length === 0) {
     return (
@@ -140,7 +104,6 @@ export function CimReviewClient({
   }
 
   const packHref = cimPackPath(top.deal_number);
-  const partnerNotes = partnerNotesOnly(notesByDealId[top.id] ?? []);
 
   return (
     <div className="space-y-3">
@@ -153,7 +116,11 @@ export function CimReviewClient({
       <p className="text-ink-faint text-[12px]">{cimCombineHint(top.cim_verdicts)}</p>
 
       <article className="border-line bg-surface overflow-hidden rounded-2xl border shadow-xl shadow-black/40">
-        <FitStrip fit={top.fit} />
+        {top.super_liked_at ? (
+          <div className="flex items-center px-4 pt-3">
+            <SuperLikeStar deal={top} />
+          </div>
+        ) : null}
         <div className="space-y-3 p-4">
           {packHref ? (
             <a
@@ -165,7 +132,7 @@ export function CimReviewClient({
               View CIM
             </a>
           ) : null}
-          <MetricRow deal={top} fit={top.fit} />
+          <CimPackMetrics deal={top} />
           <DealTitleStack
             deal={top}
             titleAs="h2"
@@ -174,38 +141,6 @@ export function CimReviewClient({
           <Where deal={top} />
 
           <VerdictChips deal={top} member={member} lane="cim" />
-
-          <section className="space-y-2">
-            <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">Notes</p>
-            <div className="flex gap-2">
-              <input
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                placeholder="Add a note for your partner"
-                className="border-line bg-surface-raised text-ink flex-1 rounded-lg border px-3 py-2 text-[13px]"
-              />
-              <button
-                type="button"
-                disabled={noteBusy || !noteDraft.trim()}
-                onClick={() => void saveNote(top.id)}
-                className="bg-ink text-canvas rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50"
-              >
-                Save
-              </button>
-            </div>
-            {partnerNotes.length > 0 && (
-              <ol className="max-h-28 space-y-1.5 overflow-y-auto">
-                {partnerNotes.map((note) => (
-                  <li key={note.id} className="text-[13px] leading-relaxed">
-                    <span className="text-ink-faint font-semibold">
-                      {note.member === member ? "You" : memberLabel(note.member)} ·{" "}
-                    </span>
-                    {note.body}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
 
           <div className="border-line flex items-center justify-between border-t pt-2">
             <Link href={`/next/deals/${top.id}`} className="text-ink-faint text-[11.5px]">

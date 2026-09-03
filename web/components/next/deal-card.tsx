@@ -10,6 +10,7 @@ import {
   type NextDeal,
   type VerdictAction,
   businessModelLabel,
+  cimPackMetricSlots,
   earningsLabel,
   locationLabel,
   memberLabel,
@@ -296,6 +297,34 @@ export function SuperLikeMark({ deal }: { deal: NextDeal }) {
     <span className="text-short font-semibold" title="Super Liked — stays at the top of this stack">
       ✓✓✓
     </span>
+  );
+}
+
+/** CIM Review badge. New mode keeps ✓✓✓; CIM shows a star only. */
+export function SuperLikeStar({ deal }: { deal: NextDeal }) {
+  if (!deal.super_liked_at) return null;
+  return (
+    <span className="text-short text-[18px] leading-none" title="Super Liked">
+      ★
+    </span>
+  );
+}
+
+/** Pack numbers only. Missing fields are omitted — no empty labels, no "No financials". */
+export function CimPackMetrics({ deal }: { deal: NextDeal }) {
+  const slots = cimPackMetricSlots(deal);
+  if (slots.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-end gap-4">
+      {slots.map((slot) => (
+        <div key={slot.label} className="min-w-0">
+          <div className="tabular text-ink-dim text-[15px] leading-none font-semibold">{slot.value}</div>
+          <div className="text-ink-faint mt-1.5 truncate text-[10.5px] tracking-[0.05em] uppercase">
+            {slot.label}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

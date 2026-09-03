@@ -260,3 +260,26 @@ export interface NextDeal extends NextDealRow {
   /** CIM-lane votes only. Review Likes never live here. Simon never appears. */
   cim_verdicts: Partial<Record<MemberId, NextVerdictRow>>;
 }
+
+export type CimPackMetricSlot = { label: string; value: string };
+
+/**
+ * CIM Review numbers from the pack: revenue, EBITDA, margin, asking.
+ * Omit a field when it is missing — never a "No financials" / "no earnings" flag.
+ * EBITDA is deals_next.ebitda only (not coalesced SDE).
+ */
+export function cimPackMetricSlots(
+  deal: Pick<NextDealRow, "revenue" | "ebitda" | "margin" | "asking">,
+): CimPackMetricSlot[] {
+  const slots: CimPackMetricSlot[] = [];
+  const revenue = money(deal.revenue);
+  if (revenue) slots.push({ label: "revenue", value: revenue });
+  const ebitda = money(deal.ebitda);
+  if (ebitda) slots.push({ label: "EBITDA", value: ebitda });
+  if (deal.margin != null && Number.isFinite(deal.margin)) {
+    slots.push({ label: "margin", value: `${Math.round(deal.margin * 100)}%` });
+  }
+  const asking = money(deal.asking);
+  if (asking) slots.push({ label: "asking", value: asking });
+  return slots;
+}
