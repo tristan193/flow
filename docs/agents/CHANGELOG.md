@@ -29,6 +29,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-09-03 — `nm/web/cim-headline` — DONE
 
+**Scope:** Tristan / Jim `notes_next` on CIM-stage cards only; Simon never rendered
+**Risk:** low (read-only card display + existing notes API; no schema change)
+**Coords:** none — follows the `cim_name` headline ship
+
+### Changed
+- `cimStagePartnerNotes()` — empty unless `stage === cim`; `partnerNotesOnly` drops Simon
+- `CimPartnerNotes` on CIM Review and `/next` CIM board cards (hidden when empty)
+- `/next/deals/[id]` notes composer/list only at CIM
+
+### Do not touch
+- New / Shortlist / NDA note sections (stay hidden)
+- Simon votes
+- Drive / GCP on Vercel
+
+### Follow-ups
+- none
+
+## 2026-09-03 — `nm/web/cim-headline` — DONE
+
 **Scope:** Dedicated `deals_next.cim_name` for Simon’s CIM company/project/nickname; cards swap it in as the headline and keep teaser `title` as the quieter subline
 **Risk:** low (nullable column + display helper; intake still updates one TLY row; no Drive/GCP; no votes)
 **Coords:** none
