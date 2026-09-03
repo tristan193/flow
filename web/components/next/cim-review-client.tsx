@@ -9,32 +9,24 @@ import { assessNextFit } from "@/lib/next/fit";
 import {
   CIM_VERDICT_LABELS,
   cimCombineHint,
-  memberLabel,
   nextCimDeck,
   type MemberId,
   type NextDeal,
-  type NextNoteRow,
   type VerdictAction,
 } from "@/lib/next/model";
 import { DealTitleStack, FitStrip, MetricRow, VerdictChips, Where } from "./deal-card";
 
-type NotesMap = Record<number, NextNoteRow[]>;
-
 export function CimReviewClient({
   deals,
-  notesByDealId,
   member,
 }: {
   deals: NextDeal[];
-  notesByDealId: NotesMap;
   member: MemberId;
 }) {
   const router = useRouter();
   const [overrides, setOverrides] = useState<Record<number, VerdictAction | null>>({});
   const [skipped, setSkipped] = useState<number[]>([]);
   const [failed, setFailed] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteBusy, setNoteBusy] = useState(false);
 
   const scored = useMemo(
     () => deals.map((deal) => ({ ...deal, fit: assessNextFit(deal) })),
@@ -90,30 +82,9 @@ export function CimReviewClient({
     (deal: NextDeal, action: VerdictAction) => {
       setOverrides((prev) => ({ ...prev, [deal.id]: action }));
       void send(deal.id, action);
-      setNoteDraft("");
     },
     [send],
   );
-
-  async function saveNote(dealId: number) {
-    const body = noteDraft.trim();
-    if (!body) return;
-    setNoteBusy(true);
-    try {
-      const response = await fetch("/api/next/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId, body }),
-      });
-      if (!response.ok) throw new Error("rejected");
-      setNoteDraft("");
-      router.refresh();
-    } catch {
-      setFailed(true);
-    } finally {
-      setNoteBusy(false);
-    }
-  }
 
   if (deals.length === 0) {
     return (
@@ -138,9 +109,6 @@ export function CimReviewClient({
     );
   }
 
-  const notes = notesByDealId[top.id] ?? [];
-  const simon = notes.find((note) => note.member === "simon") ?? null;
-  const partnerNotes = notes.filter((note) => note.member !== "simon");
   const packHref = cimPackPath(top.deal_number);
 
   return (
@@ -174,48 +142,7 @@ export function CimReviewClient({
           />
           <Where deal={top} />
 
-          {simon && (
-            <div className="border-flag/30 bg-flag-bg/30 rounded-xl border px-3.5 py-3">
-              <p className="text-ink-faint mb-1.5 text-[11px] font-bold tracking-wide uppercase">
-                Written review
-              </p>
-              <p className="text-ink text-[13.5px] leading-relaxed">{simon.body}</p>
-            </div>
-          )}
-
           <VerdictChips deal={top} member={member} lane="cim" />
-
-          <section className="space-y-2">
-            <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">Notes</p>
-            <div className="flex gap-2">
-              <input
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                placeholder="Add a note for your partner"
-                className="border-line bg-surface-raised text-ink flex-1 rounded-lg border px-3 py-2 text-[13px]"
-              />
-              <button
-                type="button"
-                disabled={noteBusy || !noteDraft.trim()}
-                onClick={() => void saveNote(top.id)}
-                className="bg-ink text-canvas rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50"
-              >
-                Save
-              </button>
-            </div>
-            {partnerNotes.length > 0 && (
-              <ol className="space-y-1.5">
-                {partnerNotes.slice(0, 4).map((note) => (
-                  <li key={note.id} className="text-[13px] leading-relaxed">
-                    <span className="text-ink-faint font-semibold">
-                      {memberLabel(note.member)} ·{" "}
-                    </span>
-                    {note.body}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
 
           <div className="border-line flex items-center justify-between border-t pt-2">
             <Link href={`/next/deals/${top.id}`} className="text-ink-faint text-[11.5px]">

@@ -9,7 +9,6 @@ import { assessNextFit, byPinnedThenFit } from "@/lib/next/fit";
 import {
   type MemberId,
   type NextDeal,
-  type NextNoteRow,
   isNextReviewStage,
   type VerdictAction,
 } from "@/lib/next/model";
@@ -34,12 +33,10 @@ type NotePrompt = { id: number; title: string; action: "short" | "discuss" };
 export function NextReviewClient({
   deals,
   cimDeals = [],
-  notesByDealId = {},
   member,
 }: {
   deals: NextDeal[];
   cimDeals?: NextDeal[];
-  notesByDealId?: Record<number, NextNoteRow[]>;
   member: MemberId;
 }) {
   const router = useRouter();
@@ -254,7 +251,7 @@ export function NextReviewClient({
       </div>
 
       {lane === "cim" ? (
-        <CimReviewClient deals={cimDeals} notesByDealId={notesByDealId} member={member} />
+        <CimReviewClient deals={cimDeals} member={member} />
       ) : (
         <>
           <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />

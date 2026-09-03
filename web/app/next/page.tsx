@@ -2,15 +2,9 @@ import { NextNav } from "@/components/next/nav";
 import { NextReviewClient } from "@/components/next/review-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { listNextCimDeals, listNextInboxDeals, listNextNotesForDeals } from "@/lib/next/deals";
+import { listNextCimDeals, listNextInboxDeals } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
-import {
-  memberLabel,
-  nextCimDeck,
-  nextInboxDeck,
-  otherMember,
-  type NextNoteRow,
-} from "@/lib/next/model";
+import { memberLabel, nextCimDeck, nextInboxDeck, otherMember } from "@/lib/next/model";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +18,6 @@ export default async function NextReviewPage() {
   const myDeck = nextInboxDeck(deals, member);
 
   const cimDeals = await listNextCimDeals();
-  const notesMap = await listNextNotesForDeals(cimDeals.map((deal) => deal.id));
-  const notesByDealId: Record<number, NextNoteRow[]> = Object.fromEntries(notesMap);
   const myCim = nextCimDeck(cimDeals, member);
 
   return (
@@ -46,12 +38,7 @@ export default async function NextReviewPage() {
           </p>
         </div>
 
-        <NextReviewClient
-          deals={deals}
-          cimDeals={cimDeals}
-          notesByDealId={notesByDealId}
-          member={member}
-        />
+        <NextReviewClient deals={deals} cimDeals={cimDeals} member={member} />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
           New is inbound teasers — swipe only. CIM is packs with a stamped Drive file URL.
