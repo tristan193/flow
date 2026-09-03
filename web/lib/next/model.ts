@@ -38,6 +38,7 @@ export {
 };
 export type { MemberId, VerdictAction };
 
+import { isDriveFileUrl } from "../cim-pack-id";
 import {
   NEXT_BOARD_STAGES,
   NEXT_STAGES,
@@ -145,8 +146,9 @@ export function cimCombineHint(
 }
 
 /**
- * CIM Review membership. A card belongs if it has a stamped `cim_url` and/or
- * is at stage CIM. Inbound stays in New; Pursuing / Closed already left.
+ * CIM Review membership. A card belongs only if Dirk stamped a Drive *file*
+ * URL on `cim_url`. Stage CIM alone is not enough (TLY-001 has no pack).
+ * Inbound stays in New; Pursuing / Closed already left.
  */
 export function isNextCimReviewCard(deal: {
   stage: string;
@@ -154,7 +156,7 @@ export function isNextCimReviewCard(deal: {
 }): boolean {
   const stage = coerceNextStage(deal.stage);
   if (stage === "inbox" || stage === "closed" || stage === "pursuing") return false;
-  return stage === "cim" || Boolean(deal.cim_url?.trim());
+  return isDriveFileUrl(deal.cim_url);
 }
 
 /** Inbound cards this member has not voted on yet. Partner votes do not hide them. */

@@ -10,9 +10,7 @@ import {
   type MemberId,
   type NextDeal,
   type NextNoteRow,
-  isTeamShortlist,
   isNextReviewStage,
-  PASS_REASONS,
   type VerdictAction,
 } from "@/lib/next/model";
 import { CimReviewClient } from "./cim-review-client";
@@ -20,7 +18,6 @@ import {
   CardFooter,
   CimPackLink,
   DealTitleStack,
-  DealListCard,
   FitStrip,
   LeadLine,
   MetricRow,
@@ -33,21 +30,6 @@ import { VerdictNotePrompt } from "../verdict-note";
 type Override = { action: VerdictAction | null; reason: string | null; note: string | null };
 type Scored = NextDeal & { fit: Fit };
 type NotePrompt = { id: number; title: string; action: "short" | "discuss" };
-
-const FILTERS = [
-  { id: "todo", label: "To review" },
-  { id: "priority", label: "Priority" },
-  { id: "inbox", label: "In the box" },
-  { id: "unknown", label: "No financials" },
-  { id: "out", label: "Out of box" },
-  { id: "short", label: "Shortlisted" },
-  { id: "discuss", label: "To discuss" },
-  { id: "needs", label: "Needs info" },
-  { id: "train", label: "Train AI" },
-  { id: "all", label: "Everything" },
-] as const;
-
-type FilterId = (typeof FILTERS)[number]["id"];
 
 export function NextReviewClient({
   deals,
@@ -62,8 +44,6 @@ export function NextReviewClient({
 }) {
   const router = useRouter();
   const [lane, setLane] = useState<"new" | "cim">("new");
-  const [mode, setMode] = useState<"swipe" | "list">("swipe");
-  const [filter, setFilter] = useState<FilterId>("todo");
   const [overrides, setOverrides] = useState<Record<number, Override>>({});
   const [pins, setPins] = useState<Record<number, string | null>>({});
   const [history, setHistory] = useState<{ id: number; kind: "verdict" | "skip" }[]>(
@@ -180,31 +160,6 @@ export function NextReviewClient({
     [send],
   );
 
-  const toggle = useCallback(
-    (deal: NextDeal, action: VerdictAction) => {
-      const current = verdictOf(deal);
-      if (current?.action === action) {
-        apply(deal, null);
-        setNotePrompt((prev) => (prev?.id === deal.id ? null : prev));
-        return;
-      }
-      apply(
-        deal,
-        action,
-        action === "pass" ? (current?.reason ?? null) : null,
-        action === "pass" ? null : (current?.note ?? null),
-      );
-      // List "To review" drops the card as soon as a verdict lands — surface the
-      // same post-action note prompt used in swipe so notes aren't lost.
-      if (action === "short" || action === "discuss") {
-        setNotePrompt({ id: deal.id, title: deal.title, action });
-      } else {
-        setNotePrompt(null);
-      }
-    },
-    [apply, verdictOf],
-  );
-
   const commitSwipe = useCallback(
     (deal: NextDeal, action: VerdictAction) => {
       setHistory((prev) => [...prev, { id: deal.id, kind: "verdict" }]);
@@ -273,50 +228,6 @@ export function NextReviewClient({
     return counts;
   }, [queue]);
 
-  const visible = useMemo(() => {
-    const rows = scored.filter((deal) => {
-      const verdict = verdictOf(deal);
-      const myAction = verdict?.action ?? null;
-
-      // Pass hides the deal from this member's views. It only resurfaces under
-      // Shortlisted when the other partner shortlists.
-      if (myAction === "pass" && filter !== "short") return false;
-
-      // Board stages (CIM / Pursuing / Closed / …) never belong in Review,
-      // even if Tristan never swiped a verdict on that card.
-      if (!isNextReviewStage(deal.stage)) return false;
-
-      switch (filter) {
-        case "todo":
-          return isNextReviewStage(deal.stage) && !verdict;
-        case "priority":
-          return deal.fit.level === "priority";
-        case "inbox":
-          return deal.fit.level === "priority" || deal.fit.level === "fits";
-        case "unknown":
-          return deal.fit.level === "unknown";
-        case "out":
-          return deal.fit.level === "out" || deal.fit.level === "low";
-        case "needs":
-          return deal.needs_llm.length > 0;
-        case "short":
-          // Either partner short, or both discuss.
-          return isTeamShortlist(deal, member, myAction);
-        case "discuss":
-          return (
-            myAction === "discuss" ||
-            deal.verdicts.tristan?.action === "discuss" ||
-            deal.verdicts.partner?.action === "discuss"
-          );
-        case "train":
-          return false;
-        default:
-          return true;
-      }
-    });
-    return rows.sort(byPinnedThenFit);
-  }, [scored, filter, verdictOf, member]);
-
   return (
     <div className="space-y-3">
       <div className="border-line bg-surface flex gap-1 rounded-xl border p-1">
@@ -346,148 +257,35 @@ export function NextReviewClient({
         <CimReviewClient deals={cimDeals} notesByDealId={notesByDealId} member={member} />
       ) : (
         <>
-      <div className="border-line bg-surface flex gap-1 rounded-xl border p-1">
-        {(["swipe", "list"] as const).map((value) => (
-          <button
-            key={value}
-            onClick={() => setMode(value)}
-            className={`flex-1 rounded-lg px-3 py-2 text-[13.5px] font-semibold capitalize transition-colors ${
-              mode === value
-                ? "bg-surface-raised text-ink"
-                : "text-ink-faint hover:bg-surface-raised/60 hover:text-ink-dim"
-            }`}
-          >
-            {value === "swipe" ? "Swipe" : "List"}
-          </button>
-        ))}
-      </div>
+          <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />
 
-      <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />
-
-      {failed && (
-        <p className="bg-pass-bg text-pass rounded-lg px-3 py-2 text-xs">
-          Could not save that to the server. Your last action is showing locally but is not stored
-          yet — check your connection.
-        </p>
-      )}
-
-      {notePrompt && (
-        <VerdictNotePrompt
-          action={notePrompt.action}
-          title={notePrompt.title}
-          note={overrides[notePrompt.id]?.note ?? null}
-          onSave={savePromptNote}
-          onSkip={() => setNotePrompt(null)}
-        />
-      )}
-
-      {mode === "swipe" ? (
-        <SwipeDeck
-          queue={queue}
-          total={deals.length}
-          member={member}
-          onCommit={commitSwipe}
-          onSuperLike={(deal) => applyPin(deal, true)}
-          onSkip={skipDeal}
-          onUndo={undo}
-          canUndo={history.length > 0}
-          onBrowse={() => setMode("list")}
-        />
-      ) : (
-        <>
-          <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
-            {FILTERS.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => setFilter(option.id)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                  filter === option.id
-                    ? "border-ink bg-ink text-canvas"
-                    : "border-line bg-surface text-ink-dim hover:border-line-bright hover:text-ink"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {visible.length === 0 ? (
-            <p className="text-ink-faint py-12 text-center text-sm">
-              {filter === "todo"
-                ? "All caught up. Nothing left to review."
-                : "Nothing matches this filter."}
+          {failed && (
+            <p className="bg-pass-bg text-pass rounded-lg px-3 py-2 text-xs">
+              Could not save that to the server. Your last action is showing locally but is not stored
+              yet — check your connection.
             </p>
-          ) : (
-            <div className="space-y-2">
-              {visible.map((deal) => {
-                const verdict = verdictOf(deal);
-                return (
-                  <DealListCard key={deal.id} deal={deal} fit={deal.fit} member={member}>
-                    <div className="flex gap-1.5 pt-0.5">
-                      <ActionButton
-                        active={Boolean(deal.super_liked_at)}
-                        tone="super"
-                        onClick={() => applyPin(deal, true)}
-                        title="Super Like — pin to top"
-                      >
-                        ✓✓✓
-                      </ActionButton>
-                      <ActionButton
-                        active={verdict?.action === "short"}
-                        tone="short"
-                        onClick={() => toggle(deal, "short")}
-                        title="Shortlist"
-                      >
-                        ✓
-                      </ActionButton>
-                      <ActionButton
-                        active={verdict?.action === "discuss"}
-                        tone="discuss"
-                        onClick={() => toggle(deal, "discuss")}
-                      >
-                        Discuss
-                      </ActionButton>
-                      <ActionButton
-                        active={verdict?.action === "pass"}
-                        tone="pass"
-                        onClick={() => toggle(deal, "pass")}
-                      >
-                        Pass
-                      </ActionButton>
-                    </div>
-
-                    {verdict?.action === "pass" && (
-                      <div className="border-line border-t border-dashed pt-3">
-                        <p className="text-ink-faint mb-2 text-xs font-semibold">
-                          Why pass? This is what a buy box eventually gets tuned against.
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {PASS_REASONS.map((reason) => (
-                            <button
-                              key={reason}
-                              onClick={() =>
-                                apply(deal, "pass", verdict.reason === reason ? null : reason)
-                              }
-                              className={`rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors ${
-                                verdict.reason === reason
-                                  ? "border-pass bg-pass text-white"
-                                  : "border-line bg-surface text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass"
-                              }`}
-                            >
-                              {reason}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                  </DealListCard>
-                );
-              })}
-            </div>
           )}
-        </>
-      )}
+
+          {notePrompt && (
+            <VerdictNotePrompt
+              action={notePrompt.action}
+              title={notePrompt.title}
+              note={overrides[notePrompt.id]?.note ?? null}
+              onSave={savePromptNote}
+              onSkip={() => setNotePrompt(null)}
+            />
+          )}
+
+          <SwipeDeck
+            queue={queue}
+            total={deals.length}
+            member={member}
+            onCommit={commitSwipe}
+            onSuperLike={(deal) => applyPin(deal, true)}
+            onSkip={skipDeal}
+            onUndo={undo}
+            canUndo={history.length > 0}
+          />
         </>
       )}
     </div>
@@ -545,48 +343,6 @@ function QueueMeter({
   );
 }
 
-function ActionButton({
-  active,
-  tone,
-  onClick,
-  children,
-  title,
-}: {
-  active: boolean;
-  tone: "short" | "super" | "discuss" | "pass";
-  onClick: () => void;
-  children: React.ReactNode;
-  title?: string;
-}) {
-  const activeTone = {
-    short: "border-short bg-short text-canvas hover:brightness-110",
-    super: "border-short bg-short text-canvas hover:brightness-110",
-    discuss: "border-discuss bg-discuss text-canvas hover:brightness-110",
-    pass: "border-pass bg-pass text-canvas hover:brightness-110",
-  }[tone];
-
-  const idleTone = {
-    short: "border-line bg-surface-raised text-short hover:border-short hover:bg-short-bg",
-    super: "border-line bg-surface-raised text-short hover:border-short hover:bg-short-bg",
-    discuss:
-      "border-line bg-surface-raised text-ink-dim hover:border-discuss hover:bg-discuss-bg hover:text-discuss",
-    pass: "border-line bg-surface-raised text-ink-dim hover:border-pass hover:bg-pass-bg hover:text-pass",
-  }[tone];
-
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className={`flex-1 rounded-lg border py-2 text-[12.5px] font-semibold transition-colors ${
-        active ? activeTone : idleTone
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function SwipeDeck({
   queue,
   total,
@@ -596,7 +352,6 @@ function SwipeDeck({
   onSkip,
   onUndo,
   canUndo,
-  onBrowse,
 }: {
   queue: Scored[];
   total: number;
@@ -606,7 +361,6 @@ function SwipeDeck({
   onSkip: (deal: NextDeal) => void;
   onUndo: () => void;
   canUndo: boolean;
-  onBrowse: () => void;
 }) {
   const top = queue[0];
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -674,12 +428,6 @@ function SwipeDeck({
       <div className="py-16 text-center">
         <p className="text-[17px] font-semibold">All caught up.</p>
         <p className="text-ink-dim mt-1.5 text-[13.5px]">Nothing left in the deck.</p>
-        <button
-          onClick={onBrowse}
-          className="border-line bg-surface mt-4 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold"
-        >
-          Browse everything in List view
-        </button>
       </div>
     );
   }

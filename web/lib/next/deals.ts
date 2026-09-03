@@ -163,7 +163,7 @@ export async function listNextInboxDeals(): Promise<NextDeal[]> {
   return deals.filter((deal) => deal.stage === "inbox");
 }
 
-/** CIM Review swipe. Stamped `cim_url` and/or stage CIM — not the pipeline reader. */
+/** CIM Review swipe. Stamped Drive file `cim_url` only — stage CIM is not enough. */
 export async function listNextCimDeals(): Promise<NextDeal[]> {
   const deals = await listNextDeals();
   return deals.filter(isNextCimReviewCard);

@@ -265,7 +265,7 @@ export function VerdictChips({
   );
 }
 
-/** Opens `/cim/TLY-XXX` — the app 302s to the stamped Drive file URL. */
+/** Opens `/cim/TLY-XXX` in a new tab so the swipe deck keeps its place. */
 export function CimPackLink({
   dealNumber,
   className = "text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors",
@@ -278,9 +278,15 @@ export function CimPackLink({
   const href = cimPackPath(dealNumber);
   if (!href) return null;
   return (
-    <Link href={href} className={className} onPointerDown={(event) => event.stopPropagation()}>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       {children}
-    </Link>
+    </a>
   );
 }
 

@@ -89,32 +89,28 @@ test("combineNextCim stays CIM unless both Pass or both Pursue", () => {
   }
 });
 
-test("CIM deck is stamped cim_url and/or stage CIM; inbound and finished stay out", () => {
-  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: null }), true);
-  assert.equal(
-    isNextCimReviewCard({
-      stage: "nda",
-      cim_url: "https://drive.google.com/file/d/abcFile031/view",
-    }),
-    true,
-  );
-  assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: "https://drive.google.com/file/d/x/view" }), false);
-  assert.equal(isNextCimReviewCard({ stage: "pursuing", cim_url: "https://drive.google.com/file/d/x/view" }), false);
-  assert.equal(isNextCimReviewCard({ stage: "closed", cim_url: "https://drive.google.com/file/d/x/view" }), false);
+test("CIM deck requires a stamped Drive file URL; stage CIM alone is not enough", () => {
+  const file = "https://drive.google.com/file/d/abcFile031/view";
+  const folder = "https://drive.google.com/drive/folders/0ABYzLaaJ9ebAUk9PVA";
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: null }), false);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: "" }), false);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: folder }), false);
+  assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: file }), true);
+  assert.equal(isNextCimReviewCard({ stage: "nda", cim_url: file }), true);
+  assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: file }), false);
+  assert.equal(isNextCimReviewCard({ stage: "pursuing", cim_url: file }), false);
+  assert.equal(isNextCimReviewCard({ stage: "closed", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "shortlist", cim_url: null }), false);
 });
 
 test("nextCimDeck hides a card only after this member's CIM vote", () => {
+  const file = "https://drive.google.com/file/d/iron/view";
   const deals = [
-    { id: 1, stage: "cim", cim_url: null, cim_verdicts: {} },
-    { id: 2, stage: "cim", cim_url: null, cim_verdicts: { tristan: { action: "pass" as const } } },
-    { id: 3, stage: "inbox", cim_url: null, cim_verdicts: {} },
-    {
-      id: 4,
-      stage: "nda",
-      cim_url: "https://drive.google.com/file/d/iron/view",
-      cim_verdicts: {},
-    },
+    { id: 1, stage: "cim", cim_url: file, cim_verdicts: {} },
+    { id: 2, stage: "cim", cim_url: file, cim_verdicts: { tristan: { action: "pass" as const } } },
+    { id: 3, stage: "inbox", cim_url: file, cim_verdicts: {} },
+    { id: 4, stage: "nda", cim_url: file, cim_verdicts: {} },
+    { id: 5, stage: "cim", cim_url: null, cim_verdicts: {} },
   ];
   assert.deepEqual(
     nextCimDeck(deals, "tristan").map((row) => row.id),

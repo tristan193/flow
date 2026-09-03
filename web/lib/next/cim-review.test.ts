@@ -41,12 +41,15 @@ before(async () => {
   await query("SELECT 1");
 });
 
-test("CIM deck includes stage CIM and stamped cim_url; New inbound stays out", async () => {
+test("CIM deck requires stamped cim_url; TLY-001 stage CIM without a pack is out", async () => {
   await resetNext();
   const html = (hex: string) =>
     `<a href="https://network.axial.net/app/opportunity/${hex}?action=pursue">Pursue</a>`;
   await upsertNextDeals([{ title: "Project Cactus", html: html("aaaabbbbcccc0001"), stage: "cim" }]);
   await upsertNextDeals([{ title: "Iron Bull", html: html("aaaabbbbcccc0002"), stage: "nda" }]);
+  await upsertNextDeals([
+    { title: "Water Infrastructure", html: html("aaaabbbbcccc0004"), stage: "cim" },
+  ]);
   await upsertNextDeals([{ title: "Inbound teaser", html: html("aaaabbbbcccc0003"), ebitda: 600_000 }]);
 
   const cactus = await query<{ id: number; deal_number: string }>(
@@ -54,6 +57,9 @@ test("CIM deck includes stage CIM and stamped cim_url; New inbound stays out", a
   );
   const iron = await query<{ id: number; deal_number: string }>(
     "SELECT id, deal_number FROM deals_next WHERE title = 'Iron Bull'",
+  );
+  const water = await query<{ id: number; deal_number: string; stage: string }>(
+    "SELECT id, deal_number, stage FROM deals_next WHERE title = 'Water Infrastructure'",
   );
   await query(`UPDATE deals_next SET deal_number = 'TLY-092', cim_url = $1 WHERE id = $2`, [
     FILE_URL,
@@ -63,10 +69,22 @@ test("CIM deck includes stage CIM and stamped cim_url; New inbound stays out", a
     FILE_URL,
     iron[0].id,
   ]);
+  await query(`UPDATE deals_next SET deal_number = 'TLY-001', cim_url = NULL WHERE id = $1`, [
+    water[0].id,
+  ]);
 
   const cim = await listNextCimDeals();
-  const titles = cim.map((deal) => deal.title).sort();
-  assert.deepEqual(titles, ["Iron Bull", "Project Cactus"]);
+  const numbers = cim.map((deal) => deal.deal_number).sort();
+  assert.deepEqual(numbers, ["TLY-031", "TLY-092"]);
+  assert.equal(
+    cim.some((deal) => deal.deal_number === "TLY-001" || deal.title === "Water Infrastructure"),
+    false,
+  );
+  const waterAfter = await query<{ stage: string; cim_url: string | null }>(
+    "SELECT stage, cim_url FROM deals_next WHERE deal_number = 'TLY-001'",
+  );
+  assert.equal(waterAfter[0].stage, "cim");
+  assert.equal(waterAfter[0].cim_url, null);
   assert.equal(
     cim.every((deal) => deal.cim_verdicts && !("simon" in deal.cim_verdicts)),
     true,
@@ -151,13 +169,19 @@ test("both CIM Pass closes; Hold and mixed stay CIM; Simon is not a voter", asyn
   }
 });
 
-test("CIM Review UI opens /cim/TLY-XXX and does not call Google", () => {
+test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", () => {
   const client = readFileSync(path.join(process.cwd(), "components/next/cim-review-client.tsx"), "utf8");
   const page = readFileSync(path.join(process.cwd(), "app/next/page.tsx"), "utf8");
+  const review = readFileSync(path.join(process.cwd(), "components/next/review-client.tsx"), "utf8");
   const verdict = readFileSync(path.join(process.cwd(), "app/api/next/cim/verdict/route.ts"), "utf8");
-  assert.match(client, /cimPackPath|CimPackLink/);
+  assert.match(client, /View CIM/);
+  assert.match(client, /target="_blank"/);
+  assert.match(client, /rel="noopener noreferrer"/);
+  assert.match(client, /cimPackPath/);
   assert.doesNotMatch(client, /googleapis|files\.create|GOOGLE_SERVICE_ACCOUNT/);
   assert.doesNotMatch(page, /googleapis|resolveCimDriveLinks|GOOGLE_SERVICE_ACCOUNT/);
   assert.doesNotMatch(verdict, /googleapis|GOOGLE_SERVICE_ACCOUNT/);
   assert.match(page, /listNextCimDeals/);
+  assert.doesNotMatch(review, /Browse everything in List view/);
+  assert.doesNotMatch(review, /setMode|"swipe" \| "list"/);
 });

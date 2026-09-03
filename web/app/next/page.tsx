@@ -54,9 +54,9 @@ export default async function NextReviewPage() {
         />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers. CIM is packs — stamped <code>cim_url</code> or stage CIM. Open
-          pack goes to <code>/cim/TLY-XXX</code>. Pipeline only shows progress. Super Like stays
-          on the far right of New.
+          New is inbound teasers — swipe only. CIM is packs with a stamped Drive file URL.
+          View CIM opens <code>/cim/TLY-XXX</code> in a new tab. Pipeline only shows progress.
+          Super Like stays on the far right of New.
         </p>
       </main>
     </>

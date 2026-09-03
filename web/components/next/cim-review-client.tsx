@@ -16,7 +16,7 @@ import {
   type NextNoteRow,
   type VerdictAction,
 } from "@/lib/next/model";
-import { CimPackLink, DealTitleStack, FitStrip, MetricRow, VerdictChips, Where } from "./deal-card";
+import { DealTitleStack, FitStrip, MetricRow, VerdictChips, Where } from "./deal-card";
 
 type NotesMap = Record<number, NextNoteRow[]>;
 
@@ -120,8 +120,8 @@ export function CimReviewClient({
       <div className="border-line bg-surface rounded-xl border p-4 text-sm">
         <p className="font-medium">Nothing at CIM</p>
         <p className="text-ink-dim mt-1.5 leading-relaxed">
-          Cards reach this deck when they have a stamped pack (<code>cim_url</code>) or are at
-          stage CIM. Pipeline stays a progress board.
+          Cards reach this deck when they have a stamped Drive file URL (<code>cim_url</code>).
+          Stage CIM alone is not enough. Pipeline stays a progress board.
         </p>
       </div>
     );
@@ -156,32 +156,32 @@ export function CimReviewClient({
       <article className="border-line bg-surface overflow-hidden rounded-2xl border shadow-xl shadow-black/40">
         <FitStrip fit={top.fit} />
         <div className="space-y-3 p-4">
+          {packHref ? (
+            <a
+              href={packHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-ink text-canvas hover:brightness-110 block rounded-xl px-4 py-3 text-center text-[15px] font-semibold"
+            >
+              View CIM
+            </a>
+          ) : null}
           <MetricRow deal={top} fit={top.fit} />
           <DealTitleStack
             deal={top}
-            href={packHref ?? undefined}
             titleAs="h2"
             titleClassName="text-[18px] leading-snug font-semibold"
           />
           <Where deal={top} />
 
-          <div className="border-flag/30 bg-flag-bg/30 rounded-xl border px-3.5 py-3">
-            <p className="text-ink-faint mb-1.5 text-[11px] font-bold tracking-wide uppercase">
-              CIM pack
-            </p>
-            <CimPackLink
-              dealNumber={top.deal_number}
-              className="text-flag text-[14px] font-semibold hover:underline"
-            >
-              Open pack →
-            </CimPackLink>
-            {simon && (
-              <p className="text-ink mt-2 text-[13.5px] leading-relaxed">
-                <span className="text-ink-faint font-semibold">Written review · </span>
-                {simon.body}
+          {simon && (
+            <div className="border-flag/30 bg-flag-bg/30 rounded-xl border px-3.5 py-3">
+              <p className="text-ink-faint mb-1.5 text-[11px] font-bold tracking-wide uppercase">
+                Written review
               </p>
-            )}
-          </div>
+              <p className="text-ink text-[13.5px] leading-relaxed">{simon.body}</p>
+            </div>
+          )}
 
           <VerdictChips deal={top} member={member} lane="cim" />
 
