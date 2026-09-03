@@ -17,10 +17,15 @@ import { applyAuthorizedCimIntake } from "@/lib/next/cim-intake";
  *     "revenue": 4200000,
  *     "ebitda": 920000,
  *     "margin": 0.22,
- *     "asking": 6500000
+ *     "asking": 6500000,
+ *     "cimName": "Project Cactus"
  *   }
  *
- * fileName and cimUrl required. dealNumber and financials optional.
+ * fileName and cimUrl required. dealNumber, financials, and cimName optional.
+ * Canonical JSON key for the CIM company / project / nickname is `cimName`
+ * (aliases: cim_name, companyName, company_name, headline). Empty/omitted
+ * leaves title and cim_name alone. When present, writes deals_next.cim_name
+ * and keeps the teaser in title (card headline / subline).
  * TLY comes from the filename; posted dealNumber must match if present.
  * Token only — a browser session is not enough.
  */
@@ -39,6 +44,11 @@ const schema = z.object({
   asking: z.unknown().optional(),
   asking_price: z.unknown().optional(),
   price: z.unknown().optional(),
+  cimName: z.unknown().optional(),
+  cim_name: z.unknown().optional(),
+  companyName: z.unknown().optional(),
+  company_name: z.unknown().optional(),
+  headline: z.unknown().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -58,6 +68,11 @@ export async function POST(request: NextRequest) {
     ebitda: parsed.data.ebitda,
     margin: parsed.data.margin,
     asking: parsed.data.asking ?? parsed.data.asking_price ?? parsed.data.price,
+    cimName: parsed.data.cimName,
+    cim_name: parsed.data.cim_name,
+    companyName: parsed.data.companyName,
+    company_name: parsed.data.company_name,
+    headline: parsed.data.headline,
   });
 
   if (!result.ok) {
@@ -73,6 +88,7 @@ export async function POST(request: NextRequest) {
     ebitda: result.ebitda,
     margin: result.margin,
     asking: result.asking,
+    cimName: result.cimName,
     deal: result.deal,
   });
 }

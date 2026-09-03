@@ -13,6 +13,7 @@ import {
   PASS_REASONS,
   type VerdictAction,
 } from "@/lib/next/model";
+import { nextDealHeadline } from "@/lib/next/display";
 import { VerdictNotePrompt } from "../verdict-note";
 
 export function NextDealActions({ deal, member }: { deal: NextDeal; member: MemberId }) {
@@ -122,7 +123,7 @@ export function NextDealActions({ deal, member }: { deal: NextDeal; member: Memb
       {notePrompt && (
         <VerdictNotePrompt
           action={notePrompt}
-          title={deal.title}
+          title={nextDealHeadline(deal)}
           note={mine?.note ?? null}
           onSave={(next) => {
             void setAction(notePrompt, null, next);

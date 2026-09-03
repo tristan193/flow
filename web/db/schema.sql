@@ -275,6 +275,9 @@ CREATE TABLE IF NOT EXISTS deals_next (
   is_demo             BOOLEAN NOT NULL DEFAULT FALSE,
 
   title               TEXT NOT NULL,
+  -- CIM company / project / nickname from Simon's pack (e.g. Project Cactus).
+  -- Cards show this as the headline when set; title stays the teaser subline.
+  cim_name            TEXT,
   blurb               TEXT,
   source              TEXT,
   sub_source          TEXT,
@@ -321,6 +324,7 @@ CREATE INDEX IF NOT EXISTS ix_deals_next_source_deal_id ON deals_next (source_de
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_url TEXT;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS super_liked_at TIMESTAMPTZ;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS margin DOUBLE PRECISION;
+ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_name TEXT;
 CREATE INDEX IF NOT EXISTS ix_deals_next_super_liked ON deals_next (super_liked_at DESC NULLS LAST);
 -- Unique source_deal_id is applied from lib/next/merge.ts once duplicate rows
 -- are collapsed. Putting CREATE UNIQUE INDEX here would fail applySchema while

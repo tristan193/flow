@@ -6,6 +6,8 @@ import {
   dealIdLines,
   listingIdLabel,
   looksLikeListingId,
+  nextDealHeadline,
+  nextDealSubline,
   sourceDisplayName,
 } from "./display.ts";
 
@@ -129,4 +131,22 @@ test("source pill uses human names, never hex or q=", () => {
     }),
     "Axial",
   );
+});
+
+test("CIM name becomes the headline and teaser title is the quieter subline", () => {
+  assert.equal(
+    nextDealHeadline({ title: "Specialty HVAC — Austin metro", cim_name: "Project Cactus" }),
+    "Project Cactus",
+  );
+  assert.equal(
+    nextDealSubline({ title: "Specialty HVAC — Austin metro", cim_name: "Project Cactus" }),
+    "Specialty HVAC — Austin metro",
+  );
+  assert.equal(nextDealHeadline({ title: "Iron Bull teaser", cim_name: null }), "Iron Bull teaser");
+  assert.equal(nextDealSubline({ title: "Iron Bull teaser", cim_name: null }), null);
+  assert.equal(nextDealSubline({ title: "Iron Bull teaser" }), null);
+  assert.equal(nextDealSubline({ title: "  ", cim_name: "Cora Constructors" }), null);
+  assert.equal(nextDealHeadline({ title: "Same", cim_name: "Same" }), "Same");
+  assert.equal(nextDealSubline({ title: "Same", cim_name: "Same" }), null);
+  assert.equal(nextDealHeadline({ title: "Teaser", cim_name: "  " }), "Teaser");
 });
