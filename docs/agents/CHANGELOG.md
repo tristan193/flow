@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-03 — `nm/web/cim-open` — DONE
+
+**Scope:** Thin CIM pack opener — `/cim/TLY-XXX` lists the shared Drive parent and redirects to the matching PDF
+**Risk:** low (read/list only; no Drive writes; no folder create)
+**Coords:** none — new branch off `main`; did **not** continue or merge PR #12
+
+### Changed
+- `web/app/cim/[id]/page.tsx` — one dynamic route; normalize case; require `TLY-\d+`
+- `web/lib/cim-pack.ts` — Shared Drive list (`corpora=drive`, `driveId=0ABYzLaaJ9ebAUk9PVA`); prefix match; newest PDF; never `files.create`
+- `web/components/next/deal-card.tsx` + `review-client.tsx` — tiny CIM link on `/next` cards
+- Env: `GOOGLE_SERVICE_ACCOUNT_JSON` (readonly). Invite the service account to Shared Drive `0ABYzLaaJ9ebAUk9PVA` as Viewer
+
+### Do not touch
+- PR #12 folder-create / Shortlist Drive write / 6am folder attach / Review New+CIM rewrite
+- Classic `/` Review, `/api/cim/extract`, `/api/next/cim/create`
+
+### Follow-ups
+- Dirk: share the Shared Drive with the service account `client_email` as Viewer (or Content Manager)
+- Confirm `GOOGLE_SERVICE_ACCOUNT_JSON` is set on Vercel project `web` (team `nm-c283`) production
+
 ## 2026-09-03 — `nm/web/review-parallel` — DONE
 
 **Scope:** Parallel `/next` Review decks for Tristan and Jim Evans; combine rules on one shared board

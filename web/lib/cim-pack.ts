@@ -31,7 +31,6 @@ export type DriveFilesClient = {
     list: (params: Record<string, unknown>) => Promise<{
       data: { files?: CimPackFile[] | null; nextPageToken?: string | null };
     }>;
-    create?: (...args: unknown[]) => Promise<unknown>;
   };
 };
 
@@ -104,7 +103,7 @@ function readonlyDriveClient(credentials: Record<string, unknown>): DriveFilesCl
     credentials,
     scopes: [READONLY_SCOPE],
   });
-  return google.drive({ version: "v3", auth });
+  return google.drive({ version: "v3", auth }) as DriveFilesClient;
 }
 
 async function listParentMatches(
