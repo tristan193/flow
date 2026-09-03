@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { cimPackPath } from "@/lib/cim-pack";
+import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import { dealIdLines, sourceDisplayName } from "@/lib/next/display";
 import {
