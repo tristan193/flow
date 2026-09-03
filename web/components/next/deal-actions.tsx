@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
+  CIM_VERDICT_LABELS,
   coerceNextStage,
   mapNextStage,
   NEXT_BOARD_STAGES,
@@ -17,7 +18,8 @@ import { VerdictNotePrompt } from "../verdict-note";
 
 export function NextDealActions({ deal, member }: { deal: NextDeal; member: MemberId }) {
   const router = useRouter();
-  const mine = deal.verdicts[member];
+  const cimLane = deal.stage === "cim";
+  const mine = cimLane ? deal.cim_verdicts[member] : deal.verdicts[member];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notePrompt, setNotePrompt] = useState<"short" | "discuss" | null>(null);
@@ -44,7 +46,7 @@ export function NextDealActions({ deal, member }: { deal: NextDeal; member: Memb
                 : null,
           };
 
-      const response = await fetch("/api/next/verdict", {
+      const response = await fetch(cimLane ? "/api/next/cim/verdict" : "/api/next/verdict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dealId: deal.id, ...next }),
@@ -97,9 +99,9 @@ export function NextDealActions({ deal, member }: { deal: NextDeal; member: Memb
           tone="short"
           disabled={busy}
           onClick={() => pickVerdict("short")}
-          title="Shortlist"
+          title={cimLane ? "Pursue" : "Shortlist"}
         >
-          ✓
+          {cimLane ? CIM_VERDICT_LABELS.short : "✓"}
         </ActionButton>
         <ActionButton
           active={mine?.action === "discuss"}
@@ -107,7 +109,7 @@ export function NextDealActions({ deal, member }: { deal: NextDeal; member: Memb
           disabled={busy}
           onClick={() => pickVerdict("discuss")}
         >
-          Discuss
+          {cimLane ? CIM_VERDICT_LABELS.discuss : "Discuss"}
         </ActionButton>
         <ActionButton
           active={mine?.action === "pass"}

@@ -62,5 +62,6 @@ export async function POST(request: NextRequest) {
     dealId: result.dealId,
     dealNumber: result.dealNumber,
     stage: result.stage,
+    viewUrl: result.viewUrl,
   });
 }

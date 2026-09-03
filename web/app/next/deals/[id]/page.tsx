@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { BlurbText } from "@/components/blurb-text";
 import { NextAttachCim } from "@/components/next/attach-cim";
+import { CimPack } from "@/components/next/cim-pack";
 import { NextBuyboxReview } from "@/components/next/buybox-review";
 import { NextDealActions } from "@/components/next/deal-actions";
 import { DealTitleStack, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
@@ -12,7 +13,7 @@ import { NextNotes } from "@/components/next/notes";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { gmailAllHref } from "@/lib/next/identity";
-import { getNextDeal, listNextNotes, listNextStageEvents } from "@/lib/next/deals";
+import { getNextDeal, latestSimonReview, listNextNotes, listNextStageEvents } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
 import {
   businessModelLabel,
@@ -88,6 +89,8 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           <VerdictChips deal={deal} member={member} />
 
           <NextDealActions deal={deal} member={member} />
+
+          <CimPack cimUrl={deal.cim_url} simonReview={latestSimonReview(notes)} />
 
           <NextAttachCim dealId={deal.id} cimUrl={deal.cim_url} />
 

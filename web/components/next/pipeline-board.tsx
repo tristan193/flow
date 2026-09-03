@@ -15,8 +15,8 @@ import {
   nextStageLabel,
 } from "@/lib/next/model";
 import { gmailAllHref } from "@/lib/next/identity";
-import { NextAttachCim } from "./attach-cim";
 import { DealTitleStack, Earnings, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
+import { PipelineDriveIcon } from "./pipeline-drive-icon";
 
 const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
@@ -188,7 +188,7 @@ export function NextPipelineBoard({ deals, member }: { deals: NextDeal[]; member
                   <VerdictChips deal={deal} member={member} />
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <NextAttachCim dealId={deal.id} cimUrl={deal.cim_url} compact />
+                    <PipelineDriveIcon url={deal.cim_url} />
                     {deal.nda_url && (
                       <a
                         href={deal.nda_url}

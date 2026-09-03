@@ -9,11 +9,13 @@ import { assessNextFit, byPinnedThenFit } from "@/lib/next/fit";
 import {
   type MemberId,
   type NextDeal,
+  type NextNoteRow,
   isTeamShortlist,
   isNextReviewStage,
   PASS_REASONS,
   type VerdictAction,
 } from "@/lib/next/model";
+import { CimReviewClient } from "./cim-review-client";
 import {
   CardFooter,
   DealTitleStack,
@@ -46,8 +48,19 @@ const FILTERS = [
 
 type FilterId = (typeof FILTERS)[number]["id"];
 
-export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member: MemberId }) {
+export function NextReviewClient({
+  deals,
+  cimDeals = [],
+  notesByDealId = {},
+  member,
+}: {
+  deals: NextDeal[];
+  cimDeals?: NextDeal[];
+  notesByDealId?: Record<number, NextNoteRow[]>;
+  member: MemberId;
+}) {
   const router = useRouter();
+  const [lane, setLane] = useState<"new" | "cim">("new");
   const [mode, setMode] = useState<"swipe" | "list">("swipe");
   const [filter, setFilter] = useState<FilterId>("todo");
   const [overrides, setOverrides] = useState<Record<number, Override>>({});
@@ -306,6 +319,33 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
   return (
     <div className="space-y-3">
       <div className="border-line bg-surface flex gap-1 rounded-xl border p-1">
+        {(
+          [
+            { id: "new" as const, label: "New", count: deals.length },
+            { id: "cim" as const, label: "CIM", count: cimDeals.length },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setLane(tab.id)}
+            className={`flex-1 rounded-lg px-3 py-2 text-[13.5px] font-semibold transition-colors ${
+              lane === tab.id
+                ? "bg-surface-raised text-ink"
+                : "text-ink-faint hover:bg-surface-raised/60 hover:text-ink-dim"
+            }`}
+          >
+            {tab.label}
+            <span className="text-ink-faint ms-1.5 tabular text-[12px] font-medium">{tab.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {lane === "cim" ? (
+        <CimReviewClient deals={cimDeals} notesByDealId={notesByDealId} member={member} />
+      ) : (
+        <>
+      <div className="border-line bg-surface flex gap-1 rounded-xl border p-1">
         {(["swipe", "list"] as const).map((value) => (
           <button
             key={value}
@@ -445,6 +485,8 @@ export function NextReviewClient({ deals, member }: { deals: NextDeal[]; member:
               })}
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>

@@ -80,6 +80,11 @@ export async function createNextDealFromCim(
   if (CIM_FROM_STAGES.has(coerceNextStage(current.stage))) {
     await moveNextStage(dealId, member, "cim");
   }
+  // Manual CIM add skips Shortlist — still need the Drive drop folder.
+  if (!current.cim_url) {
+    const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
+    await ensureCimFolderForDeal(dealId);
+  }
 
   if (file) {
     await saveNextDealFile(dealId, member, file, "cim", { moveToCim: false });

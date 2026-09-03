@@ -11,6 +11,7 @@ import {
   type NextVerdictRow,
   type VerdictAction,
   coerceNextStage,
+  combineNextCim,
   combineNextReview,
   defaultNextAction,
   nextFollowupKind,
@@ -125,9 +126,21 @@ async function attachVerdicts(rows: NextDealRow[]): Promise<NextDeal[]> {
     bucket[verdict.member] = verdict;
     byDeal.set(verdict.deal_id, bucket);
   }
+  const cimVerdicts = await query<Record<string, unknown>>(
+    `SELECT * FROM cim_verdicts_next WHERE deal_id IN (${placeholders})`,
+    ids,
+  );
+  const cimByDeal = new Map<number, NextDeal["cim_verdicts"]>();
+  for (const raw of cimVerdicts) {
+    const verdict = normalizeVerdict(raw);
+    const bucket = cimByDeal.get(verdict.deal_id) ?? {};
+    bucket[verdict.member] = verdict;
+    cimByDeal.set(verdict.deal_id, bucket);
+  }
   return rows.map((row) => ({
     ...row,
     verdicts: byDeal.get(row.id) ?? {},
+    cim_verdicts: cimByDeal.get(row.id) ?? {},
   }));
 }
 
@@ -139,10 +152,16 @@ export async function listNextDeals(): Promise<NextDeal[]> {
   return attachVerdicts(rows.map(normalizeDeal));
 }
 
-/** Inbound queue for `/next` Review. Board stages never belong here. */
+/** Inbound queue for `/next` Review → New. Board stages never belong here. */
 export async function listNextInboxDeals(): Promise<NextDeal[]> {
   const deals = await listNextDeals();
   return deals.filter((deal) => deal.stage === "inbox");
+}
+
+/** CIM Review swipe. Stage CIM only — not the pipeline reader. */
+export async function listNextCimDeals(): Promise<NextDeal[]> {
+  const deals = await listNextDeals();
+  return deals.filter((deal) => deal.stage === "cim");
 }
 
 export async function listNextBoardDeals(): Promise<NextDeal[]> {
@@ -222,6 +241,15 @@ export async function setNextSuperLike(
   return at;
 }
 
+async function createDriveFolderOnFirstShortlist(dealId: number): Promise<void> {
+  try {
+    const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
+    await ensureCimFolderForDeal(dealId);
+  } catch {
+    /* 6am harvest lists the parent once and gap-fills a missed save */
+  }
+}
+
 /** Apply Tristan/Jim combine rules. Only moves inbound cards forward. */
 export async function applyNextReviewOutcome(dealId: number, actor: string): Promise<void> {
   const deal = await getNextDeal(dealId);
@@ -233,6 +261,45 @@ export async function applyNextReviewOutcome(dealId: number, actor: string): Pro
   });
   if (outcome === "inbox") return;
   await moveNextStage(dealId, actor, outcome, { onlyFrom: "inbox" });
+  // Same event as the combine rule. APP creates the Drive folder here —
+  // Like / Super Like / both ?. Do not wait for Dirk to poll.
+  if (outcome === "shortlist") {
+    await createDriveFolderOnFirstShortlist(dealId);
+  }
+}
+
+export async function setNextCimVerdict(
+  dealId: number,
+  member: MemberId,
+  action: VerdictAction,
+  note: string | null = null,
+): Promise<void> {
+  await query(
+    `INSERT INTO cim_verdicts_next (deal_id, member, action, note)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (deal_id, member) DO UPDATE
+       SET action = excluded.action,
+           note = excluded.note,
+           updated_at = now()`,
+    [dealId, member, action, note],
+  );
+  await applyNextCimOutcome(dealId, member);
+}
+
+export async function clearNextCimVerdict(dealId: number, member: MemberId): Promise<void> {
+  await query("DELETE FROM cim_verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
+}
+
+/** CIM stays put until both partners Pass or both Pursue. Uses CIM votes only. */
+export async function applyNextCimOutcome(dealId: number, actor: string): Promise<void> {
+  const deal = await getNextDeal(dealId);
+  if (!deal || deal.stage !== "cim") return;
+  const outcome = combineNextCim({
+    tristan: deal.cim_verdicts.tristan?.action ?? null,
+    partner: deal.cim_verdicts.partner?.action ?? null,
+  });
+  if (outcome === "cim") return;
+  await moveNextStage(dealId, actor, outcome, { onlyFrom: "cim" });
 }
 
 export async function clearNextSuperLike(dealId: number): Promise<void> {
@@ -301,6 +368,14 @@ export async function moveNextStage(
       [dealId, kind, member],
     );
   }
+
+  if (stage === "shortlist") {
+    // First Shortlist via Dirk/import stage — same APP create, not a Dirk poll.
+    await createDriveFolderOnFirstShortlist(dealId);
+  }
+  if (stage === "closed") {
+    void import("./cim-drive-sync").then((mod) => mod.archiveCimFolderForDeal(dealId)).catch(() => {});
+  }
 }
 
 export async function setNextAction(
@@ -344,17 +419,22 @@ export async function saveNextDealFile(
   return { id, url };
 }
 
-export async function saveNextCimLink(
-  dealId: number,
-  member: MemberId,
-  url: string,
-): Promise<void> {
+/** Store the Drive folder URL without moving the card. Used after Dirk create. */
+export async function setNextCimUrl(dealId: number, url: string): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;
   await query(`UPDATE deals_next SET cim_url = $1, updated_at = now() WHERE id = $2`, [
     trimmed,
     dealId,
   ]);
+}
+
+export async function saveNextCimLink(
+  dealId: number,
+  member: string,
+  url: string,
+): Promise<void> {
+  await setNextCimUrl(dealId, url);
   await moveNextStage(dealId, member, "cim");
 }
 
@@ -393,18 +473,45 @@ export async function addNextNote(dealId: number, member: string, body: string):
   ]);
 }
 
-export async function listNextNotes(dealId: number): Promise<NextNoteRow[]> {
-  const rows = await query<Record<string, unknown>>(
-    "SELECT * FROM notes_next WHERE deal_id = $1 ORDER BY created_at DESC",
-    [dealId],
-  );
-  return rows.map((row) => ({
+function noteFromRow(row: Record<string, unknown>): NextNoteRow {
+  return {
     id: Number(row.id),
     deal_id: Number(row.deal_id),
     member: String(row.member),
     body: String(row.body),
     created_at: isoString(row.created_at),
-  }));
+  };
+}
+
+export async function listNextNotes(dealId: number): Promise<NextNoteRow[]> {
+  const rows = await query<Record<string, unknown>>(
+    "SELECT * FROM notes_next WHERE deal_id = $1 ORDER BY created_at DESC",
+    [dealId],
+  );
+  return rows.map(noteFromRow);
+}
+
+export async function listNextNotesForDeals(
+  dealIds: number[],
+): Promise<Map<number, NextNoteRow[]>> {
+  const out = new Map<number, NextNoteRow[]>();
+  if (dealIds.length === 0) return out;
+  const placeholders = dealIds.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await query<Record<string, unknown>>(
+    `SELECT * FROM notes_next WHERE deal_id IN (${placeholders}) ORDER BY created_at DESC`,
+    dealIds,
+  );
+  for (const row of rows) {
+    const note = noteFromRow(row);
+    const bucket = out.get(note.deal_id) ?? [];
+    bucket.push(note);
+    out.set(note.deal_id, bucket);
+  }
+  return out;
+}
+
+export function latestSimonReview(notes: NextNoteRow[]): NextNoteRow | null {
+  return notes.find((note) => note.member === "simon") ?? null;
 }
 
 export async function listNextStageEvents(dealId: number): Promise<NextStageEventRow[]> {

@@ -2,6 +2,12 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { ensureReady } from "@/lib/boot";
+import {
+  gapFillCimFoldersFromParentList,
+  isMorningCimGapFill,
+} from "@/lib/next/cim-drive-sync";
+
 /**
  * Clock for the deal harvest.
  *
@@ -11,6 +17,9 @@ import { NextResponse, type NextRequest } from "next/server";
  * somebody clicking "Run workflow". This endpoint is the reliable clock: Vercel
  * Cron calls it, and it dispatches the workflow through the same API the manual
  * button uses.
+ *
+ * The 6am harvest (`20 11 * * *` UTC) also gap-fills CIM Drive links with ONE
+ * parent-folder list. The later harvest does not. Not a second cron.
  *
  * Vercel Cron sends GET with `Authorization: Bearer $CRON_SECRET`. POST is
  * accepted too so any other scheduler (or curl) can drive the same path.
@@ -32,20 +41,17 @@ function secretValid(header: string | null): boolean {
   return timingSafeEqual(a, b);
 }
 
-async function dispatchHarvest() {
+async function dispatchHarvest(): Promise<{
+  status: number;
+  body: Record<string, unknown>;
+}> {
   if (!process.env.CRON_SECRET?.trim()) {
-    return NextResponse.json(
-      { error: "CRON_SECRET is not set on this deployment." },
-      { status: 500 },
-    );
+    return { status: 500, body: { error: "CRON_SECRET is not set on this deployment." } };
   }
 
   const token = process.env.GITHUB_DISPATCH_TOKEN?.trim();
   if (!token) {
-    return NextResponse.json(
-      { error: "GITHUB_DISPATCH_TOKEN is not set on this deployment." },
-      { status: 500 },
-    );
+    return { status: 500, body: { error: "GITHUB_DISPATCH_TOKEN is not set on this deployment." } };
   }
 
   const repo = process.env.GITHUB_REPO?.trim() || DEFAULT_REPO;
@@ -67,13 +73,35 @@ async function dispatchHarvest() {
 
   // GitHub answers 204 with an empty body on success.
   if (response.status === 204) {
-    return NextResponse.json({ ok: true, dispatched: { repo, workflow, ref } });
+    return { status: 200, body: { ok: true, dispatched: { repo, workflow, ref } } };
   }
 
   const detail = await response.text().catch(() => "");
+  return {
+    status: 502,
+    body: { ok: false, status: response.status, detail: detail.slice(0, 500) },
+  };
+}
+
+async function runClock() {
+  const harvest = await dispatchHarvest();
+  let cimGapFill = null;
+  if (isMorningCimGapFill()) {
+    try {
+      await ensureReady();
+      cimGapFill = await gapFillCimFoldersFromParentList();
+    } catch (error) {
+      cimGapFill = {
+        scanned: 0,
+        matched: 0,
+        written: 0,
+        error: error instanceof Error ? error.message : "CIM gap-fill failed.",
+      };
+    }
+  }
   return NextResponse.json(
-    { ok: false, status: response.status, detail: detail.slice(0, 500) },
-    { status: 502 },
+    { ...harvest.body, cimGapFill },
+    { status: harvest.status },
   );
 }
 
@@ -81,12 +109,12 @@ export async function GET(request: NextRequest) {
   if (!secretValid(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-  return dispatchHarvest();
+  return runClock();
 }
 
 export async function POST(request: NextRequest) {
   if (!secretValid(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-  return dispatchHarvest();
+  return runClock();
 }
