@@ -29,6 +29,23 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-09-03 — `nm/web/review-cim-fix` — DONE
 
+**Scope:** Middleware allowlist for token POST `/api/next/cim-financials` (was 307 to /login)
+**Risk:** low (same family as `/api/next/cim-url`; route still requires FLOW_IMPORT_TOKEN)
+**Coords:** none
+
+### Changed
+- `web/middleware.ts` — add `/api/next/cim-financials` to `PUBLIC_PATHS` so a Bearer token is not bounced to login
+
+### Do not touch
+- Review UI
+- Pipeline stages
+- The route’s token check
+
+### Follow-ups
+- Dirk stamps TLY-092 / TLY-031 pack numbers
+
+## 2026-09-03 — `nm/web/review-cim-fix` — DONE
+
 **Scope:** CIM Review cards show pack numbers; Dirk token-stamps them by TLY; no stage moves
 **Risk:** medium (writes `deals_next.revenue` / `ebitda` / `asking` / `margin`; never `stage`)
 **Coords:** none — did not merge PR #12; did not reset CIM/Pursuing
