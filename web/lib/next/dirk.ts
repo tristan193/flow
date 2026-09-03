@@ -269,9 +269,9 @@ export async function listDirkClosed(limit = 40): Promise<DirkClosed[]> {
 
 export async function listDirkCimFolders(limit = 40): Promise<DirkCimFolder[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT deal_number, title, cim_url
+    `SELECT deal_number, title, cim_url, stage
        FROM deals_next
-      WHERE stage = 'cim'
+      WHERE stage IN ('shortlist', 'shortlisted', 'nda', 'nda_to_sign', 'nda_signed', 'cim')
       ORDER BY stage_changed_at DESC NULLS LAST, id DESC
       LIMIT $1`,
     [limit],
@@ -287,7 +287,7 @@ export async function listDirkCimFolders(limit = 40): Promise<DirkCimFolder[]> {
       viewUrl,
       folderId: parseDriveFolderId(viewUrl),
       sendToSimon: viewUrl
-        ? `Send Simon this viewUrl. He uploads the CIM PDF when the review is done.`
+        ? `Send Simon this viewUrl now — he needs the drop folder before CIM. He uploads the PDF when the review is done.`
         : `Folder not created yet — POST /api/next/cim/resolve { dealNumber } after Drive is configured.`,
     };
   });

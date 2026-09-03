@@ -23,6 +23,7 @@ import {
   listNextCimDeals,
   listNextNotes,
   setNextCimVerdict,
+  setNextSuperLike,
   setNextVerdict,
 } from "./deals.ts";
 import { upsertNextDeals } from "./import.ts";
@@ -245,15 +246,15 @@ test("Dirk creates the CIM folder and stores viewUrl; does not recreate", async 
     assert.equal(second.folderId, "created-1");
     assert.equal(created.length, 1);
 
-    const staged = await applyAuthorizedNextStage({
+    const toCim = await applyAuthorizedNextStage({
       authorization: "Bearer test-cim-token",
       sessionMember: null,
       dealNumber: row.deal_number,
       stage: "cim",
     });
-    assert.equal(staged.ok, true);
-    if (staged.ok) {
-      assert.equal(staged.viewUrl, first.viewUrl);
+    assert.equal(toCim.ok, true);
+    if (toCim.ok) {
+      assert.equal(toCim.viewUrl, first.viewUrl);
     }
     assert.equal(created.length, 1);
   } finally {
@@ -263,17 +264,105 @@ test("Dirk creates the CIM folder and stores viewUrl; does not recreate", async 
   }
 });
 
-test("hitting CIM via Dirk stage creates the folder immediately", async () => {
+test("Shortlist creates the Drive folder; CIM does not", async () => {
   await resetNext();
   const previous = process.env.FLOW_IMPORT_TOKEN;
   process.env.FLOW_IMPORT_TOKEN = "test-cim-token";
   let creates = 0;
   setCimFolderCreatorForTests(async () => {
     creates += 1;
-    return { id: "stageFolder", viewUrl: "https://drive.google.com/drive/folders/stageFolder" };
+    return { id: "shortFolder", viewUrl: "https://drive.google.com/drive/folders/shortFolder" };
   });
   try {
     await upsertNextDeals([{ title: "Needs a pack", html: AXIAL_HTML }]);
+    const [row] = await query<{ id: number; deal_number: string }>(
+      "SELECT id, deal_number FROM deals_next",
+    );
+    const shortlisted = await applyAuthorizedNextStage({
+      authorization: "Bearer test-cim-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "shortlist",
+    });
+    assert.equal(shortlisted.ok, true);
+    if (shortlisted.ok) {
+      assert.equal(shortlisted.viewUrl, "https://drive.google.com/drive/folders/shortFolder");
+    }
+    assert.equal(creates, 1);
+    const afterShort = await getNextDeal(row.id);
+    assert.equal(afterShort?.stage, "shortlist");
+    assert.equal(afterShort?.cim_url, "https://drive.google.com/drive/folders/shortFolder");
+
+    const toCim = await applyAuthorizedNextStage({
+      authorization: "Bearer test-cim-token",
+      sessionMember: null,
+      dealNumber: row.deal_number,
+      stage: "cim",
+    });
+    assert.equal(toCim.ok, true);
+    if (toCim.ok) {
+      assert.equal(toCim.viewUrl, "https://drive.google.com/drive/folders/shortFolder");
+    }
+    assert.equal(creates, 1);
+    const afterCim = await getNextDeal(row.id);
+    assert.equal(afterCim?.stage, "cim");
+    assert.equal(afterCim?.cim_url, "https://drive.google.com/drive/folders/shortFolder");
+  } finally {
+    setCimFolderCreatorForTests(null);
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("Like and Super Like create the folder on Shortlist, not later", async () => {
+  await resetNext();
+  let creates = 0;
+  setCimFolderCreatorForTests(async () => {
+    creates += 1;
+    return { id: `like-${creates}` };
+  });
+  try {
+    await upsertNextDeals([
+      { title: "Liked inbound", html: AXIAL_HTML },
+      {
+        title: "Super liked inbound",
+        html: '<a href="https://network.axial.net/app/opportunity/bbbbccccddddeeee?action=pursue">Pursue</a>',
+      },
+    ]);
+    const liked = await query<{ id: number }>(
+      "SELECT id FROM deals_next WHERE title = 'Liked inbound'",
+    );
+    const superLiked = await query<{ id: number }>(
+      "SELECT id FROM deals_next WHERE title = 'Super liked inbound'",
+    );
+
+    await setNextVerdict(liked[0].id, "tristan", "short", null);
+    const afterLike = await getNextDeal(liked[0].id);
+    assert.equal(afterLike?.stage, "shortlist");
+    assert.equal(afterLike?.cim_url, "https://drive.google.com/drive/folders/like-1");
+    assert.equal(creates, 1);
+
+    await setNextSuperLike(superLiked[0].id, true, "tristan");
+    const afterSuper = await getNextDeal(superLiked[0].id);
+    assert.equal(afterSuper?.stage, "shortlist");
+    assert.equal(afterSuper?.cim_url, "https://drive.google.com/drive/folders/like-2");
+    assert.equal(creates, 2);
+  } finally {
+    setCimFolderCreatorForTests(null);
+  }
+});
+
+test("moving straight to CIM does not create a folder", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = "test-cim-token";
+  let creates = 0;
+  setCimFolderCreatorForTests(async () => {
+    creates += 1;
+    return { id: "should-not-create" };
+  });
+  try {
+    await upsertNextDeals([{ title: "Skip to CIM", html: AXIAL_HTML }]);
     const [row] = await query<{ id: number; deal_number: string }>(
       "SELECT id, deal_number FROM deals_next",
     );
@@ -284,13 +373,10 @@ test("hitting CIM via Dirk stage creates the folder immediately", async () => {
       stage: "cim",
     });
     assert.equal(moved.ok, true);
-    if (moved.ok) {
-      assert.equal(moved.viewUrl, "https://drive.google.com/drive/folders/stageFolder");
-    }
-    assert.equal(creates, 1);
+    assert.equal(creates, 0);
     const deal = await getNextDeal(row.id);
     assert.equal(deal?.stage, "cim");
-    assert.equal(deal?.cim_url, "https://drive.google.com/drive/folders/stageFolder");
+    assert.equal(deal?.cim_url, null);
   } finally {
     setCimFolderCreatorForTests(null);
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;

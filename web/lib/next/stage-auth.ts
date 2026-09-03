@@ -104,7 +104,7 @@ export async function applyAuthorizedNextStage(
   await moveNextStage(ref.id, who.actor, stage);
   const extra = noteBody(input);
   if (extra) await addNextNote(ref.id, who.actor, extra);
-  const deal = stage === "cim" ? await getNextDeal(ref.id) : null;
+  const deal = await getNextDeal(ref.id);
   return {
     ok: true,
     dealId: ref.id,

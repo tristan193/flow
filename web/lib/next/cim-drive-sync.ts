@@ -154,8 +154,9 @@ async function createDriveFolder(title: string): Promise<{ id: string; viewUrl: 
 }
 
 /**
- * Dirk creates `TLY-XXX Headline` under the live CIM parent when a deal hits CIM.
+ * Dirk creates `TLY-XXX Headline` under the live parent when a deal is Shortlisted.
  * Google returns the folder id; we store it as cimUrl immediately.
+ * CIM is too late — Simon needs the drop folder before he's done.
  * Legacy TLY-007 / 031 / 092 may match an existing Simon-named folder first.
  */
 export async function ensureCimFolderForDeal(dealId: number): Promise<EnsureCimFolderResult> {

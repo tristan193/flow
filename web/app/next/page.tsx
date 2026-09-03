@@ -2,7 +2,6 @@ import { NextNav } from "@/components/next/nav";
 import { NextReviewClient } from "@/components/next/review-client";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { ensureCimFoldersForDeals } from "@/lib/next/cim-drive-sync";
 import { listNextCimDeals, listNextInboxDeals, listNextNotesForDeals } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
 import {
@@ -24,12 +23,7 @@ export default async function NextReviewPage() {
   const demoCount = deals.filter((d) => d.is_demo).length;
   const myDeck = nextInboxDeck(deals, member);
 
-  let cimDeals = await listNextCimDeals();
-  const missingIds = cimDeals.filter((deal) => !deal.cim_url).map((deal) => deal.id);
-  if (missingIds.length > 0) {
-    await ensureCimFoldersForDeals(missingIds);
-    cimDeals = await listNextCimDeals();
-  }
+  const cimDeals = await listNextCimDeals();
   const notesMap = await listNextNotesForDeals(cimDeals.map((deal) => deal.id));
   const notesByDealId: Record<number, NextNoteRow[]> = Object.fromEntries(notesMap);
   const myCim = nextCimDeck(cimDeals, member);
@@ -60,9 +54,9 @@ export default async function NextReviewPage() {
         />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers. CIM is packs at CIM — Dirk creates the Drive folder, Simon
-          uploads the PDF and writes a review. Pipeline only shows progress. Super Like stays
-          on the far right of New.
+          New is inbound teasers. Shortlist creates the Drive folder — Dirk sends Simon the
+          viewUrl before CIM. CIM is after the pack is in. Pipeline only shows progress.
+          Super Like stays on the far right of New.
         </p>
       </main>
     </>

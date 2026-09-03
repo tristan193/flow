@@ -1,7 +1,8 @@
 /**
  * Google Drive is the CIM home. Dirk (Flow) creates the folder when a deal
- * hits CIM. Simon only uploads the PDF into that folder. Auto-match of
- * Simon-named folders is fallback for three existing packs only.
+ * is Shortlisted — CIM is too late; Simon needs the drop folder first.
+ * Simon only uploads the PDF. Auto-match of Simon-named folders is fallback
+ * for three existing packs only.
  */
 
 export const CIM_ACTIVE_FOLDER_URL =

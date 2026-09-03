@@ -38,8 +38,8 @@ export function CimPack({
         <CimDriveLink url={cimUrl} />
       ) : (
         <p className="text-ink-faint text-[12.5px]">
-          Dirk creates the Drive folder when the deal hits CIM. Simon uploads the
-          CIM PDF when the review is done.
+          Dirk creates the Drive folder at Shortlist. Simon uploads the CIM PDF
+          when the review is done.
         </p>
       )}
       {simonReview ? (

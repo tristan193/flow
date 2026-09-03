@@ -355,14 +355,14 @@ export async function moveNextStage(
     );
   }
 
-  if (stage === "cim") {
-    // Await so cim_url is saved before Dirk reads viewUrl to send Simon.
+  if (stage === "shortlist") {
+    // Shortlist, not CIM — Simon needs the drop folder before he's done.
     // Stage move already committed — Drive failure must not roll it back.
     try {
       const { ensureCimFolderForDeal } = await import("./cim-drive-sync");
       await ensureCimFolderForDeal(dealId);
     } catch {
-      /* folder can be created on the next Review → CIM load */
+      /* folder can be created on the next Pipeline load */
     }
   }
   if (stage === "closed") {
