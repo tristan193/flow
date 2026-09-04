@@ -6,7 +6,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import { cimPackPath } from "@/lib/cim-pack-id";
 import {
-  CIM_VERDICT_LABELS,
   cimCombineHint,
   nextCimDeck,
   type MemberId,
@@ -102,7 +101,8 @@ export function CimReviewClient({
       <div className="py-12 text-center">
         <p className="text-[17px] font-semibold">CIM deck clear</p>
         <p className="text-ink-dim mt-1.5 text-[13.5px]">
-          You have voted these packs. They stay at CIM until both of you Pass or both Pursue.
+          Cards leave this stack when you both Pursue or both Pass. Hung jury stays
+          at the bottom. Notes never count as a vote.
         </p>
       </div>
     );
@@ -179,7 +179,7 @@ export function CimReviewClient({
         </CimButton>
       </div>
       <p className="text-ink-faint text-center text-[11.5px]">
-        {queue.length} left in your CIM deck · {CIM_VERDICT_LABELS.discuss} stays CIM
+        {queue.length} left in CIM · both must agree to resolve · notes are not votes
       </p>
     </div>
   );

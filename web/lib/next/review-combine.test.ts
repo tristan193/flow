@@ -5,8 +5,10 @@ import {
   cimNoteSectionLabel,
   cimPartnerNoteFields,
   cimStagePartnerNotes,
+  cimCombineHint,
   combineNextCim,
   combineNextReview,
+  isCimHungJury,
   isCimStageForNotes,
   isNextCimReviewCard,
   memberLabel,
@@ -108,7 +110,7 @@ test("CIM deck includes every stage CIM row; stamped URL still pulls open board 
   assert.equal(isNextCimReviewCard({ stage: "shortlist", cim_url: null }), false);
 });
 
-test("nextCimDeck hides a card only after this member's CIM vote", () => {
+test("nextCimDeck keeps one-vote and both-Hold cards; hung jury sorts last", () => {
   const file = "https://drive.google.com/file/d/iron/view";
   const deals = [
     { id: 1, stage: "cim", cim_url: file, cim_verdicts: {} },
@@ -116,15 +118,48 @@ test("nextCimDeck hides a card only after this member's CIM vote", () => {
     { id: 3, stage: "inbox", cim_url: file, cim_verdicts: {} },
     { id: 4, stage: "nda", cim_url: file, cim_verdicts: {} },
     { id: 5, stage: "cim", cim_url: null, cim_verdicts: {} },
+    {
+      id: 6,
+      stage: "cim",
+      cim_url: file,
+      cim_verdicts: {
+        tristan: { action: "pass" as const },
+        partner: { action: "short" as const },
+      },
+    },
+    {
+      id: 7,
+      stage: "cim",
+      cim_url: file,
+      cim_verdicts: {
+        tristan: { action: "short" as const },
+        partner: { action: "short" as const },
+      },
+    },
+    {
+      id: 8,
+      stage: "cim",
+      cim_url: file,
+      cim_verdicts: {
+        tristan: { action: "discuss" as const },
+        partner: { action: "discuss" as const },
+      },
+    },
   ];
+  const expected = [1, 2, 4, 5, 8, 6];
   assert.deepEqual(
     nextCimDeck(deals, "tristan").map((row) => row.id),
-    [1, 4, 5],
+    expected,
   );
   assert.deepEqual(
     nextCimDeck(deals, "partner").map((row) => row.id),
-    [1, 2, 4, 5],
+    expected,
   );
+  assert.equal(isCimHungJury(deals[5].cim_verdicts), true);
+  assert.equal(isCimHungJury(deals[7].cim_verdicts), false);
+  assert.match(cimCombineHint(deals[5].cim_verdicts), /Hung jury/);
+  assert.match(cimCombineHint(deals[1].cim_verdicts), /One vote/);
+  assert.match(cimCombineHint(deals[7].cim_verdicts), /Both Hold/);
 });
 
 test("nextInboxDeck is per-member — partner Pass does not hide Tristan's card", () => {

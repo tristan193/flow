@@ -10,6 +10,7 @@ import { cimPartnerNoteFields, memberLabel } from "@/lib/next/model";
  * Tristan / Jim notes on a CIM-stage card. Both labels always render at CIM
  * (empty partner field stays visible). Hidden entirely before CIM. Simon
  * never appears. The logged-in member writes via POST /api/next/notes.
+ * Saving a note is not a CIM determination and does not advance the deck.
  */
 export function CimPartnerNotes({
   dealId,
