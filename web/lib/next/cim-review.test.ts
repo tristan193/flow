@@ -310,6 +310,9 @@ test("saving Tristan or Jim notes is not a CIM determination", async () => {
   const [other] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
     "Also waiting",
   ]);
+  const eventsBefore = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [
+    noted.id,
+  ]);
 
   await addNextNote(noted.id, "tristan", "like the pack");
   await addNextNote(noted.id, "partner", "hold for margin");
@@ -319,8 +322,10 @@ test("saving Tristan or Jim notes is not a CIM determination", async () => {
   assert.deepEqual(afterNotes?.cim_verdicts, {});
   const votes = await query("SELECT 1 FROM cim_verdicts_next WHERE deal_id = $1", [noted.id]);
   assert.equal(votes.length, 0);
-  const events = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [noted.id]);
-  assert.equal(events.length, 0);
+  const eventsAfter = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [
+    noted.id,
+  ]);
+  assert.equal(eventsAfter.length, eventsBefore.length);
 
   const cim = await listNextCimDeals();
   assert.deepEqual(
