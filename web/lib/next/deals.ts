@@ -306,7 +306,7 @@ export async function clearNextCimVerdict(dealId: number, member: MemberId): Pro
   await query("DELETE FROM cim_verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
 }
 
-/** CIM stays put until both partners Pass or both Pursue. Uses CIM votes only. */
+/** CIM stays put until both partners agree (Pass→Closed, Pursue→Pursuing). Notes never call this. */
 export async function applyNextCimOutcome(dealId: number, actor: string): Promise<void> {
   const deal = await getNextDeal(dealId);
   if (!deal || deal.stage !== "cim") return;
@@ -484,6 +484,10 @@ export async function getNextDealFile(id: number): Promise<{
   };
 }
 
+/**
+ * Partner (or Simon) note only. Must not write cim_verdicts_next, must not
+ * call applyNextCimOutcome, and must not move stage.
+ */
 export async function addNextNote(dealId: number, member: string, body: string): Promise<void> {
   await query("INSERT INTO notes_next (deal_id, member, body) VALUES ($1, $2, $3)", [
     dealId,

@@ -13,7 +13,11 @@ import {
   setNextCimVerdict,
   setNextVerdict,
 } from "./deals.ts";
-import { cimNoteSectionLabel, cimPartnerNoteFields, cimStagePartnerNotes } from "./model.ts";
+import {
+  cimNoteSectionLabel,
+  cimPartnerNoteFields,
+  cimStagePartnerNotes,
+} from "./model.ts";
 import { upsertNextDeals } from "./import.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
 import { nextCimDeck } from "./model.ts";
@@ -115,10 +119,20 @@ test("Review Likes do not auto-Pursue a CIM card; both CIM Pursue does", async (
   await setNextCimVerdict(row.id, "partner", "discuss");
   const hold = await getNextDeal(row.id);
   assert.equal(hold?.stage, "cim");
+  const holdDeck = await listNextCimDeals();
+  assert.equal(
+    nextCimDeck(holdDeck, "tristan").some((deal) => deal.id === row.id),
+    true,
+  );
 
   await setNextCimVerdict(row.id, "partner", "short");
   const both = await getNextDeal(row.id);
   assert.equal(both?.stage, "pursuing");
+  const afterAgree = await listNextCimDeals();
+  assert.equal(
+    nextCimDeck(afterAgree, "tristan").some((deal) => deal.id === row.id),
+    false,
+  );
 });
 
 test("both CIM Pass closes; Hold and mixed stay CIM; Simon is not a voter", async () => {
@@ -191,6 +205,9 @@ test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", (
   assert.match(client, /CimPartnerNotes/);
   assert.match(client, /dealId=\{top\.id\}/);
   assert.match(client, /member=\{member\}/);
+  assert.match(client, /notes are not votes/);
+  assert.match(client, /Hung jury/);
+  assert.doesNotMatch(client, /\/api\/next\/notes/);
   assert.doesNotMatch(client, /FitStrip/);
   assert.doesNotMatch(client, /No financials|no earnings/);
   assert.match(client, /SuperLikeStar/);
@@ -277,6 +294,88 @@ test("notes save path writes notes_next and CIM fields stay labeled", async () =
   );
 });
 
+test("saving Tristan or Jim notes is not a CIM determination", async () => {
+  await resetNext();
+  await upsertNextDeals([{ title: "Note only", html: AXIAL_HTML, stage: "cim" }]);
+  await upsertNextDeals([
+    {
+      title: "Also waiting",
+      html: '<a href="https://network.axial.net/app/opportunity/bbbbccccddddeeee?action=pursue">Pursue</a>',
+      stage: "cim",
+    },
+  ]);
+  const [noted] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
+    "Note only",
+  ]);
+  const [other] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
+    "Also waiting",
+  ]);
+
+  await addNextNote(noted.id, "tristan", "like the pack");
+  await addNextNote(noted.id, "partner", "hold for margin");
+
+  const afterNotes = await getNextDeal(noted.id);
+  assert.equal(afterNotes?.stage, "cim");
+  assert.deepEqual(afterNotes?.cim_verdicts, {});
+  const votes = await query("SELECT 1 FROM cim_verdicts_next WHERE deal_id = $1", [noted.id]);
+  assert.equal(votes.length, 0);
+  const events = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [noted.id]);
+  assert.equal(events.length, 0);
+
+  const cim = await listNextCimDeals();
+  assert.deepEqual(
+    nextCimDeck(cim, "tristan").map((deal) => deal.id).sort((a, b) => a - b),
+    [noted.id, other.id].sort((a, b) => a - b),
+  );
+  assert.deepEqual(
+    nextCimDeck(cim, "partner").map((deal) => deal.id).sort((a, b) => a - b),
+    [noted.id, other.id].sort((a, b) => a - b),
+  );
+
+  await setNextCimVerdict(noted.id, "tristan", "short");
+  const oneVote = await getNextDeal(noted.id);
+  assert.equal(oneVote?.stage, "cim");
+  const stillThere = await listNextCimDeals();
+  assert.equal(
+    nextCimDeck(stillThere, "tristan").some((deal) => deal.id === noted.id),
+    true,
+  );
+  assert.equal(
+    nextCimDeck(stillThere, "partner").some((deal) => deal.id === noted.id),
+    true,
+  );
+});
+
+test("hung jury stays at CIM and sorts to the bottom of the stack", async () => {
+  await resetNext();
+  await upsertNextDeals([{ title: "Open pack", html: AXIAL_HTML, stage: "cim" }]);
+  await upsertNextDeals([
+    {
+      title: "Hung pack",
+      html: '<a href="https://network.axial.net/app/opportunity/bbbbccccddddeeee?action=pursue">Pursue</a>',
+      stage: "cim",
+    },
+  ]);
+  const [open] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
+    "Open pack",
+  ]);
+  const [hung] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
+    "Hung pack",
+  ]);
+
+  await setNextCimVerdict(hung.id, "tristan", "short");
+  await setNextCimVerdict(hung.id, "partner", "pass");
+  const after = await getNextDeal(hung.id);
+  assert.equal(after?.stage, "cim");
+
+  const cim = await listNextCimDeals();
+  const tristanDeck = nextCimDeck(cim, "tristan").map((deal) => deal.id);
+  const partnerDeck = nextCimDeck(cim, "partner").map((deal) => deal.id);
+  assert.deepEqual(tristanDeck, [open.id, hung.id]);
+  assert.deepEqual(partnerDeck, [open.id, hung.id]);
+  assert.equal(tristanDeck[tristanDeck.length - 1], hung.id);
+});
+
 test("CIM-stage cards show partner notes; earlier stages and Simon stay hidden", () => {
   const notesUi = readFileSync(path.join(process.cwd(), "components/next/notes.tsx"), "utf8");
   const board = readFileSync(path.join(process.cwd(), "components/next/pipeline-board.tsx"), "utf8");
@@ -300,4 +399,7 @@ test("CIM-stage cards show partner notes; earlier stages and Simon stay hidden",
   assert.match(detail, /partnerNotesOnly/);
   assert.match(model, /coerceNextStage\(deal\.stage\) === "cim"/);
   assert.match(notesApi, /addNextNote/);
+  assert.doesNotMatch(notesApi, /setNextCimVerdict|applyNextCimOutcome|moveNextStage/);
+  assert.doesNotMatch(notesUi, /\/api\/next\/cim\/verdict/);
+  assert.doesNotMatch(notesUi, /setNextCimVerdict/);
 });

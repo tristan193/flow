@@ -116,9 +116,14 @@ export function combineNextReview(input: {
 export type NextCimOutcome = "cim" | "pursuing" | "closed";
 
 /**
- * Shared CIM board. Stricter than Review: the card stays at CIM until
- * Tristan AND Jim both Pass, or both Pursue. Hold, mixed votes, or one
- * vote never leave CIM. Super Like and Simon notes are not votes.
+ * Shared CIM board. Notes are never votes. Only explicit Pursue / Pass /
+ * Hold from Tristan and Jim count. The card stays at CIM until both have
+ * voted and those determinations agree:
+ *   both Pass → Closed
+ *   both Pursue → Pursuing
+ *   both Hold → stay CIM (hold path; no new stage)
+ * Hung jury (both voted, disagree) stays CIM — not Pass, not resolved.
+ * Super Like and Simon notes are not votes.
  */
 export function combineNextCim(input: {
   tristan?: VerdictAction | null;
@@ -130,6 +135,15 @@ export function combineNextCim(input: {
   if (tristan === "pass" && partner === "pass") return "closed";
   if (tristan === "short" && partner === "short") return "pursuing";
   return "cim";
+}
+
+/** Both members voted and the determinations differ. Stays in the CIM stack. */
+export function isCimHungJury(
+  verdicts: Partial<Record<MemberId, { action: VerdictAction }>>,
+): boolean {
+  const tristan = verdicts.tristan?.action ?? null;
+  const partner = verdicts.partner?.action ?? null;
+  return Boolean(tristan && partner && tristan !== partner);
 }
 
 /** CIM card buttons — same stored actions as Review, different labels. */
@@ -147,10 +161,10 @@ export function cimCombineHint(
   const outcome = combineNextCim({ tristan, partner });
   if (outcome === "closed") return "Both Pass — leaves CIM for Closed";
   if (outcome === "pursuing") return "Both Pursue — leaves CIM for Pursuing";
-  if (!tristan && !partner) return "Stays at CIM until both Pass or both Pursue";
-  if (!tristan || !partner) return "One vote — stays at CIM";
-  if (tristan === "discuss" || partner === "discuss") return "Hold — stays at CIM";
-  return "Disagreement — stays at CIM";
+  if (!tristan && !partner) return "Stays at CIM until you both vote the same way";
+  if (!tristan || !partner) return "One vote — stays in this stack until the other votes";
+  if (tristan === "discuss" && partner === "discuss") return "Both Hold — stays at CIM";
+  return "Hung jury — stays at the bottom of this stack";
 }
 
 /**
@@ -180,15 +194,32 @@ export function nextInboxDeck<
   return deals.filter((deal) => deal.stage === "inbox" && !deal.verdicts[member]);
 }
 
-/** CIM Review deck: pack/CIM card this member has not cast a CIM vote on. */
+/**
+ * CIM Review stack. Shared — a note never belongs here as a vote, and one
+ * member's determination does not remove the card. Leaves only when
+ * combineNextCim resolves (both Pass / both Pursue). Both Hold and hung
+ * jury stay; hung jury sorts to the bottom.
+ */
 export function nextCimDeck<
   T extends {
     stage: string;
     cim_url?: string | null;
     cim_verdicts: Partial<Record<MemberId, { action: VerdictAction }>>;
   },
->(deals: T[], member: MemberId): T[] {
-  return deals.filter((deal) => isNextCimReviewCard(deal) && !deal.cim_verdicts[member]);
+>(deals: T[], _member?: MemberId): T[] {
+  const waiting: T[] = [];
+  const hung: T[] = [];
+  for (const deal of deals) {
+    if (!isNextCimReviewCard(deal)) continue;
+    const outcome = combineNextCim({
+      tristan: deal.cim_verdicts.tristan?.action ?? null,
+      partner: deal.cim_verdicts.partner?.action ?? null,
+    });
+    if (outcome !== "cim") continue;
+    if (isCimHungJury(deal.cim_verdicts)) hung.push(deal);
+    else waiting.push(deal);
+  }
+  return [...waiting, ...hung];
 }
 
 export interface NextDealRow {

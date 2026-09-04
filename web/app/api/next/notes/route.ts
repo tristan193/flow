@@ -5,6 +5,8 @@ import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { addNextNote } from "@/lib/next/deals";
 
+/** Partner notes only — never a CIM Pursue / Pass / Hold. */
+
 const schema = z.object({
   dealId: z.number().int().positive(),
   body: z.string().trim().min(1).max(4000),
