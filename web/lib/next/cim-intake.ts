@@ -1,4 +1,4 @@
-import { canonicalDriveFileUrl, isDriveFolderUrl, parseCimDealId } from "../cim-pack-id";
+import { canonicalCimUrl, parseCimDealId } from "../cim-pack-id";
 import { type QueryFn, withTransaction } from "../db";
 import { importTokenValid } from "../import-auth";
 import { parseOptionalMargin, parseOptionalMoney } from "./cim-financials-auth";
@@ -223,9 +223,9 @@ export function parseCimIntakeBody(body: Record<string, unknown>):
   }
 
   const cimUrlRaw = bodyField(body, "cimUrl", "cim_url");
-  const canonical = canonicalDriveFileUrl(cimUrlRaw == null ? null : String(cimUrlRaw));
-  if (!canonical || isDriveFolderUrl(cimUrlRaw == null ? null : String(cimUrlRaw))) {
-    return { ok: false, error: "cimUrl must be a Google Drive file URL." };
+  const canonical = canonicalCimUrl(cimUrlRaw == null ? null : String(cimUrlRaw));
+  if (!canonical) {
+    return { ok: false, error: "cimUrl must be an https URL." };
   }
 
   const revenue = parseOptionalMoney(bodyField(body, "revenue"), "revenue");

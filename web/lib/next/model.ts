@@ -38,7 +38,7 @@ export {
 };
 export type { MemberId, VerdictAction };
 
-import { isDriveFileUrl } from "../cim-pack-id";
+import { isCimPackUrl } from "../cim-pack-id";
 import {
   NEXT_BOARD_STAGES,
   NEXT_STAGES,
@@ -170,9 +170,9 @@ export function cimCombineHint(
 /**
  * CIM Review membership. Every deals_next row at stage CIM belongs here —
  * intake and /api/next/stage both make the card available immediately.
- * A stamped Drive file URL on a still-open board row (NDA / Shortlist)
- * also belongs so a pack is reviewable before the stage catch-up.
- * Inbound stays in New; Pursuing / Closed already left.
+ * A stamped pack URL (Drive file or other https) on a still-open board
+ * row (NDA / Shortlist) also belongs so a pack is reviewable before the
+ * stage catch-up. Inbound stays in New; Pursuing / Closed already left.
  */
 export function isNextCimReviewCard(deal: {
   stage: string;
@@ -181,7 +181,7 @@ export function isNextCimReviewCard(deal: {
   const stage = coerceNextStage(deal.stage);
   if (stage === "cim") return true;
   if (stage === "inbox" || stage === "closed" || stage === "pursuing") return false;
-  return isDriveFileUrl(deal.cim_url);
+  return isCimPackUrl(deal.cim_url);
 }
 
 /** Inbound cards this member has not voted on yet. Partner votes do not hide them. */

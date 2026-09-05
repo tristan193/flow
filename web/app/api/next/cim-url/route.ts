@@ -5,7 +5,7 @@ import { ensureReady } from "@/lib/boot";
 import { applyAuthorizedCimUrl } from "@/lib/next/cim-url-auth";
 
 /**
- * Dirk stamps a Drive file URL onto a Next deal.
+ * Dirk stamps an https pack URL onto a Next deal.
  *
  *   Authorization: Bearer FLOW_IMPORT_TOKEN
  *   { "dealNumber": "TLY-092", "cimUrl": "https://drive.google.com/file/d/FILE_ID/view" }

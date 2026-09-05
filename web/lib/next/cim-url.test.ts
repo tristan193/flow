@@ -13,6 +13,7 @@ import { defaultNextAction } from "./stages.ts";
 
 const FILE_URL = "https://drive.google.com/file/d/abcFile092/view";
 const FOLDER_URL = "https://drive.google.com/drive/folders/0ABYzLaaJ9ebAUk9PVA";
+const CANVA_URL = "https://www.canva.com/design/DAG030pack/view?utm_content=DAG030pack";
 
 async function resetNext() {
   await query(`
@@ -44,7 +45,7 @@ test("cim_url column exists on deals_next", async () => {
   assert.equal(cols.length, 1);
 });
 
-test("/cim redirects when cimUrl is a Drive file link", async () => {
+test("/cim redirects when cimUrl is a Drive file or other https pack URL", async () => {
   await resetNext();
   await query(`INSERT INTO deals_next (deal_number, title, cim_url) VALUES ($1, $2, $3)`, [
     "TLY-092",
@@ -57,6 +58,18 @@ test("/cim redirects when cimUrl is a Drive file link", async () => {
     status: "found",
     dealNumber: "TLY-092",
     viewUrl: FILE_URL,
+  });
+
+  await query(`INSERT INTO deals_next (deal_number, title, cim_url) VALUES ($1, $2, $3)`, [
+    "TLY-030",
+    "Kar-Tainer",
+    CANVA_URL,
+  ]);
+  const canva = await resolveStoredCim("TLY-030");
+  assert.deepEqual(canva, {
+    status: "found",
+    dealNumber: "TLY-030",
+    viewUrl: new URL(CANVA_URL).href,
   });
 });
 
@@ -108,7 +121,18 @@ test("token can set cimUrl; session or missing token cannot", async () => {
       cimUrl: FOLDER_URL,
     });
     assert.equal(folder.ok, false);
-    if (!folder.ok) assert.equal(folder.status, 400);
+    if (!folder.ok) {
+      assert.equal(folder.status, 400);
+      assert.match(folder.error, /https/i);
+    }
+
+    const jsUrl = await applyAuthorizedCimUrl({
+      authorization: "Bearer test-dirk-cim-token",
+      dealNumber: "TLY-092",
+      cimUrl: "javascript:alert(1)",
+    });
+    assert.equal(jsUrl.ok, false);
+    if (!jsUrl.ok) assert.equal(jsUrl.status, 400);
 
     const missingDeal = await applyAuthorizedCimUrl({
       authorization: "Bearer test-dirk-cim-token",
@@ -135,6 +159,23 @@ test("token can set cimUrl; session or missing token cannot", async () => {
       status: "found",
       dealNumber: "TLY-092",
       viewUrl: FILE_URL,
+    });
+
+    const canvaStamp = await applyAuthorizedCimUrl({
+      authorization: "Bearer test-dirk-cim-token",
+      dealNumber: "TLY-092",
+      cimUrl: CANVA_URL,
+    });
+    assert.equal(canvaStamp.ok, true);
+    if (canvaStamp.ok) {
+      assert.equal(canvaStamp.cimUrl, new URL(CANVA_URL).href);
+      assert.equal(canvaStamp.stage, "cim");
+    }
+    const canvaOpened = await resolveStoredCim("TLY-092");
+    assert.deepEqual(canvaOpened, {
+      status: "found",
+      dealNumber: "TLY-092",
+      viewUrl: new URL(CANVA_URL).href,
     });
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;

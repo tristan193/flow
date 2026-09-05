@@ -1,4 +1,4 @@
-import { canonicalDriveFileUrl, isDriveFolderUrl } from "../cim-pack-id";
+import { canonicalCimUrl } from "../cim-pack-id";
 import { query, queryOne } from "../db";
 import { importTokenValid } from "../import-auth";
 import { moveNextStage } from "./deals";
@@ -22,7 +22,8 @@ export type AuthorizedCimUrlResult =
   | { ok: false; error: string; status: number };
 
 /**
- * Token-only write of a Drive *file* URL onto deals_next.cim_url.
+ * Token-only write of an https pack URL onto deals_next.cim_url.
+ * Drive file links are canonicalized; other https URLs (Canva, etc.) are kept.
  * Browser session is not enough — Dirk uses FLOW_IMPORT_TOKEN.
  *
  * A non-null pack URL advances a live deal to stage CIM (stage_changed_at/by,
@@ -36,9 +37,9 @@ export async function applyAuthorizedCimUrl(
     return { ok: false, error: "Unauthorized.", status: 401 };
   }
 
-  const canonical = canonicalDriveFileUrl(input.cimUrl);
-  if (!canonical || isDriveFolderUrl(input.cimUrl)) {
-    return { ok: false, error: "cimUrl must be a Google Drive file URL.", status: 400 };
+  const canonical = canonicalCimUrl(input.cimUrl);
+  if (!canonical) {
+    return { ok: false, error: "cimUrl must be an https URL.", status: 400 };
   }
 
   const ref = await findNextDealRef({ dealId: input.dealId, dealNumber: input.dealNumber });

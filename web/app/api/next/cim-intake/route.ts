@@ -5,7 +5,7 @@ import { ensureReady } from "@/lib/boot";
 import { applyAuthorizedCimIntake } from "@/lib/next/cim-intake";
 
 /**
- * Simon's agent stamps a Drive file URL + optional pack numbers onto the
+ * Simon's agent stamps an https pack URL + optional pack numbers onto the
  * existing TLY row and moves it to CIM. One card. No Google on Vercel.
  *
  *   Authorization: Bearer FLOW_IMPORT_TOKEN

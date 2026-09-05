@@ -19,6 +19,7 @@ import { isNextCimReviewCard } from "./model.ts";
 
 const FILE_URL = "https://drive.google.com/file/d/abcFile092/view";
 const FOLDER_URL = "https://drive.google.com/drive/folders/0ABYzLaaJ9ebAUk9PVA";
+const CANVA_URL = "https://www.canva.com/design/DAG030pack/view?utm_content=DAG030pack";
 const TOKEN = "test-cim-intake-token";
 
 async function resetNext() {
@@ -86,7 +87,7 @@ test("parseTlyFromFileName reads canonical TLY from Simon's upload name", () => 
   assert.equal(parseTlyFromFileName(""), null);
 });
 
-test("parseCimIntakeBody requires filename TLY and Drive file URL; posted dealNumber must match", () => {
+test("parseCimIntakeBody requires filename TLY and an https pack URL; posted dealNumber must match", () => {
   const ok = parseCimIntakeBody({
     fileName: "TLY-092 Project Cactus.pdf",
     cimUrl: "https://drive.google.com/open?id=abcFile092",
@@ -144,6 +145,35 @@ test("parseCimIntakeBody requires filename TLY and Drive file URL; posted dealNu
     cimUrl: FOLDER_URL,
   });
   assert.equal(folder.ok, false);
+
+  const canva = parseCimIntakeBody({
+    fileName: "TLY-030 Kar-Tainer.pdf",
+    cimUrl: CANVA_URL,
+  });
+  assert.equal(canva.ok, true);
+  if (canva.ok) {
+    assert.equal(canva.dealNumber, "TLY-030");
+    assert.equal(canva.cimUrl, new URL(CANVA_URL).href);
+  }
+
+  const badScheme = parseCimIntakeBody({
+    fileName: "TLY-092 Project Cactus.pdf",
+    cimUrl: "javascript:alert(1)",
+  });
+  assert.equal(badScheme.ok, false);
+  if (!badScheme.ok) assert.match(badScheme.error, /https/i);
+
+  const httpOnly = parseCimIntakeBody({
+    fileName: "TLY-092 Project Cactus.pdf",
+    cimUrl: "http://www.canva.com/design/x/view",
+  });
+  assert.equal(httpOnly.ok, false);
+
+  const emptyUrl = parseCimIntakeBody({
+    fileName: "TLY-092 Project Cactus.pdf",
+    cimUrl: "   ",
+  });
+  assert.equal(emptyUrl.ok, false);
 
   const missingFile = parseCimIntakeBody({ cimUrl: FILE_URL });
   assert.equal(missingFile.ok, false);
@@ -652,6 +682,41 @@ test("intake with city/state overwrites geo; omitted geo leaves existing city/st
       assert.equal(fromCountry.city, "Hamilton");
       assert.equal(fromCountry.state, "Bermuda");
     }
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
+test("intake accepts a Canva https URL, stamps it, and still advances to CIM", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = TOKEN;
+  try {
+    await insertDeal("TLY-030", "Kar-Tainer", { stage: "nda" });
+
+    const stamped = await applyAuthorizedCimIntake({
+      authorization: `Bearer ${TOKEN}`,
+      fileName: "TLY-030 Kar-Tainer.pdf",
+      cimUrl: CANVA_URL,
+      cimName: "Kar-Tainer",
+      revenue: 4_200_000,
+    });
+    assert.equal(stamped.ok, true);
+    if (stamped.ok) {
+      assert.equal(stamped.dealNumber, "TLY-030");
+      assert.equal(stamped.stage, "cim");
+      assert.equal(stamped.cimUrl, new URL(CANVA_URL).href);
+      assert.equal(stamped.deal.cim_url, new URL(CANVA_URL).href);
+      assert.equal(stamped.deal.stage, "cim");
+      assert.equal(stamped.cimName, "Kar-Tainer");
+    }
+
+    const deck = await listNextCimDeals();
+    const card = deck.find((deal) => deal.deal_number === "TLY-030");
+    assert.ok(card);
+    assert.equal(card.cim_url, new URL(CANVA_URL).href);
+    assert.equal(isNextCimReviewCard({ stage: "nda", cim_url: CANVA_URL }), true);
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;

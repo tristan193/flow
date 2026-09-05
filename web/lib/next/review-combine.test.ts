@@ -104,6 +104,13 @@ test("CIM deck includes every stage CIM row; stamped URL still pulls open board 
   assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: folder }), true);
   assert.equal(isNextCimReviewCard({ stage: "cim", cim_url: file }), true);
   assert.equal(isNextCimReviewCard({ stage: "nda", cim_url: file }), true);
+  assert.equal(
+    isNextCimReviewCard({
+      stage: "nda",
+      cim_url: "https://www.canva.com/design/DAG030pack/view",
+    }),
+    true,
+  );
   assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "pursuing", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "closed", cim_url: file }), false);
