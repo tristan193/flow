@@ -1,4 +1,4 @@
-import { canonicalDriveFileUrl, isDriveFileUrl, parseCimDealId } from "./cim-pack-id";
+import { canonicalCimUrl, parseCimDealId } from "./cim-pack-id";
 import { queryOne } from "./db";
 
 export type CimOpenResult =
@@ -7,8 +7,9 @@ export type CimOpenResult =
   | { status: "found"; dealNumber: string; viewUrl: string };
 
 /**
- * `/cim/TLY-XXX` happy path: look up the deal and return the stamped Drive
- * file URL. Never talks to Google. DB errors become "not in yet", never 500.
+ * `/cim/TLY-XXX` happy path: look up the deal and return the stamped pack
+ * URL (Drive file or other https). Never talks to Google. DB errors become
+ * "not in yet", never 500.
  */
 export async function resolveStoredCim(rawId: string): Promise<CimOpenResult> {
   const dealNumber = parseCimDealId(rawId);
@@ -20,11 +21,12 @@ export async function resolveStoredCim(rawId: string): Promise<CimOpenResult> {
       [dealNumber],
     );
     const stored = row?.cim_url?.trim() || "";
-    if (isDriveFileUrl(stored)) {
+    const viewUrl = canonicalCimUrl(stored);
+    if (viewUrl) {
       return {
         status: "found",
         dealNumber,
-        viewUrl: canonicalDriveFileUrl(stored) ?? stored,
+        viewUrl,
       };
     }
     return { status: "missing", dealNumber };

@@ -2,7 +2,7 @@
  * Force CIM links into a new browsing context.
  *
  * Same-origin `/cim/TLY-XXX` is an App Router page that `redirect()`s to the
- * stamped Drive file. A same-tab click (or a Next.js client navigation that
+ * stamped pack URL. A same-tab click (or a Next.js client navigation that
  * ignores `target="_blank"`) replaces `/next` with that redirect. Always open
  * via `window.open` on an unmodified primary click.
  */

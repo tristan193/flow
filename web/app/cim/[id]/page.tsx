@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Deterministic CIM URL. `/cim/TLY-092` looks up the deal and 302/307s to the
- * stamped Drive file URL. No Google credentials. Missing URL → "CIM not in yet".
+ * stamped pack URL. No Google credentials. Missing URL → "CIM not in yet".
  */
 export default async function CimPackPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

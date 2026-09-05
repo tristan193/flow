@@ -16,9 +16,9 @@ const PUBLIC_PATHS = [
   "/api/next/import", // Next/Dirk loop — does not write live `deals`
   "/api/next/merge",
   "/api/next/stage", // token or member session — checked in the route
-  "/api/next/cim-url", // token-only stamp of Drive file URL
+  "/api/next/cim-url", // token-only stamp of https pack URL
   "/api/next/cim-financials", // token-only stamp of pack numbers
-  "/api/next/cim-intake", // token-only filename + Drive URL + optional pack numbers → existing TLY
+  "/api/next/cim-intake", // token-only filename + https pack URL + optional pack numbers → existing TLY
   "/api/next/dirk",
   "/api/cron",
   "/api/crm/pursuit", // machine harvest token; /api/crm/attention stays session-gated

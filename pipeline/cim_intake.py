@@ -1,8 +1,9 @@
 """
 CIM intake helper for Simon's agent.
 
-After the PDF is already in the shared Drive parent as `TLY-XXX Headline.pdf`,
-POST the filename + Drive file view URL (and optional pack numbers) to Flow.
+After the pack is ready (Drive file `TLY-XXX Headline.pdf`, Canva view link,
+or other https URL), POST the filename + pack URL (and optional pack numbers)
+to Flow.
 Updates the existing deals_next row only. Does not create a card or vote.
 Does not talk to Google Drive.
 
@@ -88,7 +89,7 @@ def post_intake(base: str, token: str, payload: dict) -> tuple[int, dict | str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Stamp a CIM pack onto an existing TLY row.")
     ap.add_argument("--file-name", required=True, help="Drive filename, e.g. TLY-092 Headline.pdf")
-    ap.add_argument("--cim-url", required=True, help="Google Drive file view URL")
+    ap.add_argument("--cim-url", required=True, help="https pack URL (Drive file or Canva view link)")
     ap.add_argument("--deal-number", help="Optional TLY-XXX; must match the filename")
     ap.add_argument(
         "--cim-name",

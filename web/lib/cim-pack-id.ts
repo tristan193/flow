@@ -37,6 +37,7 @@ const DRIVE_HOSTS = new Set(["drive.google.com", "www.drive.google.com"]);
 const FILE_PATH = /^\/file\/d\/([a-zA-Z0-9_-]+)(?:\/|$)/;
 const FOLDER_PATH = /\/folders\//;
 const FILE_ID = /^[a-zA-Z0-9_-]+$/;
+const MAX_CIM_URL_LEN = 2048;
 
 function parseHttpUrl(raw: string): URL | null {
   try {
@@ -77,6 +78,32 @@ export function isDriveFileUrl(raw: string | null | undefined): boolean {
 export function canonicalDriveFileUrl(raw: string | null | undefined): string | null {
   const id = driveFileIdFromUrl(raw);
   return id ? driveFileViewUrl(id) : null;
+}
+
+/**
+ * Pack URL written to deals_next.cim_url.
+ * Drive *file* links stay canonical (`open?id=` → `/file/d/…/view`).
+ * Any other well-formed https URL is kept (Canva view links, etc.).
+ * Drive folders, empty, http, javascript:, and credentialed URLs are rejected.
+ */
+export function canonicalCimUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed || trimmed.length > MAX_CIM_URL_LEN) return null;
+
+  const drive = canonicalDriveFileUrl(trimmed);
+  if (drive) return drive;
+  if (isDriveFolderUrl(trimmed)) return null;
+
+  const url = parseHttpUrl(trimmed);
+  if (!url || url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  if (!url.hostname) return null;
+  return url.href;
+}
+
+export function isCimPackUrl(raw: string | null | undefined): boolean {
+  return canonicalCimUrl(raw) != null;
 }
 
 /** Case-insensitive prefix: `TLY-092 Project Cactus.pdf` matches TLY-092. */

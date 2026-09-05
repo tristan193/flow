@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   CIM_DRIVE_PARENT_ID,
+  canonicalCimUrl,
   canonicalDriveFileUrl,
   cimPackPath,
   driveFileIdFromUrl,
   driveFileViewUrl,
   fileNameMatchesDeal,
+  isCimPackUrl,
   isDriveFileUrl,
   isDriveFolderUrl,
   parseCimDealId,
@@ -102,4 +104,27 @@ test("Drive file URLs are accepted; folder URLs are not", () => {
   assert.equal(isDriveFileUrl("https://example.com/file.pdf"), false);
   assert.equal(isDriveFileUrl("/api/next/cim-files/1"), false);
   assert.equal(canonicalDriveFileUrl(folder), null);
+});
+
+test("canonicalCimUrl accepts Drive files and other https URLs; rejects junk", () => {
+  const fileUrl = driveFileViewUrl("abc123XYZ");
+  const canva =
+    "https://www.canva.com/design/DAGabc123/view?utm_content=DAGabc123&utm_campaign=designshare";
+  assert.equal(canonicalCimUrl("https://drive.google.com/open?id=abc123XYZ"), fileUrl);
+  assert.equal(canonicalCimUrl(fileUrl), fileUrl);
+  assert.equal(canonicalCimUrl(`  ${canva}  `), new URL(canva).href);
+  assert.equal(isCimPackUrl(canva), true);
+  assert.equal(isCimPackUrl("https://example.com/pack.pdf"), true);
+
+  const folder = `https://drive.google.com/drive/folders/${CIM_DRIVE_PARENT_ID}`;
+  assert.equal(canonicalCimUrl(folder), null);
+  assert.equal(canonicalCimUrl(""), null);
+  assert.equal(canonicalCimUrl("   "), null);
+  assert.equal(canonicalCimUrl("not-a-url"), null);
+  assert.equal(canonicalCimUrl("http://www.canva.com/design/x/view"), null);
+  assert.equal(canonicalCimUrl("javascript:alert(1)"), null);
+  assert.equal(canonicalCimUrl("data:text/html,hi"), null);
+  assert.equal(canonicalCimUrl("https://user:pass@example.com/pack"), null);
+  assert.equal(canonicalCimUrl("/api/next/cim-files/1"), null);
+  assert.equal(isCimPackUrl(folder), false);
 });
