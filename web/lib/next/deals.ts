@@ -1,6 +1,6 @@
 import { query, queryOne } from "../db";
 import { normalizeAxialHref } from "../playbooks";
-import { gmailAllHref } from "./identity";
+import { formatDealNumber, gmailAllHref, parseDealNumber } from "./identity";
 import {
   type MemberId,
   type NextDeal,
@@ -210,6 +210,53 @@ export async function getNextDeal(id: number): Promise<NextDeal | null> {
   if (!row) return null;
   const [deal] = await attachVerdicts([normalizeDeal(row)]);
   return deal ?? null;
+}
+
+export type NextDealRouteRef =
+  | { kind: "id"; id: number }
+  | { kind: "number"; dealNumber: string };
+
+/**
+ * `/next/deals/[id]` accepts a numeric DB id, `TLY-013` (any case / padding),
+ * or a zero-padded bare number (`013` → TLY-013). Plain `13` stays a DB id.
+ */
+export function parseNextDealRouteParam(raw: string | null | undefined): NextDealRouteRef | null {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return null;
+
+  const tly = parseDealNumber(trimmed);
+  if (tly) return { kind: "number", dealNumber: formatDealNumber(tly) };
+
+  if (/^0+\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (Number.isInteger(n) && n > 0) return { kind: "number", dealNumber: formatDealNumber(n) };
+    return null;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const id = Number(trimmed);
+    if (Number.isInteger(id) && id > 0) return { kind: "id", id };
+  }
+  return null;
+}
+
+/** Stable punch-list URL: `/next/deals/TLY-XXX`. */
+export function nextDealPublicPath(dealNumber: string | null | undefined): string | null {
+  const n = parseDealNumber(dealNumber);
+  return n ? `/next/deals/${formatDealNumber(n)}` : null;
+}
+
+export async function getNextDealByRouteParam(raw: string): Promise<NextDeal | null> {
+  const parsed = parseNextDealRouteParam(raw);
+  if (!parsed) return null;
+  if (parsed.kind === "id") return getNextDeal(parsed.id);
+
+  const row = await queryOne<{ id: number }>(
+    "SELECT id FROM deals_next WHERE UPPER(deal_number) = $1",
+    [parsed.dealNumber],
+  );
+  if (!row) return null;
+  return getNextDeal(Number(row.id));
 }
 
 export async function setNextVerdict(

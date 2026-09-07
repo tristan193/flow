@@ -12,7 +12,7 @@ import { CimPartnerNotes } from "@/components/next/notes";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { gmailAllHref } from "@/lib/next/identity";
-import { getNextDeal, listNextNotes, listNextStageEvents } from "@/lib/next/deals";
+import { getNextDealByRouteParam, listNextNotes, listNextStageEvents } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
 import {
   businessModelLabel,
@@ -33,15 +33,12 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
   const member = await requireMember();
 
   const { id } = await params;
-  const dealId = Number(id);
-  if (!Number.isInteger(dealId)) notFound();
-
-  const deal = await getNextDeal(dealId);
+  const deal = await getNextDealByRouteParam(id);
   if (!deal) notFound();
 
   const [notes, events] = await Promise.all([
-    listNextNotes(dealId),
-    listNextStageEvents(dealId),
+    listNextNotes(deal.id),
+    listNextStageEvents(deal.id),
   ]);
 
   const fit = assessNextFit(deal);
