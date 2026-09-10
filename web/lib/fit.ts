@@ -142,6 +142,64 @@ function hit(haystack: string, needles: string[]): string | null {
   return null;
 }
 
+const LIST_SEP = new Set(["/", "|", ","]);
+
+function isTokenChar(ch: string | undefined): boolean {
+  return ch != null && /[a-z0-9.+&'-]/.test(ch);
+}
+
+/**
+ * Walk left through a slash/comma/pipe list so "not restaurant/retail/saas"
+ * treats every token as sharing the leading negation.
+ */
+function startOfSeparatedList(haystack: string, matchIndex: number): number {
+  let i = matchIndex;
+  while (i > 0) {
+    let j = i;
+    while (j > 0 && haystack[j - 1] === " ") j--;
+    if (j === 0 || !LIST_SEP.has(haystack[j - 1]!)) break;
+    j--;
+    while (j > 0 && haystack[j - 1] === " ") j--;
+    if (j === 0 || !isTokenChar(haystack[j - 1])) break;
+    while (j > 0 && isTokenChar(haystack[j - 1])) j--;
+    i = j;
+  }
+  return i;
+}
+
+/**
+ * Prefixes that mean the following category mention is a disclaimer, not the
+ * business type: "not restaurant", "not a cafe", "non-restaurant", "no saas",
+ * "always-no: restaurant/…", "clears restaurant/retail".
+ */
+const NEGATION_BEFORE =
+  /(?:^|[^a-z0-9_])(?:always[-\s]?no|hard[-\s]?no|not(?:\s+an?)?|never|no|non-?|isn't|is\s+not|clears(?:\s+\w+){0,3})\s*:?\s*(?:an?\s+)?$/i;
+
+function isNegatedExclusionMention(haystack: string, index: number): boolean {
+  const start = startOfSeparatedList(haystack, index);
+  const left = haystack.slice(Math.max(0, start - 64), start);
+  return NEGATION_BEFORE.test(left);
+}
+
+/**
+ * Same substring match as `hit()`, but skip needles that only appear inside a
+ * negation / always-no disclaimer (Harve footers like
+ * "Not restaurant/retail/ecommerce/SaaS."). A real "restaurant" in the title
+ * still matches even if the blurb also has that footer.
+ */
+function hitExclusion(haystack: string, needles: string[]): string | null {
+  for (const needle of needles) {
+    let from = 0;
+    while (from <= haystack.length - needle.length) {
+      const idx = haystack.indexOf(needle, from);
+      if (idx === -1) break;
+      if (!isNegatedExclusionMention(haystack, idx)) return needle;
+      from = idx + needle.length;
+    }
+  }
+  return null;
+}
+
 function cityLooksLikeCorridor(city: string): boolean {
   if (!city) return false;
   if (CORRIDOR_METROS.includes(city)) return true;
@@ -281,7 +339,7 @@ export function assessFit(deal: DealRow): Fit {
 
   if (!strategic) {
     for (const group of EXCLUDED) {
-      if (hit(text, group.keywords)) {
+      if (hitExclusion(text, group.keywords)) {
         return {
           ...base,
           level: "out",
