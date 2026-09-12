@@ -27,6 +27,7 @@ import {
   Where,
 } from "./deal-card";
 import { BlurbText } from "../blurb-text";
+import { ListingLink } from "../listing-link";
 import { VerdictNotePrompt } from "../verdict-note";
 
 type Override = { action: VerdictAction | null; reason: string | null; note: string | null };
@@ -527,15 +528,9 @@ function SwipeDeck({
                     <div className="border-line flex items-center justify-between gap-2 border-t pt-2.5">
                       <div className="flex flex-wrap items-center gap-x-3">
                         {deal.url ? (
-                          <a
-                            href={deal.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-discuss text-[11.5px]"
-                            onPointerDown={(event) => event.stopPropagation()}
-                          >
+                          <ListingLink href={deal.url} className="text-discuss text-[11.5px]">
                             Original listing →
-                          </a>
+                          </ListingLink>
                         ) : null}
                         <CimPackLink dealNumber={deal.deal_number} className="text-discuss text-[11.5px]" />
                       </div>

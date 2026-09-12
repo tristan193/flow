@@ -4,6 +4,7 @@
  * else listing open (discovery bookmark, not a pursue portal).
  */
 
+import { listingOpenHref, normalizeListingHref } from "./listing-url";
 import type { DealRow } from "./model";
 import { normalizeGmailThreadUrl } from "./gmail-thread";
 
@@ -22,28 +23,14 @@ export interface Playbook {
 /**
  * Axial emails put Pass (action=decline) before Pursue. Older extracts stored
  * the Pass URL — rewrite to pursue so Open on Axial does not archive the deal.
+ * Matrix `;` params stay intact — see listing-url.ts.
  */
 export function normalizeAxialHref(url: string | null | undefined): string | null {
-  if (!url) return null;
-  let href = url.trim().replace(/[).,;]+$/g, "");
-  if (!href) return null;
-  if (!/axial\.net/i.test(href)) return href;
-  if (/action=decline/i.test(href)) {
-    href = href.replace(/action=decline/gi, "action=pursue");
-  }
-  if (/utm_content=pass/i.test(href)) {
-    href = href.replace(/utm_content=pass/gi, "utm_content=pursue");
-  }
-  return href;
+  return normalizeListingHref(url);
 }
 
 function listingHref(deal: Pick<DealRow, "source" | "nickname" | "url">): string | null {
-  const source = (deal.source || "").toLowerCase();
-  const nick = (deal.nickname || "").toLowerCase();
-  const isAxial = source.includes("axial") || nick === "axial";
-  if (isAxial) return normalizeAxialHref(deal.url);
-  const raw = (deal.url || "").trim().replace(/[).,;]+$/g, "");
-  return raw || null;
+  return listingOpenHref(deal.url);
 }
 
 export function resolvePlaybook(
@@ -54,7 +41,7 @@ export function resolvePlaybook(
   const isAxial = source.includes("axial") || nick === "axial";
 
   if (isAxial) {
-    const href = normalizeAxialHref(deal.url);
+    const href = listingOpenHref(deal.url);
     if (!href) return null;
     return {
       id: "axial",

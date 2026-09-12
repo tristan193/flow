@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { BOARD_STAGES, type Deal, type MemberId, type StageId, OUTREACH_OUTCOMES, memberLabel, stageLabel } from "@/lib/model";
 import { resolvePlaybook } from "@/lib/playbooks";
 import { AttachCim } from "./attach-cim";
+import { ListingLink } from "./listing-link";
 import { Earnings, SourcePill, VerdictChips } from "./deal-card";
 import { PursuitLinks } from "./pursuit-links";
 
@@ -177,14 +178,12 @@ export function PipelineBoard({ deals, member }: { deals: Deal[]; member: Member
                           compact
                         />
                         {playbook && (
-                          <a
+                          <ListingLink
                             href={playbook.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
                             className="border-line bg-surface-raised text-discuss hover:border-discuss inline-flex items-center rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors"
                           >
                             {playbook.ctaLabel}
-                          </a>
+                          </ListingLink>
                         )}
                       </div>
                     );

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BlurbText } from "@/components/blurb-text";
+import { ListingLink } from "@/components/listing-link";
 import { AttachCim } from "@/components/attach-cim";
 import { DealActions } from "@/components/deal-actions";
 import { NeedsTags, SourcePill, VerdictChips } from "@/components/deal-card";
@@ -88,14 +89,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 </p>
                 {playbook && (
                   <>
-                    <a
+                    <ListingLink
                       href={playbook.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="bg-discuss text-canvas block rounded-lg px-3.5 py-3 text-center text-[14px] font-bold"
                     >
                       {playbook.ctaLabel}
-                    </a>
+                    </ListingLink>
                     <p className="text-ink-faint text-[12px]">{playbook.hint}</p>
                   </>
                 )}
@@ -134,14 +133,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           )}
 
           {deal.url && (
-            <a
+            <ListingLink
               href={deal.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="border-line bg-surface text-discuss block rounded-xl border px-3.5 py-3 text-[13.5px]"
             >
               View original listing →
-            </a>
+            </ListingLink>
           )}
 
           <NoteThread dealId={deal.id} notes={notes} />

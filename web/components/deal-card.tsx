@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ListingLink } from "./listing-link";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import {
   type Deal,
@@ -265,14 +266,12 @@ export function DealListCard({
         <CardFooter deal={deal} />
 
         {deal.url ? (
-          <a
+          <ListingLink
             href={deal.url}
-            target="_blank"
-            rel="noopener noreferrer"
             className="text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors"
           >
             Original listing →
-          </a>
+          </ListingLink>
         ) : null}
 
         {children}

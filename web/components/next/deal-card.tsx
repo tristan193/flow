@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { CimNewTabLink } from "../cim-new-tab-link";
+import { ListingLink } from "../listing-link";
 import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
 import { dealIdLines, nextDealHeadline, nextDealSubline, sourceDisplayName } from "@/lib/next/display";
@@ -410,14 +411,12 @@ export function DealListCard({
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {deal.url ? (
-            <a
+            <ListingLink
               href={deal.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors"
             >
               Original listing →
-            </a>
+            </ListingLink>
           ) : null}
           <CimPackLink dealNumber={deal.deal_number} />
         </div>
