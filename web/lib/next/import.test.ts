@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { query } from "../db.ts";
 import { createNextDealFromCim } from "./cim-create.ts";
-import { listNextInboxDeals } from "./deals.ts";
+import { listNextBoardDeals, listNextInboxDeals } from "./deals.ts";
 import { applyNextVerdicts, upsertNextDeals } from "./import.ts";
 import { collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
@@ -355,6 +355,20 @@ test("CIM add skips inbound Review and lands at CIM; harvest stays inbound", asy
   assert.equal((await listNextInboxDeals()).length, 0);
 });
 
+test("deals_next remint columns exist for Harve ingest", async () => {
+  const cols = await query<{ column_name: string }>(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_name = 'deals_next'
+        AND column_name IN ('duplicate_of', 'ingest_disposition')
+      ORDER BY column_name`,
+  );
+  assert.deepEqual(
+    cols.map((row) => row.column_name),
+    ["duplicate_of", "ingest_disposition"],
+  );
+});
+
 test("Pursuing cards stay off the Review inbox list", async () => {
   await resetNext();
   await upsertNextDeals([
@@ -366,4 +380,157 @@ test("Pursuing cards stay off the Review inbox list", async () => {
     "SELECT stage FROM deals_next WHERE title = 'Rainwater Harvesting'",
   );
   assert.equal(row.stage, "pursuing");
+});
+
+test("duplicateOf attaches threads to the canonical TLY and does not mint Review", async () => {
+  await resetNext();
+  const first = await upsertNextDeals([
+    {
+      title: "Life-Safety Platform",
+      html: AXIAL_HTML,
+      nickname: "aaaabbbbccccdddd",
+      gmailThreadIds: ["thread-canon"],
+      blurb: "Original board deal.",
+    },
+  ]);
+  assert.equal(first.dealsNew, 1);
+  const [canon] = await query<{ deal_number: string; title: string; blurb: string | null }>(
+    "SELECT deal_number, title, blurb FROM deals_next",
+  );
+  assert.equal(canon.deal_number, "TLY-001");
+
+  const joined = await upsertNextDeals([
+    {
+      title: "Life-Safety teaser thread",
+      html: '<a href="https://network.axial.net/app/opportunity/ffffeeeebbbbcccc?action=pursue">Pursue</a>',
+      nickname: "ffffeeeebbbbcccc",
+      gmailThreadIds: ["thread-teaser"],
+      blurb: "Mid-pipeline/board join: Life-Safety teaser thread → existing TLY-001. Append gmailThreadIds only; no stage change.",
+      duplicateOf: "TLY-001",
+      ingestDisposition: "attached",
+    },
+  ]);
+  assert.equal(joined.dealsNew, 0);
+  assert.equal(joined.dealsUpdated, 1);
+  assert.deepEqual(joined.dealIds, first.dealIds);
+
+  const rows = await query<{
+    deal_number: string;
+    title: string;
+    blurb: string | null;
+    stage: string;
+    gmail_thread_ids: unknown;
+    alias_names: unknown;
+    duplicate_of: string | null;
+  }>("SELECT deal_number, title, blurb, stage, gmail_thread_ids, alias_names, duplicate_of FROM deals_next");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].deal_number, "TLY-001");
+  assert.equal(rows[0].title, "Life-Safety Platform");
+  assert.equal(rows[0].blurb, "Original board deal.");
+  assert.equal(rows[0].stage, "inbox");
+  assert.equal(rows[0].duplicate_of, null);
+  const threads = Array.isArray(rows[0].gmail_thread_ids)
+    ? rows[0].gmail_thread_ids.map(String)
+    : [];
+  assert.ok(threads.includes("thread-canon"));
+  assert.ok(threads.includes("thread-teaser"));
+  const aliases = Array.isArray(rows[0].alias_names) ? rows[0].alias_names.map(String) : [];
+  assert.ok(aliases.some((a) => /teaser/i.test(a)));
+  assert.equal((await listNextInboxDeals()).length, 1);
+  assert.equal((await listNextInboxDeals())[0].deal_number, "TLY-001");
+});
+
+test("remint with unknown duplicateOf mints Closed, never Review", async () => {
+  await resetNext();
+  const minted = await upsertNextDeals([
+    {
+      title: "Life-Safety teaser thread",
+      html: AXIAL_HTML,
+      gmailThreadIds: ["thread-orphan"],
+      duplicateOf: "TLY-132",
+      ingestDisposition: "remint",
+      blurb: "Would have been TLY-212 in Review.",
+    },
+  ]);
+  assert.equal(minted.dealsNew, 1);
+  const [row] = await query<{
+    deal_number: string;
+    stage: string;
+    duplicate_of: string | null;
+    ingest_disposition: string | null;
+  }>("SELECT deal_number, stage, duplicate_of, ingest_disposition FROM deals_next");
+  assert.equal(row.deal_number, "TLY-001");
+  assert.equal(row.stage, "closed");
+  assert.equal(row.duplicate_of, "TLY-132");
+  assert.equal(row.ingest_disposition, "remint");
+  assert.equal((await listNextInboxDeals()).length, 0);
+  const board = await listNextBoardDeals();
+  assert.equal(board.length, 1);
+  assert.equal(board[0].stage, "closed");
+  assert.equal(board[0].duplicate_of, "TLY-132");
+  assert.equal(board[0].ingest_disposition, "remint");
+});
+
+test("re-post closes an accidental remint card and attaches to the canonical", async () => {
+  await resetNext();
+  await upsertNextDeals([
+    {
+      title: "Life-Safety Platform",
+      html: AXIAL_HTML,
+      nickname: "aaaabbbbccccdddd",
+      gmailThreadIds: ["thread-canon"],
+    },
+  ]);
+  await upsertNextDeals([
+    {
+      title: "Accidental remint card",
+      html: '<a href="https://network.axial.net/app/opportunity/ffffeeeebbbbcccc?action=pursue">Pursue</a>',
+      nickname: "ffffeeeebbbbcccc",
+      gmailThreadIds: ["thread-oops"],
+    },
+  ]);
+  const before = await query<{ deal_number: string; stage: string }>(
+    "SELECT deal_number, stage FROM deals_next ORDER BY id",
+  );
+  assert.equal(before.length, 2);
+  assert.equal(before[1].deal_number, "TLY-002");
+  assert.equal(before[1].stage, "inbox");
+  assert.equal((await listNextInboxDeals()).length, 2);
+
+  const healed = await upsertNextDeals([
+    {
+      title: "Accidental remint card",
+      dealNumber: "TLY-002",
+      html: '<a href="https://network.axial.net/app/opportunity/ffffeeeebbbbcccc?action=pursue">Pursue</a>',
+      nickname: "ffffeeeebbbbcccc",
+      gmailThreadIds: ["thread-oops"],
+      duplicateOf: "TLY-001",
+      ingestDisposition: "remint",
+    },
+  ]);
+  assert.equal(healed.dealsNew, 0);
+  assert.equal(healed.dealsUpdated, 1);
+
+  const rows = await query<{
+    deal_number: string;
+    stage: string;
+    duplicate_of: string | null;
+    ingest_disposition: string | null;
+    gmail_thread_ids: unknown;
+  }>("SELECT deal_number, stage, duplicate_of, ingest_disposition, gmail_thread_ids FROM deals_next ORDER BY id");
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].deal_number, "TLY-001");
+  assert.equal(rows[0].stage, "inbox");
+  const threads = Array.isArray(rows[0].gmail_thread_ids)
+    ? rows[0].gmail_thread_ids.map(String)
+    : [];
+  assert.ok(threads.includes("thread-canon"));
+  assert.ok(threads.includes("thread-oops"));
+  assert.equal(rows[1].deal_number, "TLY-002");
+  assert.equal(rows[1].stage, "closed");
+  assert.equal(rows[1].duplicate_of, "TLY-001");
+  assert.equal(rows[1].ingest_disposition, "remint");
+  const inbox = await listNextInboxDeals();
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0].deal_number, "TLY-001");
 });

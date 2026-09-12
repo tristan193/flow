@@ -39,6 +39,7 @@ export {
 export type { MemberId, VerdictAction };
 
 import { isCimPackUrl } from "../cim-pack-id";
+import { isNextRemintCard } from "./remint";
 import {
   NEXT_BOARD_STAGES,
   NEXT_STAGES,
@@ -76,6 +77,14 @@ export {
   shouldAdvanceToCimOnPack,
 };
 export type { NextStageId };
+
+export {
+  formatDuplicateOf,
+  isAttachOnlyIngest,
+  isNextRemintCard,
+  parseIngestDisposition,
+} from "./remint";
+export type { NextIngestDisposition } from "./remint";
 
 export function isTeamShortlist(
   deal: { verdicts: Partial<Record<MemberId, { action: VerdictAction }>> },
@@ -189,9 +198,13 @@ export function nextInboxDeck<
   T extends {
     stage: string;
     verdicts: Partial<Record<MemberId, { action: VerdictAction }>>;
+    duplicate_of?: string | null;
+    ingest_disposition?: string | null;
   },
 >(deals: T[], member: MemberId): T[] {
-  return deals.filter((deal) => deal.stage === "inbox" && !deal.verdicts[member]);
+  return deals.filter(
+    (deal) => deal.stage === "inbox" && !deal.verdicts[member] && !isNextRemintCard(deal),
+  );
 }
 
 /**
@@ -261,6 +274,10 @@ export interface NextDealRow {
   nda_url: string | null;
   /** ISO timestamp when Super Liked. Null = not pinned. Not a verdict. */
   super_liked_at: string | null;
+  /** Canonical TLY when this row is a remint/dupe. Null on live deals. */
+  duplicate_of: string | null;
+  /** new | attached | remint. Null on older rows / ordinary harvest. */
+  ingest_disposition: string | null;
   earnings: number | null;
   earnings_basis: "EBITDA" | "SDE" | null;
   earnings_is_sde: boolean;

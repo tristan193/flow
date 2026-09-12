@@ -325,6 +325,13 @@ ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_url TEXT;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS super_liked_at TIMESTAMPTZ;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS margin DOUBLE PRECISION;
 ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS cim_name TEXT;
+-- Structured remint/dupe (Harve → /api/next/import). Do not encode this in blurb.
+-- duplicate_of = canonical TLY (TLY-132). ingest_disposition = new | attached | remint.
+ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS duplicate_of TEXT;
+ALTER TABLE deals_next ADD COLUMN IF NOT EXISTS ingest_disposition TEXT;
+CREATE INDEX IF NOT EXISTS ix_deals_next_duplicate_of
+  ON deals_next (duplicate_of)
+  WHERE duplicate_of IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_deals_next_super_liked ON deals_next (super_liked_at DESC NULLS LAST);
 -- Unique source_deal_id is applied from lib/next/merge.ts once duplicate rows
 -- are collapsed. Putting CREATE UNIQUE INDEX here would fail applySchema while

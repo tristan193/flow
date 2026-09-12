@@ -13,6 +13,8 @@ import {
   businessModelLabel,
   cimPackMetricSlots,
   earningsLabel,
+  formatDuplicateOf,
+  isNextRemintCard,
   locationLabel,
   memberLabel,
   money,
@@ -331,10 +333,36 @@ export function CimPackMetrics({ deal }: { deal: NextDeal }) {
   );
 }
 
+/** Structured remint — do not make Tristan parse the blurb. */
+export function RemintBadge({
+  deal,
+}: {
+  deal: Pick<NextDeal, "duplicate_of" | "ingest_disposition">;
+}) {
+  if (!isNextRemintCard(deal)) return null;
+  const target = formatDuplicateOf(deal.duplicate_of);
+  const label = target
+    ? `Dupe of ${target}`
+    : deal.ingest_disposition === "attached"
+      ? "Attached"
+      : "Remint";
+  const className =
+    "bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase";
+  if (target) {
+    return (
+      <Link href={`/next/deals/${target}`} className={className}>
+        {label}
+      </Link>
+    );
+  }
+  return <span className={className}>{label}</span>;
+}
+
 export function CardFooter({ deal }: { deal: NextDeal }) {
   return (
     <div className="text-ink-faint flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
       {deal.is_demo && <span className="text-flag font-semibold">DEMO</span>}
+      <RemintBadge deal={deal} />
       <SuperLikeMark deal={deal} />
       <SourcePill deal={deal} />
       {deal.times_seen > 1 && <span>seen {deal.times_seen}×</span>}

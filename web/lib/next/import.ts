@@ -16,18 +16,29 @@ import {
   isNonDealMail,
   mergeAliasNames,
   mergeThreadIds,
+  formatDealNumber,
   parseDealNumber,
   parseSourceIdsValue,
   sanitizeSourceDealId,
 } from "./identity";
 import { ensureNextSourceDealIdUnique } from "./merge";
 import { isMemberId, isVerdictAction, canonicalizeNextStage, sanitizeNextAction } from "./model";
+import {
+  formatDuplicateOf,
+  isAttachOnlyIngest,
+  parseIngestDisposition,
+  type NextIngestDisposition,
+} from "./remint";
 
 export { isHarvestExtId } from "./identity";
 
 /**
  * Next ingest. Identity is TLY number + source id + fingerprint.
  * Harvest `ext_id = format:gmail_msg:index` is ignored as a join key.
+ *
+ * Remint / attach-only: see `lib/next/remint.ts`. When `duplicateOf` or
+ * `ingestDisposition` of attached/remint is set, import prefers merging
+ * threads onto the canonical TLY and will not leave a live Review card.
  */
 export interface IncomingNextDeal {
   extId?: string | null;
@@ -65,6 +76,10 @@ export interface IncomingNextDeal {
   stage?: string | null;
   proposedStage?: string | null;
   member?: string | null;
+  /** Canonical TLY when this payload is a remint/dupe, e.g. "TLY-132". */
+  duplicateOf?: string | null;
+  /** new | attached | remint. attached/remint are attach-only (or Closed audit). */
+  ingestDisposition?: string | null;
 }
 
 export interface IncomingNextVerdict {
@@ -270,11 +285,103 @@ async function updateMatchedDeal(
   );
 }
 
+/**
+ * Append threads / aliases / source ids onto the live deal. Does not touch
+ * title, blurb, money, or stage — remint copy must not clobber the canonical.
+ */
+async function attachToCanonicalDeal(
+  q: QueryFn,
+  matchedId: number,
+  deal: IncomingNextDeal,
+  ident: IdentityRecord,
+  title: string,
+): Promise<void> {
+  const existing = await q<Record<string, unknown>>(
+    `SELECT title, alias_names, gmail_thread_ids, source_ids, source_deal_id, fingerprint
+       FROM deals_next WHERE id = $1`,
+    [matchedId],
+  );
+  const cur = existing[0];
+  if (!cur) return;
+
+  const aliases = mergeAliasNames(
+    asStringArray(cur.alias_names),
+    title,
+    cur.title == null ? null : String(cur.title),
+    deal.aliasNames,
+  );
+  const mergedThreads = mergeThreadIds(asStringArray(cur.gmail_thread_ids), ident.gmailThreadIds);
+  const priorIds = parseSourceIdsValue(cur.source_ids);
+  const mergedIds = [...priorIds];
+  for (const s of ident.sourceIds) {
+    if (!mergedIds.some((p) => p.canonical === s.canonical)) mergedIds.push(s);
+  }
+
+  await q(
+    `UPDATE deals_next SET
+       last_seen        = GREATEST(last_seen, COALESCE($1::timestamptz, now())),
+       times_seen       = GREATEST(times_seen, $2),
+       source_deal_id   = COALESCE(source_deal_id, $3),
+       source_ids       = $4::jsonb,
+       alias_names      = $5::jsonb,
+       gmail_thread_ids = $6::jsonb,
+       fingerprint      = COALESCE(fingerprint, $7),
+       updated_at       = now()
+     WHERE id = $8`,
+    [
+      toTimestamp(deal.lastSeen),
+      deal.timesSeen ?? 1,
+      ident.sourceDealId,
+      JSON.stringify(mergedIds),
+      JSON.stringify(aliases),
+      JSON.stringify(mergedThreads),
+      ident.fingerprint,
+      matchedId,
+    ],
+  );
+}
+
+async function stampClosedRemint(
+  q: QueryFn,
+  remintId: number,
+  duplicateOf: string | null,
+  disposition: NextIngestDisposition,
+): Promise<void> {
+  const current = await q<{ stage: string }>("SELECT stage FROM deals_next WHERE id = $1", [
+    remintId,
+  ]);
+  if (!current[0]) return;
+  const from = current[0].stage;
+  await q(
+    `UPDATE deals_next SET
+       duplicate_of = COALESCE($1, duplicate_of),
+       ingest_disposition = $2,
+       stage = 'closed',
+       stage_changed_at = CASE WHEN stage IS DISTINCT FROM 'closed' THEN now() ELSE stage_changed_at END,
+       stage_changed_by = CASE WHEN stage IS DISTINCT FROM 'closed' THEN $3 ELSE stage_changed_by END,
+       updated_at = now()
+     WHERE id = $4`,
+    [duplicateOf, disposition, NEXT_INGEST_ACTOR, remintId],
+  );
+  if (from !== "closed") {
+    await q(
+      `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
+       VALUES ($1, $2, 'closed', $3)`,
+      [remintId, from, NEXT_INGEST_ACTOR],
+    );
+  }
+}
+
 async function insertNewDeal(
   q: QueryFn,
   deal: IncomingNextDeal,
   ident: IdentityRecord,
   title: string,
+  remint?: {
+    duplicateOf?: string | null;
+    disposition?: NextIngestDisposition | null;
+    closed?: boolean;
+  },
 ): Promise<number> {
   const dealNumber =
     ident.dealNumber && parseDealNumber(ident.dealNumber)
@@ -286,6 +393,9 @@ async function insertNewDeal(
   const needs = JSON.stringify(deal.needsLlm ?? []);
   const broker = deal.brokerFirm?.trim() || ident.brokerFirm;
   const nextAction = sanitizeNextAction(deal.nextAction);
+  const closed = Boolean(remint?.closed);
+  const disposition = remint?.disposition ?? null;
+  const duplicateOf = remint?.duplicateOf ?? null;
 
   const inserted = await q<{ id: number }>(
     `INSERT INTO deals_next (
@@ -294,14 +404,18 @@ async function insertNewDeal(
        title, blurb, source, sub_source, nickname, sources,
        city, state, county,
        revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
-       first_seen, last_seen, times_seen
+       first_seen, last_seen, times_seen,
+       stage, stage_changed_at, stage_changed_by,
+       duplicate_of, ingest_disposition
      ) VALUES (
        $1, $2, $3::jsonb, $4::jsonb,
        $5::jsonb, $6, $7, $8, $9,
        $10, $11, $12, $13, $14, $15,
        $16, $17, $18,
        $19, $20, $21, $22, $23, $24::jsonb, $25,
-       COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28
+       COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28,
+       $29, CASE WHEN $29 = 'closed' THEN now() ELSE NULL END, CASE WHEN $29 = 'closed' THEN $30 ELSE NULL END,
+       $31, $32
      )
      RETURNING id`,
     [
@@ -333,18 +447,50 @@ async function insertNewDeal(
       toTimestamp(deal.firstSeen),
       toTimestamp(deal.lastSeen),
       deal.timesSeen ?? 1,
+      closed ? "closed" : "inbox",
+      NEXT_INGEST_ACTOR,
+      duplicateOf,
+      disposition,
     ],
   );
 
-  return Number(inserted[0]?.id);
+  const id = Number(inserted[0]?.id);
+  if (closed && id) {
+    await q(
+      `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
+       VALUES ($1, NULL, 'closed', $2)`,
+      [id, NEXT_INGEST_ACTOR],
+    );
+  }
+  return id;
 }
 
 async function applyIncomingStage(dealId: number, deal: IncomingNextDeal): Promise<void> {
+  if (isAttachOnlyIngest(deal)) return;
   const stage = canonicalizeNextStage(deal.stage ?? deal.proposedStage);
   if (!stage) return;
   const member =
     deal.member && isMemberId(deal.member) ? deal.member : NEXT_INGEST_ACTOR;
   await moveNextStage(dealId, member, stage);
+}
+
+function remintIntent(deal: IncomingNextDeal): {
+  duplicateOf: string | null;
+  disposition: NextIngestDisposition | null;
+  attachOnly: boolean;
+} {
+  const duplicateOf = formatDuplicateOf(deal.duplicateOf);
+  const disposition = parseIngestDisposition(deal.ingestDisposition);
+  return {
+    duplicateOf,
+    disposition,
+    attachOnly: isAttachOnlyIngest(deal),
+  };
+}
+
+function postedDealNumber(deal: IncomingNextDeal): string | null {
+  const n = parseDealNumber(deal.dealNumber);
+  return n ? formatDealNumber(n) : null;
 }
 
 export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
@@ -373,13 +519,72 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
       continue;
     }
 
+    const intent = remintIntent(deal);
     const ident = prepareIdentity(deal);
     const matchInput = incomingToIdentity({ ...deal, dealNumber: ident.dealNumber });
 
     const outcome = await withTransaction(async (q) => {
       await lockIdentity(q, ident);
+      if (intent.duplicateOf) {
+        await q("SELECT pg_advisory_xact_lock(872011, hashtext($1))", [
+          `tly:${intent.duplicateOf}`,
+        ]);
+      }
       const candidates = await loadMatchCandidates(q);
+
+      const targetByDupe = intent.duplicateOf
+        ? candidates.find((c) => formatDuplicateOf(c.dealNumber) === intent.duplicateOf) ?? null
+        : null;
       const hit = findIdentityMatch(matchInput, candidates);
+      const attachTarget = targetByDupe ?? (intent.attachOnly && hit ? hit.candidate : null);
+
+      if (attachTarget) {
+        await attachToCanonicalDeal(q, attachTarget.id, deal, ident, title);
+        const ownNumber = postedDealNumber(deal);
+        if (ownNumber && ownNumber !== attachTarget.dealNumber) {
+          const orphan = candidates.find((c) => formatDuplicateOf(c.dealNumber) === ownNumber);
+          if (orphan && orphan.id !== attachTarget.id) {
+            await stampClosedRemint(
+              q,
+              orphan.id,
+              intent.duplicateOf ?? formatDuplicateOf(attachTarget.dealNumber),
+              intent.disposition === "attached" ? "attached" : "remint",
+            );
+          }
+        }
+        return { kind: "updated" as const, id: attachTarget.id };
+      }
+
+      if (intent.attachOnly) {
+        try {
+          await q("SAVEPOINT next_insert");
+          const id = await insertNewDeal(q, deal, ident, title, {
+            duplicateOf: intent.duplicateOf,
+            disposition: intent.disposition ?? "remint",
+            closed: true,
+          });
+          await q("RELEASE SAVEPOINT next_insert");
+          return { kind: "new" as const, id };
+        } catch (error) {
+          try {
+            await q("ROLLBACK TO SAVEPOINT next_insert");
+          } catch {
+            // savepoint missing — transaction already failed
+          }
+          if (!isUniqueViolation(error)) throw error;
+          const again = await loadMatchCandidates(q);
+          const retryTarget = intent.duplicateOf
+            ? again.find((c) => formatDuplicateOf(c.dealNumber) === intent.duplicateOf)
+            : null;
+          const retry = retryTarget
+            ? { candidate: retryTarget }
+            : findIdentityMatch(matchInput, again);
+          if (!retry) throw error;
+          await attachToCanonicalDeal(q, retry.candidate.id, deal, ident, title);
+          return { kind: "updated" as const, id: retry.candidate.id };
+        }
+      }
+
       if (hit) {
         await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
         return { kind: "updated" as const, id: hit.candidate.id };

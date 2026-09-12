@@ -22,6 +22,7 @@ import {
   sanitizeNextAction,
   shouldAdvanceToCimOnPack,
 } from "./model";
+import { formatDuplicateOf, isNextRemintCard, parseIngestDisposition } from "./remint";
 
 function isoString(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -99,6 +100,8 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     cim_url: row.cim_url == null ? null : String(row.cim_url),
     nda_url: row.nda_url == null ? null : String(row.nda_url),
     super_liked_at: row.super_liked_at ? isoString(row.super_liked_at) : null,
+    duplicate_of: formatDuplicateOf(row.duplicate_of),
+    ingest_disposition: parseIngestDisposition(row.ingest_disposition),
     earnings: row.earnings == null ? null : Number(row.earnings),
     earnings_basis:
       row.earnings_basis === "EBITDA" || row.earnings_basis === "SDE"
@@ -180,10 +183,10 @@ export async function listNextDeals(): Promise<NextDeal[]> {
   return attachVerdicts(rows.map(normalizeDeal));
 }
 
-/** Inbound queue for `/next` Review → New. Board stages never belong here. */
+/** Inbound queue for `/next` Review → New. Board stages and remints never belong here. */
 export async function listNextInboxDeals(): Promise<NextDeal[]> {
   const deals = await listNextDeals();
-  return deals.filter((deal) => deal.stage === "inbox");
+  return deals.filter((deal) => deal.stage === "inbox" && !isNextRemintCard(deal));
 }
 
 /** CIM Review swipe. Same deals_next rows as intake — every stage CIM card. */
