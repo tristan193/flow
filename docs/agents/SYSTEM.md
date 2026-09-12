@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-05 · Primary author this pass: `nm/web/cim-url`
+Last reviewed: 2026-09-12 · Primary author this pass: `nm/web/remint`
 
 ## 1. Product in one paragraph
 

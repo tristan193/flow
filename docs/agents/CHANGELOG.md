@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-12 — `nm/web/remint` — DONE
+
+**Scope:** Structured remint/duplicate fields so Review and ingest act without parsing blurb
+**Risk:** low (nullable columns; attach-only does not clobber canonical title/stage)
+**Coords:** none — merged #34; prod READY `ab01aee`
+
+### Changed
+- `deals_next.duplicate_of` / `ingest_disposition` — Harve posts `duplicateOf` + `ingestDisposition` (`new` | `attached` | `remint`)
+- `POST /api/next/import` — attach-only onto the canonical TLY (threads/aliases/source ids); unknown target mints a Closed audit row
+- Review New deck hides remints; Closed / detail show **Dupe of TLY-XXX**
+- `web/lib/next/remint.ts` — ingest contract (blurb stays notes only)
+
+### Do not touch
+- Classic `/api/import` (accepts the extra keys, ignores them)
+- Buy-box / restaurant exclusion
+- Broker email
+
+### Follow-ups
+- Harve should stamp `duplicateOf` / `ingestDisposition` on mid-pipeline joins
+
 ## 2026-09-03 — `nm/web/cim-notes` — DONE
 
 **Scope:** CIM cards always show Tristan notes and Jim notes fields; empty no longer hides the section
