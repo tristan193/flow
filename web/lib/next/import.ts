@@ -547,7 +547,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
             await stampClosedRemint(
               q,
               orphan.id,
-              intent.duplicateOf ?? attachTarget.dealNumber,
+              intent.duplicateOf ?? formatDuplicateOf(attachTarget.dealNumber),
               intent.disposition === "attached" ? "attached" : "remint",
             );
           }
