@@ -35,6 +35,9 @@ export interface IncomingDeal {
   firstSeen?: string | null;
   lastSeen?: string | null;
   timesSeen?: number | null;
+  /** Accepted and ignored — remint/dupe identity lives on /api/next/import. */
+  duplicateOf?: string | null;
+  ingestDisposition?: string | null;
 }
 
 export interface IncomingVerdict {

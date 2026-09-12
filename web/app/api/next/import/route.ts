@@ -11,6 +11,12 @@ import { collapseNextDuplicates } from "@/lib/next/merge";
  *
  * Authenticated with FLOW_IMPORT_TOKEN (same bearer as live harvest).
  *
+ * Remint / attach-only (Harve): each deal may include
+ *   duplicateOf: "TLY-132"
+ *   ingestDisposition: "new" | "attached" | "remint"
+ * Attach-only merges gmailThreadIds onto the canonical TLY and does not mint
+ * a Review card. See `web/lib/next/remint.ts`.
+ *
  * Collapse raced duplicates (no browser session):
  *   { "mergeDuplicates": true, "deals": [] }
  */

@@ -11,6 +11,7 @@ import {
   type MemberId,
   type NextDeal,
   type NextNoteRow,
+  isNextRemintCard,
   isNextReviewStage,
   type VerdictAction,
 } from "@/lib/next/model";
@@ -211,7 +212,10 @@ export function NextReviewClient({
       scored
         .filter(
           (deal) =>
-            isNextReviewStage(deal.stage) && !verdictOf(deal) && !skipped.includes(deal.id),
+            isNextReviewStage(deal.stage) &&
+            !isNextRemintCard(deal) &&
+            !verdictOf(deal) &&
+            !skipped.includes(deal.id),
         )
         .sort(byPinnedThenFit),
     [scored, verdictOf, skipped],

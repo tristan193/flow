@@ -18,7 +18,7 @@ import {
 import { nextDealHeadline } from "@/lib/next/display";
 import { gmailAllHref } from "@/lib/next/identity";
 import { NextAttachCim } from "./attach-cim";
-import { DealTitleStack, Earnings, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
+import { DealTitleStack, Earnings, RemintBadge, SourcePill, SuperLikeMark, VerdictChips } from "./deal-card";
 import { CimPartnerNotes } from "./notes";
 
 const STAGE_TONE: Record<string, string> = {
@@ -165,6 +165,7 @@ export function NextPipelineBoard({
                   <div className="mb-2.5 flex flex-wrap items-center gap-2">
                     <SuperLikeMark deal={deal} />
                     <SourcePill deal={deal} />
+                    <RemintBadge deal={deal} />
                   </div>
 
                   <div className="text-ink-faint mb-2.5 space-y-1 text-[12px]">

@@ -5,7 +5,7 @@ import { BlurbText } from "@/components/blurb-text";
 import { NextAttachCim } from "@/components/next/attach-cim";
 import { NextBuyboxReview } from "@/components/next/buybox-review";
 import { NextDealActions } from "@/components/next/deal-actions";
-import { DealTitleStack, NeedsTags, SourcePill, VerdictChips } from "@/components/next/deal-card";
+import { DealTitleStack, NeedsTags, RemintBadge, SourcePill, VerdictChips } from "@/components/next/deal-card";
 import { listingIdLabel, sourceDisplayName } from "@/lib/next/display";
 import { NextNav } from "@/components/next/nav";
 import { CimPartnerNotes } from "@/components/next/notes";
@@ -56,6 +56,10 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
     ["Source", sourceDisplayName(deal)],
     ["Stage", nextStageLabel(deal.stage)],
     ["Next action", deal.next_action || defaultNextAction(deal.stage) || "—"],
+    ...(deal.duplicate_of ? [["Duplicate of", deal.duplicate_of] as [string, string]] : []),
+    ...(deal.ingest_disposition
+      ? [["Ingest", deal.ingest_disposition] as [string, string]]
+      : []),
   ];
 
   return (
@@ -74,6 +78,7 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           />
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <SourcePill deal={deal} />
+            <RemintBadge deal={deal} />
             {deal.is_demo && (
               <span className="bg-flag-bg text-flag rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
                 DEMO
