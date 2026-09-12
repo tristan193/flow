@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { query } from "../db.ts";
 import { createNextDealFromCim } from "./cim-create.ts";
-import { listNextInboxDeals } from "./deals.ts";
+import { listNextBoardDeals, listNextInboxDeals } from "./deals.ts";
 import { applyNextVerdicts, upsertNextDeals } from "./import.ts";
 import { collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
@@ -355,6 +355,20 @@ test("CIM add skips inbound Review and lands at CIM; harvest stays inbound", asy
   assert.equal((await listNextInboxDeals()).length, 0);
 });
 
+test("deals_next remint columns exist for Harve ingest", async () => {
+  const cols = await query<{ column_name: string }>(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_name = 'deals_next'
+        AND column_name IN ('duplicate_of', 'ingest_disposition')
+      ORDER BY column_name`,
+  );
+  assert.deepEqual(
+    cols.map((row) => row.column_name),
+    ["duplicate_of", "ingest_disposition"],
+  );
+});
+
 test("Pursuing cards stay off the Review inbox list", async () => {
   await resetNext();
   await upsertNextDeals([
@@ -450,6 +464,11 @@ test("remint with unknown duplicateOf mints Closed, never Review", async () => {
   assert.equal(row.duplicate_of, "TLY-132");
   assert.equal(row.ingest_disposition, "remint");
   assert.equal((await listNextInboxDeals()).length, 0);
+  const board = await listNextBoardDeals();
+  assert.equal(board.length, 1);
+  assert.equal(board[0].stage, "closed");
+  assert.equal(board[0].duplicate_of, "TLY-132");
+  assert.equal(board[0].ingest_disposition, "remint");
 });
 
 test("re-post closes an accidental remint card and attaches to the canonical", async () => {
