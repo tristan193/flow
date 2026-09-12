@@ -22,6 +22,7 @@ import {
   Where,
 } from "./deal-card";
 import { BlurbText } from "./blurb-text";
+import { ListingLink } from "./listing-link";
 import { TrainAiButton } from "./train-ai-button";
 import { VerdictNotePrompt } from "./verdict-note";
 
@@ -667,14 +668,9 @@ function SwipeDeck({
                     <CardFooter deal={deal} />
                     <div className="border-line flex items-center justify-between gap-2 border-t pt-2.5">
                       {deal.url ? (
-                        <a
-                          href={deal.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-discuss text-[11.5px]"
-                        >
+                        <ListingLink href={deal.url} className="text-discuss text-[11.5px]">
                           Original listing →
-                        </a>
+                        </ListingLink>
                       ) : (
                         <span />
                       )}

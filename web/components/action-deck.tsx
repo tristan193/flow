@@ -12,6 +12,7 @@ import {
   type OutreachOutcomeId,
   stageLabel,
 } from "@/lib/model";
+import { listingOpenHref } from "@/lib/listing-url";
 import { isActionableDeal, resolvePlaybook } from "@/lib/playbooks";
 import { CimNewTabLink } from "./cim-new-tab-link";
 import {
@@ -130,7 +131,8 @@ export function ActionDeck({ deals, member }: { deals: Deal[]; member: MemberId 
     openedAt.current = Date.now();
     setDebriefFor(deal);
     if (pb?.href) {
-      window.open(pb.href, "_blank", "noopener,noreferrer");
+      const href = listingOpenHref(pb.href) ?? pb.href;
+      window.open(href, "_blank", "noopener,noreferrer");
     }
   }, []);
 

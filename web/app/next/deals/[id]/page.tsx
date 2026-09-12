@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BlurbText } from "@/components/blurb-text";
+import { ListingLink } from "@/components/listing-link";
 import { NextAttachCim } from "@/components/next/attach-cim";
 import { NextBuyboxReview } from "@/components/next/buybox-review";
 import { NextDealActions } from "@/components/next/deal-actions";
@@ -159,14 +160,12 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
           )}
 
           {deal.url && (
-            <a
+            <ListingLink
               href={deal.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="border-line bg-surface text-discuss block rounded-xl border px-3.5 py-3 text-[13.5px]"
             >
               View original listing →
-            </a>
+            </ListingLink>
           )}
 
           {isCimStageForNotes(deal) ? (
