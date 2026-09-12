@@ -27,6 +27,24 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-10 — `nm/web/review` — DONE
+
+**Scope:** FitStrip exclusion matching ignores negated category mentions (Harve "Not restaurant/…" footer false positive)
+**Risk:** low (display-only `fit.ts`; yaml hard-nos unchanged)
+**Coords:** none — merged #32
+
+### Changed
+- `web/lib/fit.ts` — `hitExclusion()` skips needles that only appear after not / no / non- / never / always-no / clears; slash-lists inherit the leading negation
+- `web/lib/fit.test.ts` — Harve footer, towing + footer, real restaurant/cafe still out
+
+### Do not touch
+- ingest / Harve pipelines (separately stopping the phrase)
+- `pipeline/buybox.yaml` hard exclusion list
+- `pipeline/score.py` enrich skip
+
+### Follow-ups
+- none for the app; Harve footer removal is separate
+
 ## 2026-09-03 — `nm/web/cim-notes` — DONE
 
 **Scope:** CIM cards always show Tristan notes and Jim notes fields; empty no longer hides the section
