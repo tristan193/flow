@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/next", label: "Review" },
   { href: "/next/pipeline", label: "Pipeline" },
+  { href: "/db", label: "DB" },
 ];
 
 export function NextNav({ memberLabel }: { memberLabel: string }) {

@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 /**
  * One query interface over two Postgres drivers.
  *
@@ -91,14 +88,11 @@ const globalForDb = globalThis as unknown as { __flowDb?: Promise<Db> };
 async function connect(): Promise<Db> {
   const url = process.env.DATABASE_URL?.trim();
   const db = url ? await createPostgres(url) : await createPglite();
-  await applySchema(db);
+  // Run-once migrations (schema_migrations). Replaces the old per-request
+  // applySchema — after this, requests never execute DDL.
+  const { runMigrations } = await import("./migrations");
+  await runMigrations(db);
   return db;
-}
-
-/** Idempotent — safe to re-run after HMR when schema.sql gained new tables. */
-export async function applySchema(db?: Db): Promise<void> {
-  const conn = db ?? (await getDb());
-  await conn.exec(readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8"));
 }
 
 export function getDb(): Promise<Db> {

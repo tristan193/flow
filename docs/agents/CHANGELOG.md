@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-17 — `nm/web/dealbook` — DONE
+
+**Scope:** Dealbook tables + `/db` visual home. Review/Pipeline still use child tables.  
+**Risk:** high (Neon run-once migrations; extra columns + empty `deal_log`; existing TLY rows preserved)  
+**Coords:** none
+
+### Changed
+- `web/db/migrations/` — 001 baseline, 002 vote/note/watch columns on `deals_next` (backfill; child tables stay), 003 empty `deal_log` (going forward only), 004 Axial Pass→Pursue URL fix
+- `web/lib/migrations.ts` + `boot.ts` / `db.ts` — schema runs once per process, not per request
+- `/db` — deals table, activity log, needs-review confirm/dismiss
+
+### Do not touch
+- Live `deals` / classic harvest import
+- `verdicts_next` / `notes_next` / other Next child tables (Review still reads them)
+
+### Follow-ups
+- Cut Review/Pipeline writes over to deal columns + `deal_log`
+
+---
+
 ## 2026-09-03 — `nm/web/cim-notes` — DONE
 
 **Scope:** CIM cards always show Tristan notes and Jim notes fields; empty no longer hides the section
