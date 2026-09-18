@@ -4,11 +4,13 @@ import { parse as parseCsv } from "csv-parse/sync";
 
 import { query } from "./db";
 import { isMemberId, isVerdictAction } from "./model";
+import { importNextSnapshot, type IncomingNextDeal } from "./next/import";
 import { normalizeAxialHref } from "./playbooks";
 
 /**
  * Deals arrive from the Python pipeline, which owns extraction. Flow App never
- * re-parses email; it upserts whatever the pipeline produced, keyed on ext_id.
+ * re-parses email; harvest POSTs land on the dealbook (`deals_next`), joined by
+ * URL / source id / fingerprint — harvest `ext_id` is not a TLY join key.
  */
 export interface IncomingDeal {
   extId: string;
@@ -235,14 +237,71 @@ export async function recordImport(
   );
 }
 
+/**
+ * Harvest snapshot → dealbook. Classic `deals` is no longer written.
+ *
+ * The Python exporter still POSTs the full SQLite inventory. Unmatched rows
+ * older than four days are not minted into Review (skipIfNew). Matched TLY
+ * rows still get null-fills and last_seen. Fresh first_seen listings land
+ * in inbox.
+ */
+const HARVEST_NEW_MS = 4 * 24 * 60 * 60 * 1000;
+
+export function harvestFirstSeenIsNew(firstSeen: string | null | undefined, now = Date.now()): boolean {
+  const t = Date.parse(String(firstSeen || ""));
+  if (!Number.isFinite(t)) return true;
+  return now - t <= HARVEST_NEW_MS;
+}
+
+export function harvestDealToNext(deal: IncomingDeal): IncomingNextDeal {
+  return {
+    extId: deal.extId,
+    title: deal.title,
+    blurb: deal.blurb,
+    source: deal.source,
+    subSource: deal.subSource,
+    nickname: deal.nickname,
+    sources: deal.sources,
+    city: deal.city,
+    state: deal.state,
+    county: deal.county,
+    revenue: deal.revenue,
+    ebitda: deal.ebitda,
+    sde: deal.sde,
+    asking: deal.asking,
+    businessModelType: deal.businessModelType,
+    needsLlm: deal.needsLlm,
+    url: deal.url,
+    firstSeen: deal.firstSeen,
+    lastSeen: deal.lastSeen,
+    timesSeen: deal.timesSeen,
+    duplicateOf: deal.duplicateOf,
+    ingestDisposition: deal.ingestDisposition,
+    skipIfNew: !harvestFirstSeenIsNew(deal.firstSeen),
+  };
+}
+
 export async function importSnapshot(
   payload: { deals?: IncomingDeal[]; verdicts?: IncomingVerdict[] },
   source: string,
   detail: string,
 ): Promise<ImportResult> {
-  const dealResult = await upsertDeals(payload.deals ?? []);
-  const verdictsApplied = await applyVerdicts(payload.verdicts ?? []);
-  const result: ImportResult = { ...dealResult, verdictsApplied };
+  const result = await importNextSnapshot(
+    {
+      deals: (payload.deals ?? []).map(harvestDealToNext),
+      verdicts: (payload.verdicts ?? []).map((row) => ({
+        dealNumber: row.extId,
+        member: row.member,
+        action: row.action,
+        reason: row.reason,
+        note: row.note,
+        createdAt: row.createdAt,
+      })),
+    },
+    source,
+    detail,
+    { verdictMode: "propose" },
+  );
   await recordImport(source, detail, result);
   return result;
 }

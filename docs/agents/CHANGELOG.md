@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-18 — `nm/web/one-dataset` — DONE
+
+**Scope:** One dataset — Review, CIM Review, Pipeline, harvest, and CRM all read/write `deals_next` + `deal_log`. Classic leftover tables are not a parallel product.  
+**Risk:** medium (harvest `/api/import` now upserts dealbook with skipIfNew; CRM FK retargets; classic URLs 308)  
+**Coords:** none
+
+### Changed
+- `web/lib/import.ts` + `/api/import` — harvest snapshot → `importNextSnapshot` (`skipIfNew` when `first_seen` > 4 days)
+- `web/lib/crm-pursuit.ts` + `web/db/migrations/005_crm_events_dealbook.sql` — pursuit stamps `deals_next`; `crm_events.deal_id` FK → `deals_next`
+- `web/next.config.ts` + `web/middleware.ts` + `web/components/next/nav.tsx` — `/pipeline` `/deals` `/import` 308 onto dealbook views; no Classic tab
+- `docs/agents/SYSTEM.md` + `API.md` + `README.md` — one-dataset map
+
+### Do not touch
+- `POST /api/import/flush` (still classic leftover tables only — do not wipe `deals_next`)
+- Backfilling classic `deals` inventory into Review inbox
+
+### Follow-ups
+- Drop unused classic session routes after a quiet period
+
+---
+
 ## 2026-09-18 — `nm/web/dealbook` — DONE
 
 **Scope:** Cut Review, Pipeline, and Next API writes onto `deals_next` columns + `deal_log`  

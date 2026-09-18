@@ -81,6 +81,11 @@ export interface IncomingNextDeal {
   duplicateOf?: string | null;
   /** new | attached | remint. attached/remint are attach-only (or Closed audit). */
   ingestDisposition?: string | null;
+  /**
+   * Harvest snapshot rows: update a matched TLY, but do not mint an inbox card
+   * when this listing is not already in the dealbook (classic back-catalog).
+   */
+  skipIfNew?: boolean | null;
 }
 
 export interface IncomingNextVerdict {
@@ -666,6 +671,9 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
         await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
         return { kind: "updated" as const, id: hit.candidate.id };
       }
+      if (deal.skipIfNew) {
+        return { kind: "skipped" as const, id: null };
+      }
       try {
         await q("SAVEPOINT next_insert");
         const id = await insertNewDeal(q, deal, ident, title);
@@ -686,7 +694,7 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
       }
     });
 
-    if (!outcome.id) {
+    if (outcome.kind === "skipped" || outcome.id == null) {
       skipped += 1;
       continue;
     }

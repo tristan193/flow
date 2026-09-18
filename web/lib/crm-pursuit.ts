@@ -3,18 +3,17 @@
  *
  * Auto-apply only on listing-id or verbatim-title match.
  * Soft fuzzy → needs_review (agentic). Unarmed fuzzy misses stay unmatched.
+ *
+ * Writes the dealbook (`deals_next` + `deal_log`). Classic `deals` is unused.
  */
 
 import { query, queryOne } from "./db";
-import { getDeal, moveStage, saveDealFile } from "./deals";
-import {
-  expectationKindsForEvent,
-  fulfillExpectations,
-  listArmedDealIds,
-  listOpenExpectations,
-} from "./expectations";
-import { gmailCatcherThreadUrl, normalizeGmailThreadUrl } from "./gmail-thread";
-import type { DealRow, MemberId, StageId } from "./model";
+import { extractGmailThreadId, gmailCatcherThreadUrl, normalizeGmailThreadUrl } from "./gmail-thread";
+import { logDealChange } from "./next/change-log";
+import { getNextDeal, moveNextStage } from "./next/deals";
+import { mergeThreadIds } from "./next/identity";
+import { coerceNextStage, type NextStageId } from "./next/stages";
+import type { DealExpectation } from "./expectations";
 
 export type CrmEventType =
   | "nda_available"
@@ -51,19 +50,17 @@ export interface PursuitApplyResult {
   detail: string;
 }
 
-const SYSTEM_MEMBER: MemberId = "tristan";
+export type PursuitCandidate = {
+  id: number;
+  title: string;
+  url: string | null;
+  ext_id: string;
+};
 
-const BOARD_OR_ACTIVE: StageId[] = [
-  "inbox",
-  "shortlist",
-  "contacted",
-  "nda",
-  "cim",
-  "call",
-  "loi",
-  "diligence",
-  "offer",
-];
+const CRM_ACTOR = "dirk";
+const CRM_CHANNEL = "api:crm/pursuit";
+
+const LIVE_STAGES: NextStageId[] = ["inbox", "shortlist", "nda", "cim", "pursuing"];
 
 function norm(s: string): string {
   return s
@@ -134,29 +131,40 @@ export function verbatimTitleMatch(cue: string, title: string): boolean {
   const b = norm(title);
   if (a.length < 10 || b.length < 10) return false;
   if (a === b) return true;
-  // Require the shorter string to be fully inside the longer (verbatim headline).
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length < 12) return false;
   return long.includes(short);
 }
 
-export async function listPursuitCandidates(): Promise<
-  Pick<DealRow, "id" | "title" | "url" | "ext_id" | "stage">[]
-> {
+export async function listPursuitCandidates(): Promise<PursuitCandidate[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT id, title, url, ext_id, stage FROM deals
-     WHERE stage = ANY($1::text[])
-     ORDER BY last_seen DESC
-     LIMIT 2000`,
-    [BOARD_OR_ACTIVE],
+    `SELECT id, title, url, source_deal_id, deal_number
+       FROM deals_next
+      WHERE stage = ANY($1::text[])
+        AND duplicate_of IS NULL
+      ORDER BY last_seen DESC
+      LIMIT 2000`,
+    [LIVE_STAGES],
   );
   return rows.map((r) => ({
     id: Number(r.id),
     title: String(r.title),
     url: r.url == null ? null : String(r.url),
-    ext_id: String(r.ext_id),
-    stage: r.stage as StageId,
+    ext_id: [r.source_deal_id, r.deal_number].filter(Boolean).join(" "),
   }));
+}
+
+async function listArmedDealIds(): Promise<Set<number>> {
+  const rows = await query<{ id: number }>(
+    `SELECT DISTINCT d.id
+       FROM deals_next d,
+            jsonb_array_elements(d.watches) AS w(value)
+      WHERE w.value->>'status' = 'open'
+        AND d.stage = ANY($1::text[])
+        AND d.duplicate_of IS NULL`,
+    [LIVE_STAGES],
+  );
+  return new Set(rows.map((r) => Number(r.id)));
 }
 
 export type MatchDecision =
@@ -169,7 +177,7 @@ export type MatchDecision =
  * Soft fuzzy only proposes needs_review (and only vs armed deals).
  */
 export function decideMatch(
-  candidates: Pick<DealRow, "id" | "title" | "url" | "ext_id">[],
+  candidates: PursuitCandidate[],
   armedIds: Set<number>,
   hints: PursuitEventInput["matchHints"],
   subject: string,
@@ -194,7 +202,6 @@ export function decideMatch(
   const cue = cleanTitleCue(subject, hints);
   if (!cue || cue.length < 6) return null;
 
-  // Verbatim against armed deals first, then any active.
   const armed = candidates.filter((c) => armedIds.has(c.id));
   for (const pool of [armed, candidates]) {
     for (const c of pool) {
@@ -208,7 +215,6 @@ export function decideMatch(
     }
   }
 
-  // Soft fuzzy → agentic review only when an expectation is open on that deal.
   let best: { dealId: number; score: number } | null = null;
   for (const c of armed) {
     const score = Math.max(titleScore(cue, c.title), titleScore(norm(cue), norm(c.title)));
@@ -267,6 +273,86 @@ async function insertCrmEvent(args: {
   return rows[0]?.id ?? null;
 }
 
+async function resolveOpenWatches(dealId: number, kinds: string[]): Promise<void> {
+  const deal = await getNextDeal(dealId);
+  if (!deal) return;
+  let changed = false;
+  const watches = deal.watches.map((w) => {
+    if (w.status === "open" && kinds.includes(w.kind)) {
+      changed = true;
+      return { ...w, status: "fulfilled" };
+    }
+    return w;
+  });
+  if (!changed) return;
+  await query(`UPDATE deals_next SET watches = $1::jsonb, updated_at = now() WHERE id = $2`, [
+    JSON.stringify(watches),
+    dealId,
+  ]);
+  await logDealChange({
+    dealId,
+    dealNumber: deal.deal_number,
+    actor: CRM_ACTOR,
+    kind: "watch",
+    patch: { watches: { new: watches } },
+    channel: CRM_CHANNEL,
+  });
+}
+
+async function stampPursuitOnDeal(args: {
+  dealId: number;
+  eventType: string;
+  ndaUrl: string | null;
+  threadId: string | null;
+}): Promise<boolean> {
+  const deal = await getNextDeal(args.dealId);
+  if (!deal) return false;
+
+  const threads = mergeThreadIds(deal.gmail_thread_ids, args.threadId ? [args.threadId] : []);
+  const ndaForEvent =
+    args.ndaUrl && (args.eventType === "nda_available" || args.eventType === "nda_signed")
+      ? args.ndaUrl
+      : null;
+
+  await query(
+    `UPDATE deals_next
+        SET nda_url = COALESCE($1, nda_url),
+            gmail_thread_ids = $2::jsonb,
+            updated_at = now()
+      WHERE id = $3`,
+    [ndaForEvent, JSON.stringify(threads), args.dealId],
+  );
+  await logDealChange({
+    dealId: args.dealId,
+    dealNumber: deal.deal_number,
+    actor: CRM_ACTOR,
+    kind: "update",
+    patch: {
+      ...(ndaForEvent ? { nda_url: { old: deal.nda_url, new: ndaForEvent } } : {}),
+      gmail_thread_ids: { old: deal.gmail_thread_ids, new: threads },
+    },
+    channel: CRM_CHANNEL,
+  });
+
+  const stage = coerceNextStage(deal.stage);
+  if (args.eventType === "cim_received" && (stage === "inbox" || stage === "shortlist" || stage === "nda")) {
+    await moveNextStage(args.dealId, CRM_ACTOR, "cim", { channel: CRM_CHANNEL });
+  } else if (
+    (args.eventType === "nda_available" || args.eventType === "nda_signed") &&
+    (stage === "inbox" || stage === "shortlist")
+  ) {
+    await moveNextStage(args.dealId, CRM_ACTOR, "nda", { channel: CRM_CHANNEL });
+  }
+
+  if (args.eventType === "cim_received") {
+    await resolveOpenWatches(args.dealId, ["cim", "nda", "broker_reply"]);
+  } else if (args.eventType === "nda_signed" || args.eventType === "nda_available") {
+    await resolveOpenWatches(args.dealId, ["nda"]);
+  }
+
+  return true;
+}
+
 export async function applyPursuitEvent(input: PursuitEventInput): Promise<PursuitApplyResult> {
   const existing = await queryOne<{ id: number; deal_id: number | null }>(
     `SELECT id, deal_id FROM crm_events WHERE gmail_message_id = $1`,
@@ -279,15 +365,6 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
       dealId: existing.deal_id,
       detail: "Already processed",
     };
-  }
-
-  if (
-    input.eventType === "nda_signed" &&
-    input.file &&
-    /signed|nda/i.test(input.file.filename) &&
-    !/cim|om\b|memorandum/i.test(input.file.filename)
-  ) {
-    input = { ...input, file: null };
   }
 
   const candidates = await listPursuitCandidates();
@@ -304,6 +381,8 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
     normalizeGmailThreadUrl(input.gmailThreadUrl) ||
     gmailThreadLink(input.gmailThreadId) ||
     null;
+  const threadId =
+    extractGmailThreadId(input.gmailThreadId) || extractGmailThreadId(threadUrl) || null;
   const ndaUrl = input.ndaUrl?.trim() || null;
 
   if (!decision) {
@@ -352,56 +431,22 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
   }
 
   const dealId = decision.dealId;
-  const updates: string[] = [];
-  const params: unknown[] = [];
-  let p = 1;
-
-  if (ndaUrl && (input.eventType === "nda_available" || input.eventType === "nda_signed")) {
-    updates.push(`nda_url = $${p++}`);
-    params.push(ndaUrl);
-  }
-  if (threadUrl) {
-    updates.push(`gmail_thread_url = $${p++}`);
-    params.push(threadUrl);
-  }
-  if (updates.length) {
-    updates.push("updated_at = now()");
-    params.push(dealId);
-    await query(`UPDATE deals SET ${updates.join(", ")} WHERE id = $${p}`, params);
+  const stamped = await stampPursuitOnDeal({
+    dealId,
+    eventType: input.eventType,
+    ndaUrl,
+    threadId,
+  });
+  if (!stamped) {
+    return {
+      gmailMessageId: input.gmailMessageId,
+      status: "unmatched",
+      dealId: null,
+      detail: "Matched deal missing from dealbook",
+    };
   }
 
-  if (input.eventType === "cim_received" && input.file) {
-    await saveDealFile(
-      dealId,
-      SYSTEM_MEMBER,
-      {
-        filename: input.file.filename,
-        contentType: input.file.contentType,
-        bytes: input.file.bytes,
-      },
-      "cim",
-    );
-  }
-
-  const deal = await getDeal(dealId);
-  if (deal) {
-    const stage = deal.stage;
-    if (input.eventType === "cim_received" && input.file) {
-      if (stage === "inbox" || stage === "shortlist" || stage === "contacted" || stage === "nda") {
-        await moveStage(dealId, SYSTEM_MEMBER, "cim");
-      }
-    } else if (input.eventType === "nda_available") {
-      if (stage === "inbox" || stage === "shortlist") {
-        await moveStage(dealId, SYSTEM_MEMBER, "contacted");
-      }
-    } else if (input.eventType === "nda_signed") {
-      if (stage === "inbox" || stage === "shortlist" || stage === "contacted") {
-        await moveStage(dealId, SYSTEM_MEMBER, "nda");
-      }
-    }
-  }
-
-  const eventId = await insertCrmEvent({
+  await insertCrmEvent({
     gmailMessageId: input.gmailMessageId,
     gmailThreadId: input.gmailThreadId,
     dealId,
@@ -413,8 +458,6 @@ export async function applyPursuitEvent(input: PursuitEventInput): Promise<Pursu
     status: "applied",
     payload: { match: decision, matchHints: input.matchHints ?? {} },
   });
-
-  await fulfillExpectations(dealId, expectationKindsForEvent(input.eventType), eventId);
 
   return {
     gmailMessageId: input.gmailMessageId,
@@ -438,31 +481,22 @@ export async function confirmCrmReview(
     return { ok: false, detail: `Status is ${row.status}` };
   }
 
-  const deal = await getDeal(dealId);
-  if (!deal) return { ok: false, detail: "Deal not found" };
-
   const ndaUrl = row.nda_url == null ? null : String(row.nda_url);
   const threadUrl = normalizeGmailThreadUrl(
     row.gmail_thread_url == null ? null : String(row.gmail_thread_url),
   );
+  const threadId =
+    extractGmailThreadId(row.gmail_thread_id == null ? null : String(row.gmail_thread_id)) ||
+    extractGmailThreadId(threadUrl);
   const eventType = String(row.event_type);
 
-  const updates: string[] = [];
-  const params: unknown[] = [];
-  let p = 1;
-  if (ndaUrl && (eventType === "nda_available" || eventType === "nda_signed")) {
-    updates.push(`nda_url = $${p++}`);
-    params.push(ndaUrl);
-  }
-  if (threadUrl) {
-    updates.push(`gmail_thread_url = $${p++}`);
-    params.push(threadUrl);
-  }
-  if (updates.length) {
-    updates.push("updated_at = now()");
-    params.push(dealId);
-    await query(`UPDATE deals SET ${updates.join(", ")} WHERE id = $${p}`, params);
-  }
+  const stamped = await stampPursuitOnDeal({
+    dealId,
+    eventType,
+    ndaUrl,
+    threadId,
+  });
+  if (!stamped) return { ok: false, detail: "Deal not found" };
 
   await query(
     `UPDATE crm_events
@@ -472,7 +506,6 @@ export async function confirmCrmReview(
     [dealId, eventId],
   );
 
-  await fulfillExpectations(dealId, expectationKindsForEvent(eventType), eventId);
   return { ok: true, detail: `Applied to deal ${dealId}` };
 }
 
@@ -487,7 +520,7 @@ export async function dismissCrmReview(eventId: number): Promise<void> {
 }
 
 export async function listCrmAttention(): Promise<{
-  expectations: Awaited<ReturnType<typeof listOpenExpectations>>;
+  expectations: DealExpectation[];
   reviews: Array<{
     id: number;
     deal_id: number | null;
@@ -501,18 +534,17 @@ export async function listCrmAttention(): Promise<{
     nda_url: string | null;
   }>;
 }> {
-  const expectations = await listOpenExpectations();
   const rows = await query<Record<string, unknown>>(
     `SELECT e.id, e.deal_id, e.event_type, e.subject, e.from_address, e.status, e.created_at,
             e.gmail_thread_url, e.nda_url, d.title AS proposed_title
        FROM crm_events e
-       LEFT JOIN deals d ON d.id = e.deal_id
+       LEFT JOIN deals_next d ON d.id = e.deal_id
       WHERE e.status IN ('needs_review', 'unmatched')
       ORDER BY e.created_at DESC
       LIMIT 50`,
   );
   return {
-    expectations,
+    expectations: [],
     reviews: rows.map((r) => ({
       id: Number(r.id),
       deal_id: r.deal_id == null ? null : Number(r.deal_id),

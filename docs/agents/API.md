@@ -8,7 +8,7 @@ https://web-tau-seven-77.vercel.app
 
 Every call is HTTPS to that host. There is no separate ingest port, CIM port, or Dirk port. Middleware either lets a **bearer token** through or requires a **browser session cookie**. A token POST to a path that is not on the allowlist `307`s to `/login` — that looks like “the API is down.” Check `web/middleware.ts` `PUBLIC_PATHS` first.
 
-Live Next deals live in `deals_next` (TLY numbers). Classic harvest still posts to the old `deals` table. **Next Review does not read `deals`.** If you are Dirk or Simon, use `/api/next/*`.
+Live deals live in `deals_next` (TLY numbers) + `deal_log`. Review, CIM Review, Pipeline, `/db`, harvest `POST /api/import`, and `/api/next/*` are views of that one dataset. Classic leftover tables (`deals`, `verdicts`, …) are not the product path. If you are Dirk or Simon, use `/api/next/*` (harvest still POSTs `/api/import`, which now writes the same dealbook).
 
 ---
 
@@ -49,13 +49,13 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 | POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
 | POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage**; + `deal_log` |
 | POST | `/api/next/merge` | Dirk / ops | collapse duplicate TLY rows + `deal_log` |
-| POST | `/api/import` | harvest only | classic `deals` (not Review) |
+| POST | `/api/import` | harvest only | `deals_next` (skipIfNew on unmatched catalog older than 4 days) |
 | POST | `/api/crm/pursuit` | harvest | NDA / thread attach on classic+Next match |
 | GET/POST | `/api/cron/harvest` | Vercel Cron | dispatches GitHub Actions |
 
 **Humans (session).** Review swipe, notes, Train AI, `/db` confirm. Agents **must not** call these. You cannot cast votes.
 
-**Do not call unless Tristan explicitly asked:** `POST /api/import/flush` (`FLUSH` / `PURGE`). Classic `deals` only — it does not empty Next.
+**Do not call unless Tristan explicitly asked:** `POST /api/import/flush` (`FLUSH` / `PURGE`). Classic leftover `deals` only — it does not empty `deals_next`.
 
 ---
 
@@ -194,13 +194,15 @@ Token only. Keeps the lowest TLY when collapsing twins. Do not run this casually
 
 ---
 
-## Classic harvest — `POST /api/import`
+## Harvest — `POST /api/import`
 
-Used by `export_snapshot.py` after Gmail harvest. Posts the **entire** SQLite snapshot as `{ "deals": [ ... ] }` keyed by harvest `ext_id`. Fills classic `deals`. **Does not mint TLY cards.**
+Used by `export_snapshot.py` after Gmail harvest. Posts the **entire** SQLite snapshot as `{ "deals": [ ... ] }`. Same dealbook as Review (`deals_next`). Join is URL / source id / fingerprint — harvest `ext_id` is **not** a TLY key.
+
+Unmatched rows whose `first_seen` is older than four days are skipped (`skipIfNew`) so the catalog does not flood Review. Matched TLY rows still get null-fills and last_seen. Fresh first_seen listings mint inbox.
 
 If this POST fails, the Actions job fails; the SQLite artifact is still saved. Next run restores and re-posts. Upsert is idempotent.
 
-Do not send Next/TLY payloads here.
+Do not also POST the same snapshot to `/api/next/import` — that would be a second writer. `/api/next/import` is Dirk/Harve structured TLY payloads (gmailThreadIds, remint fields).
 
 ---
 

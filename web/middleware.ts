@@ -13,7 +13,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/api/auth/login",
   "/api/import",
-  "/api/next/import", // Next/Dirk loop — does not write live `deals`
+  "/api/next/import", // Dirk ingest — same dealbook as harvest `/api/import`
   "/api/next/merge",
   "/api/next/stage", // token or member session — checked in the route
   "/api/next/cim-url", // token-only stamp of https pack URL
@@ -31,9 +31,18 @@ function isPublic(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  // Default landing is Next Review. Permanent so `/` is not a second home.
+  // Default landing is Review. Permanent so `/` is not a second home.
   if (pathname === "/") {
     return NextResponse.redirect(new URL("/next", request.url), 308);
+  }
+  if (pathname === "/pipeline" || pathname.startsWith("/pipeline/")) {
+    return NextResponse.redirect(new URL("/next/pipeline", request.url), 308);
+  }
+  if (pathname === "/deals" || pathname.startsWith("/deals/")) {
+    return NextResponse.redirect(new URL("/next/pipeline", request.url), 308);
+  }
+  if (pathname === "/import" || pathname.startsWith("/import/")) {
+    return NextResponse.redirect(new URL("/db", request.url), 308);
   }
 
   const member = await readSession(request.cookies.get(SESSION_COOKIE)?.value);

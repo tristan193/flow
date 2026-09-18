@@ -23,9 +23,9 @@ export default async function NextPipelinePage() {
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">Next Pipeline</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Pipeline</h1>
             <p className="text-ink-dim text-[12.5px]">
-              Inbound stays in Next Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
+              Inbound stays in Review. Board: Shortlisted → NDA → CIM → Pursuing → Closed.
               Closed is passed or walked — not won.
             </p>
           </div>

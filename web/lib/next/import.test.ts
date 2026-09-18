@@ -534,3 +534,32 @@ test("re-post closes an accidental remint card and attaches to the canonical", a
   assert.equal(inbox.length, 1);
   assert.equal(inbox[0].deal_number, "TLY-001");
 });
+
+test("skipIfNew does not mint unmatched catalog but still updates a matched TLY", async () => {
+  await resetNext();
+  const url = "https://www.bizbuysell.com/business-opportunity/hvac-shop/5550123/?q=5550123";
+  const first = await upsertNextDeals([{ title: "HVAC Shop", url }]);
+  assert.equal(first.dealsNew, 1);
+
+  const skipped = await upsertNextDeals([
+    {
+      title: "Never seen before",
+      url: "https://www.bizbuysell.com/business-opportunity/other-shop/9990001/?q=9990001",
+      skipIfNew: true,
+    },
+  ]);
+  assert.equal(skipped.dealsNew, 0);
+  assert.equal(skipped.dealsUpdated, 0);
+  assert.equal(skipped.skipped, 1);
+
+  const updated = await upsertNextDeals([
+    { title: "HVAC Shop LLC", url, skipIfNew: true, revenue: 1_200_000 },
+  ]);
+  assert.equal(updated.dealsNew, 0);
+  assert.equal(updated.dealsUpdated, 1);
+
+  const [{ count }] = await query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM deals_next",
+  );
+  assert.equal(Number(count), 1);
+});

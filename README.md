@@ -35,19 +35,19 @@ UI may truncate for display; storage keeps full values. Format catalog:
 Agent handoff (intent, findings, docs):
 [`docs/Deal_Extraction_Format_Repertoire_Whitepaper.md`](docs/Deal_Extraction_Format_Repertoire_Whitepaper.md).
 
-## Original vs Next
+## One dataset
 
-| | **Original (fallback)** | **Next (experimental)** |
-|---|---|---|
-| UI | `/pipeline` (classic board; `/` 308s to `/next`) | `/next` Review · `/next/pipeline` |
-| Import | `POST /api/import` — live harvest still posts here | `POST /api/next/import` |
-| Dirk poll | none | `GET /api/next/dirk` |
-| Stage move | session cookie | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
-| Merge dups | none | `POST /api/next/merge` (import token) |
-| Tables | `deals`, `verdicts`, … | `deals_next`, `verdicts_next`, … |
-| Identity | harvest `ext_id` (`format:gmail_msg:index`) | `TLY-001` + source ID + fingerprint |
+Review (`/next`), CIM Review, Pipeline (`/next/pipeline`), and `/db` all read **`deals_next` + `deal_log`**. Harvest `POST /api/import` writes that same table. Classic `/pipeline` `/deals` `/import` 308 onto those views.
 
-**If anything on Next breaks, use `/` and `/pipeline`.** Login passcodes and the harvest → `/api/import` path are unchanged.
+| | **Dealbook** |
+|---|---|
+| UI | `/next` Review · `/next/pipeline` · `/db` |
+| Harvest | `POST /api/import` → `deals_next` (skipIfNew on old unmatched catalog) |
+| Dirk ingest | `POST /api/next/import` |
+| Dirk poll | `GET /api/next/dirk` |
+| Stage move | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
+| Merge dups | `POST /api/next/merge` (import token) |
+| Identity | `TLY-001` + source ID + fingerprint (harvest `ext_id` is not a join key) |
 
 Next deal numbers mint `TLY-001` on first touch. Join order: deal number → source ID (Axial hex from Pursue/Pass HTML, BBS `q=`, V-AID, Transworld) → fingerprint (teaser + broker + round(EBITDA) + geo). Aliases and `gmail_thread_ids[]` accumulate. Never broker-only. Never one Gmail thread = one deal.
 
