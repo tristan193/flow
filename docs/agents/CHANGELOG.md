@@ -27,6 +27,24 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-18 — `nm/docs/api-guide` — DONE
+
+**Scope:** Agent how-to for Flow App HTTP APIs  
+**Risk:** low (docs only)  
+**Coords:** none
+
+### Changed
+- `docs/agents/API.md` — one origin, token vs session, Next ingest / Dirk / CIM batch / harvest import, failure behavior, do-not-call list
+- `docs/agents/README.md` + `SYSTEM.md` — link the guide
+
+### Do not touch
+- Live routes (this entry is documentation)
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-09-18 — `nm/web/cim-batch` — DONE
 
 **Scope:** CIM intake accepts many packs in one POST (link + TLY)  

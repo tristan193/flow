@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-17 · Primary author this pass: `nm/web/dealbook`
+Last reviewed: 2026-09-18 · Primary author this pass: `nm/docs/api-guide`
 
 ## 1. Product in one paragraph
 
@@ -144,6 +144,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | Buy-box UI fit | `web/lib/fit.ts` (display; pipeline `score.py` is rules for enrich skip / scoring) |
 | Review UI | `web/components/next/review-client.tsx` · **`/` 308s to `/next`**. `/next` Review has **New** and **CIM**. New is swipe-only (`listNextInboxDeals()`, stage `inbox`); no List / no Swipe toggle. Tristan and Jim (`partner`, Jim Evans) each have their own inbound swipe deck via member session + `verdicts_next`. Combine: either Like or Super Like → Shortlisted; both `?` → Shortlisted; both finished otherwise → Closed. Super Like also pins (`✓✓✓` is the rightmost swipe control). CIM is `listNextCimDeals()` on the same `deals_next` rows — every stage CIM card, plus open board rows with a stamped https pack `cim_url`. Intake or a stage move to CIM makes the card available immediately. CIM card: no teaser FitStrip; Super Like **star**; pack numbers revenue / EBITDA / margin / asking (omit missing); **View CIM** opens `/cim/TLY-XXX` in a new tab. `DealTitleStack` (New, CIM, `/next` board, deal detail) shows `cim_name` as the headline and teaser `title` as the quieter subline when `cim_name` is set; New swipe stays on the teaser until Simon sends `cimName`. CIM-stage cards always show **Tristan notes** and **Jim notes** (`cimPartnerNoteFields` / `CimPartnerNotes`) even when empty; the logged-in member writes via `POST /api/next/notes`. Partner field stays labeled with a quiet empty state. Hidden entirely before CIM. Simon is never rendered. Votes live in `cim_verdicts_next` (Pass / Hold / Pursue). The board card stays CIM until Tristan and Jim both Pass (→ Closed) or both Pursue (→ Pursuing). Hold, mixed, or one vote stay CIM. Simon does not vote. No Google calls from Vercel. |
 | Database page | `/db` — deals table + `deal_log` activity + agent `needs_review` queue. |
+| Agent API | [API.md](./API.md) — token endpoints, CIM batch, ingest, what not to call. |
 | CIM pack opener | `/cim/[id]` — looks up `deals_next.cim_url` (https pack URL stamped by Dirk / Simon) and redirects. No Google credentials on Vercel. Missing URL → “CIM not in yet”. |
 | CIM → pipeline | Classic `/pipeline` still uses `POST /api/cim/extract` + `/create` → `deals`. `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Gmail teaser harvest still lands inbound. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread on deal; CIM auto-attach |
