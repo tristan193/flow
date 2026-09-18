@@ -1,19 +1,22 @@
 """
 CIM intake helper for Simon's agent.
 
-After the pack is ready (Drive file `TLY-XXX Headline.pdf`, Canva view link,
-or other https URL), POST the filename + pack URL (and optional pack numbers)
-to Flow.
-Updates the existing deals_next row only. Does not create a card or vote.
+After packs are ready (Drive file, Canva view link, or other https URL), POST
+link + deal identity to Flow. One pack or a JSON batch.
+Updates existing deals_next rows only. Does not create a card or vote.
 Does not talk to Google Drive.
 
+Single:
   python cim_intake.py \\
-    --file-name "TLY-092 Project Cactus.pdf" \\
     --cim-url "https://drive.google.com/file/d/FILE_ID/view" \\
-    [--deal-number TLY-092] \\
-    [--cim-name "Project Cactus"] \\
-    [--city Austin] [--state TX] [--country Bermuda] [--location "Austin, TX"] \\
-    [--revenue 4200000] [--ebitda 920000] [--margin 0.22] [--asking 6500000]
+    --deal-number TLY-092
+
+  python cim_intake.py \\
+    --cim-url "https://www.canva.com/design/xxx/view" \\
+    --deal-url "https://web-tau-seven-77.vercel.app/next/deals/TLY-014"
+
+Batch (JSON array or {"cims": [...]}):
+  python cim_intake.py --batch packs.json
 
 Token: FLOW_IMPORT_TOKEN (required). Base URL: FLOW_APP_URL or --base.
 Never print the token.
@@ -31,12 +34,15 @@ DEFAULT_BASE = "https://web-tau-seven-77.vercel.app"
 
 
 def build_payload(args: argparse.Namespace) -> dict:
-    payload = {
-        "fileName": args.file_name,
-        "cimUrl": args.cim_url,
-    }
+    payload: dict = {}
+    if args.file_name:
+        payload["fileName"] = args.file_name
+    if args.cim_url:
+        payload["cimUrl"] = args.cim_url
     if args.deal_number:
         payload["dealNumber"] = args.deal_number
+    if args.deal_url:
+        payload["dealUrl"] = args.deal_url
     if args.cim_name:
         payload["cimName"] = args.cim_name
     if args.city:
@@ -60,7 +66,19 @@ def build_payload(args: argparse.Namespace) -> dict:
     return payload
 
 
-def post_intake(base: str, token: str, payload: dict) -> tuple[int, dict | str]:
+def load_batch(path: str) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if isinstance(raw, list):
+        return {"cims": raw}
+    if isinstance(raw, dict) and ("cims" in raw or "items" in raw):
+        return raw
+    if isinstance(raw, dict):
+        return {"cims": [raw]}
+    raise ValueError("batch file must be a JSON array or {\"cims\": [...]} object")
+
+
+def post_intake(base: str, token: str, payload: dict | list) -> tuple[int, dict | str]:
     url = base.rstrip("/") + "/api/next/cim-intake"
     req = urllib.request.Request(
         url,
@@ -87,10 +105,19 @@ def post_intake(base: str, token: str, payload: dict) -> tuple[int, dict | str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Stamp a CIM pack onto an existing TLY row.")
-    ap.add_argument("--file-name", required=True, help="Drive filename, e.g. TLY-092 Headline.pdf")
-    ap.add_argument("--cim-url", required=True, help="https pack URL (Drive file or Canva view link)")
-    ap.add_argument("--deal-number", help="Optional TLY-XXX; must match the filename")
+    ap = argparse.ArgumentParser(description="Stamp CIM pack URL(s) onto existing TLY row(s).")
+    ap.add_argument("--file-name", help="Drive filename, e.g. TLY-092 Headline.pdf")
+    ap.add_argument("--cim-url", help="https pack URL (Drive file or Canva view link)")
+    ap.add_argument("--deal-number", help="TLY-XXX (or a bare number, 92 → TLY-092)")
+    ap.add_argument(
+        "--deal-url",
+        help="Flow deal URL, e.g. /next/deals/TLY-092 or https://…/cim/TLY-092",
+    )
+    ap.add_argument(
+        "--batch",
+        metavar="FILE",
+        help='JSON file: [{"cimUrl":"https://…","dealNumber":"TLY-092"}, …]',
+    )
     ap.add_argument(
         "--cim-name",
         help="CIM company / project / nickname (JSON key cimName → deals_next.cim_name)",
@@ -138,13 +165,31 @@ def main() -> int:
         )
         return 1
 
-    payload = build_payload(args)
+    if args.batch:
+        try:
+            payload = load_batch(args.batch)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+    else:
+        if not args.cim_url:
+            print("error: --cim-url or --batch required", file=sys.stderr)
+            return 1
+        if not args.file_name and not args.deal_number and not args.deal_url:
+            print("error: need --deal-number, --deal-url, or --file-name", file=sys.stderr)
+            return 1
+        payload = build_payload(args)
+
     status, body = post_intake(base, token, payload)
     if isinstance(body, dict):
         print(json.dumps(body, indent=2))
     else:
         print(body)
-    return 0 if 200 <= status < 300 else 1
+    if 200 <= status < 300:
+        if isinstance(body, dict) and body.get("failed"):
+            return 1
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-18 — `nm/web/cim-batch` — DONE
+
+**Scope:** CIM intake accepts many packs in one POST (link + TLY)  
+**Risk:** low (existing TLY rows only; no schema change)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/cim-intake.ts` + `/api/next/cim-intake` — identity is `cimUrl`/`link` + `dealNumber`/`dealUrl` (filename still works). `{ "cims": [...] }` stamps independently.
+- `pipeline/cim_intake.py` — `--deal-url` and `--batch packs.json`
+
+### Do not touch
+- Drive / Google on Vercel
+- Vote tables / Review swipe
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-09-17 — `nm/web/dealbook` — DONE
 
 **Scope:** Dealbook tables + `/db` visual home. Review/Pipeline still use child tables.  
