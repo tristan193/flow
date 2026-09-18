@@ -7,6 +7,7 @@ Companion files:
 | File | Purpose |
 |------|---------|
 | [SYSTEM.md](./SYSTEM.md) | How the product works end-to-end |
+| [API.md](./API.md) | How agents call the Flow App (`/api/next/*`, harvest import, CIM) |
 | [CHANGELOG.md](./CHANGELOG.md) | Who changed what (required annotations) |
 | [IDENTITY.md](./IDENTITY.md) | How agents name themselves |
 
