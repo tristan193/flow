@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { resolveMachineActor } from "@/lib/actors";
 import { ensureReady } from "@/lib/boot";
-import { importTokenValid } from "@/lib/import-auth";
 import { collapseNextDuplicates } from "@/lib/next/merge";
 
 /**
@@ -13,7 +13,8 @@ import { collapseNextDuplicates } from "@/lib/next/merge";
  *   { "confirm": "MERGE", "deleteDealNumbers": ["TLY-023", "..."] }
  */
 export async function POST(request: NextRequest) {
-  if (!importTokenValid(request.headers.get("authorization"))) {
+  const actor = resolveMachineActor(request.headers.get("authorization"));
+  if (!actor) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -28,11 +29,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await collapseNextDuplicates({
-    keepDealNumbers: payload.keepDealNumbers,
-    deleteDealNumbers: payload.deleteDealNumbers,
-    pairs: payload.pairs,
-    dryRun: Boolean(payload.dryRun),
-  });
+  const result = await collapseNextDuplicates(
+    {
+      keepDealNumbers: payload.keepDealNumbers,
+      deleteDealNumbers: payload.deleteDealNumbers,
+      pairs: payload.pairs,
+      dryRun: Boolean(payload.dryRun),
+    },
+    actor,
+  );
   return NextResponse.json({ ok: true, ...result });
 }

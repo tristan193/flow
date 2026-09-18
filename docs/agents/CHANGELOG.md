@@ -27,6 +27,30 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-18 — `nm/web/dealbook` — DONE
+
+**Scope:** Cut Review, Pipeline, and Next API writes onto `deals_next` columns + `deal_log`  
+**Risk:** medium (live Review/Pipeline/CIM/stage/notes now write dealbook; child tables left in place; harvest stays classic `deals`)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/deals.ts` (+ notes, verdicts, stage, CIM attach, import, merge) — current state on deal columns; every write appends `deal_log`
+- `web/lib/next/cim-intake.ts` — watches JSONB + `deal_log`; bearer → machine actor
+- `web/lib/actors.ts` — `DIRK_TOKEN` / `SIMON_TOKEN` / `PIPELINE_TOKEN`; `FLOW_IMPORT_TOKEN` still works as Dirk
+- `/db` confirm applies a proposed vote onto the member columns
+- `docs/agents/SYSTEM.md` + `API.md` — dealbook is the app path
+
+### Do not touch
+- Classic harvest `/api/import` → `deals`
+- Child-table freeze/rename (migration 005)
+- Harvest retarget to Next
+
+### Follow-ups
+- Optional per-agent tokens on Vercel
+- Drop unused Next child tables after a quiet period
+
+---
+
 ## 2026-09-18 — `nm/docs/api-guide` — DONE
 
 **Scope:** Agent how-to for Flow App HTTP APIs  
@@ -77,10 +101,10 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ### Do not touch
 - Live `deals` / classic harvest import
-- `verdicts_next` / `notes_next` / other Next child tables (Review still reads them)
+- Child-table freeze/rename (later; Review now uses deal columns)
 
 ### Follow-ups
-- Cut Review/Pipeline writes over to deal columns + `deal_log`
+- Optional per-agent tokens on Vercel; drop unused Next child tables after a quiet period
 
 ---
 

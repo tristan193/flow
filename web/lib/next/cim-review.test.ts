@@ -29,13 +29,7 @@ const FILE_URL = "https://drive.google.com/file/d/abcFile092/view";
 async function resetNext() {
   await query(`
     TRUNCATE TABLE
-      verdicts_next,
-      cim_verdicts_next,
-      stage_events_next,
-      notes_next,
-      deal_files_next,
-      next_followups,
-      next_import_runs,
+      deal_log,
       deals_next,
       next_deal_counters
     RESTART IDENTITY CASCADE
@@ -144,10 +138,9 @@ test("both CIM Pass closes; Hold and mixed stay CIM; Simon is not a voter", asyn
     const [row] = await query<{ id: number; deal_number: string }>(
       "SELECT id, deal_number FROM deals_next",
     );
-    await query(
-      `INSERT INTO cim_verdicts_next (deal_id, member, action) VALUES ($1, 'simon', 'short')`,
-      [row.id],
-    );
+    // Simon has no vote columns in the two-table world — a Simon writeup is a
+    // log-only note and can never surface as a CIM determination.
+    await addNextNote(row.id, "simon", "specialist writeup");
     const withSimon = await getNextDeal(row.id);
     assert.equal(withSimon?.cim_verdicts.tristan, undefined);
     assert.equal(withSimon?.cim_verdicts.partner, undefined);
@@ -219,7 +212,7 @@ test("CIM Review UI opens /cim/TLY-XXX in a new tab and does not call Google", (
   assert.doesNotMatch(review, /CimPartnerNotes/);
 });
 
-test("stored notes_next: CIM cards see Tristan/Jim only; NDA cards see none", async () => {
+test("stored member notes: CIM cards see Tristan/Jim only; NDA cards see none", async () => {
   await resetNext();
   await upsertNextDeals([{ title: "At CIM", html: AXIAL_HTML, stage: "cim" }]);
   await upsertNextDeals([
@@ -231,11 +224,10 @@ test("stored notes_next: CIM cards see Tristan/Jim only; NDA cards see none", as
   ]);
   const cim = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = 'At CIM'");
   const nda = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = 'Still NDA'");
-  await query(`INSERT INTO notes_next (deal_id, member, body) VALUES
-    ($1, 'tristan', 'like the pack'),
-    ($1, 'partner', 'hold for margin'),
-    ($1, 'simon', 'specialist writeup'),
-    ($2, 'tristan', 'early nda thought')`, [cim[0].id, nda[0].id]);
+  await addNextNote(cim[0].id, "tristan", "like the pack");
+  await addNextNote(cim[0].id, "partner", "hold for margin");
+  await addNextNote(cim[0].id, "simon", "specialist writeup");
+  await addNextNote(nda[0].id, "tristan", "early nda thought");
 
   const map = await listNextNotesForDeals([cim[0].id, nda[0].id]);
   const cimShown = cimStagePartnerNotes({ stage: "cim" }, map.get(cim[0].id));
@@ -258,8 +250,8 @@ test("stored notes_next: CIM cards see Tristan/Jim only; NDA cards see none", as
   );
   const cimFields = cimPartnerNoteFields({ stage: "cim" }, map.get(cim[0].id));
   assert.ok(cimFields);
-  assert.equal(cimFields[0].notes.some((note) => note.body === "like the pack"), true);
-  assert.equal(cimFields[1].notes.some((note) => note.body === "hold for margin"), true);
+  assert.equal(cimFields[0].notes.some((note) => /like the pack/.test(note.body)), true);
+  assert.equal(cimFields[1].notes.some((note) => /hold for margin/.test(note.body)), true);
   assert.equal(
     cimFields.some((field) => field.notes.some((note) => /specialist/i.test(note.body))),
     false,
@@ -267,7 +259,7 @@ test("stored notes_next: CIM cards see Tristan/Jim only; NDA cards see none", as
   assert.equal(cimPartnerNoteFields({ stage: "nda" }, map.get(nda[0].id)), null);
 });
 
-test("notes save path writes notes_next and CIM fields stay labeled", async () => {
+test("notes save path writes member note columns and CIM fields stay labeled", async () => {
   await resetNext();
   await upsertNextDeals([{ title: "B'Safe pack", html: AXIAL_HTML, stage: "cim" }]);
   const [row] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
@@ -283,10 +275,8 @@ test("notes save path writes notes_next and CIM fields stay labeled", async () =
     fields.map((field) => field.label),
     [cimNoteSectionLabel("tristan"), cimNoteSectionLabel("partner")],
   );
-  assert.deepEqual(
-    fields[0].notes.map((note) => note.body),
-    ["pack looks solid"],
-  );
+  assert.equal(fields[0].notes.length, 1);
+  assert.match(fields[0].notes[0].body, /pack looks solid/);
   assert.deepEqual(fields[1].notes, []);
   assert.equal(
     fields.some((field) => field.notes.some((note) => /specialist/i.test(note.body))),
@@ -310,9 +300,10 @@ test("saving Tristan or Jim notes is not a CIM determination", async () => {
   const [other] = await query<{ id: number }>("SELECT id FROM deals_next WHERE title = $1", [
     "Also waiting",
   ]);
-  const eventsBefore = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [
-    noted.id,
-  ]);
+  const eventsBefore = await query(
+    "SELECT 1 FROM deal_log WHERE deal_id = $1 AND kind = 'stage'",
+    [noted.id],
+  );
 
   await addNextNote(noted.id, "tristan", "like the pack");
   await addNextNote(noted.id, "partner", "hold for margin");
@@ -320,11 +311,16 @@ test("saving Tristan or Jim notes is not a CIM determination", async () => {
   const afterNotes = await getNextDeal(noted.id);
   assert.equal(afterNotes?.stage, "cim");
   assert.deepEqual(afterNotes?.cim_verdicts, {});
-  const votes = await query("SELECT 1 FROM cim_verdicts_next WHERE deal_id = $1", [noted.id]);
+  const votes = await query(
+    `SELECT 1 FROM deals_next
+      WHERE id = $1 AND (tristan_cim_verdict IS NOT NULL OR jim_cim_verdict IS NOT NULL)`,
+    [noted.id],
+  );
   assert.equal(votes.length, 0);
-  const eventsAfter = await query("SELECT 1 FROM stage_events_next WHERE deal_id = $1", [
-    noted.id,
-  ]);
+  const eventsAfter = await query(
+    "SELECT 1 FROM deal_log WHERE deal_id = $1 AND kind = 'stage'",
+    [noted.id],
+  );
   assert.equal(eventsAfter.length, eventsBefore.length);
 
   const cim = await listNextCimDeals();

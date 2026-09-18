@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { ensureReady } from "@/lib/boot";
-import { importTokenValid } from "@/lib/import-auth";
+import { resolveMachineActor } from "@/lib/actors";
 import {
   buildDirkFeed,
   listDirkFollowups,
@@ -17,7 +17,7 @@ import {
  *   GET /api/next/dirk?section=inbound|verdicts|followups
  */
 export async function GET(request: NextRequest) {
-  if (!importTokenValid(request.headers.get("authorization"))) {
+  if (!resolveMachineActor(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

@@ -1,16 +1,11 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { pipelineTokenValid } from "./actors";
 
 /**
- * Shared bearer check for machine endpoints (/api/import, /api/import/flush).
+ * Legacy harvest-lane bearer check (/api/import, /api/crm/pursuit): accepts
+ * PIPELINE_TOKEN or the legacy FLOW_IMPORT_TOKEN. Agent tokens are rejected —
+ * agents go through /api/next/* where resolveMachineActor() records who they
+ * are in deal_log. /api/import/flush uses adminTokenValid (see lib/actors.ts).
  */
 export function importTokenValid(header: string | null): boolean {
-  const expected = process.env.FLOW_IMPORT_TOKEN?.trim();
-  if (!expected) return false;
-
-  const supplied = header?.replace(/^Bearer\s+/i, "").trim();
-  if (!supplied) return false;
-
-  const a = createHash("sha256").update(supplied).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
+  return pipelineTokenValid(header);
 }

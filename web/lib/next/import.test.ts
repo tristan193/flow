@@ -14,13 +14,7 @@ const AXIAL_HTML =
 async function resetNext() {
   await query(`
     TRUNCATE TABLE
-      verdicts_next,
-      cim_verdicts_next,
-      stage_events_next,
-      notes_next,
-      deal_files_next,
-      next_followups,
-      next_import_runs,
+      deal_log,
       deals_next,
       next_deal_counters
     RESTART IDENTITY CASCADE
@@ -255,8 +249,14 @@ test("token moves TLY from cim to dead; missing token 401; bad stage 400; sessio
     );
     assert.equal(after.stage, "closed");
     assert.equal(after.stage_changed_by, "dirk");
-    const notes = await query<{ body: string }>("SELECT body FROM notes_next WHERE deal_id = $1", [row.id]);
-    assert.ok(notes.some((n) => /Diamond Gate/i.test(n.body)));
+    // Machine notes are log-only entries now (never on partner cards).
+    const notes = await query<{ patch: unknown }>(
+      "SELECT patch FROM deal_log WHERE deal_id = $1 AND kind = 'note'",
+      [row.id],
+    );
+    assert.ok(
+      notes.some((n) => /Diamond Gate/i.test(JSON.stringify(n.patch))),
+    );
 
     await query(`UPDATE deals_next SET stage = 'cim' WHERE id = $1`, [row.id]);
     const sessioned = await applyAuthorizedNextStage({

@@ -3,8 +3,9 @@ import path from "node:path";
 
 import { type QueryFn, isUniqueViolation, query, withTransaction } from "../db";
 import { normalizeAxialHref } from "../playbooks";
+import { logDealChange } from "./change-log";
 import { allocateDealNumber, bumpCounterToAtLeast } from "./deal-number";
-import { applyNextReviewOutcome, clearNextSuperLike, moveNextStage } from "./deals";
+import { moveNextStage, setNextVerdict } from "./deals";
 import {
   type IdentityInput,
   type IdentityRecord,
@@ -100,6 +101,49 @@ export interface NextImportResult {
 
 /** Machine actor recorded on ingest-driven stage moves. */
 export const NEXT_INGEST_ACTOR = "dirk";
+
+/** Transaction-scoped deal_log insert (same q as the deal write). */
+async function logInTx(
+  q: QueryFn,
+  entry: {
+    dealId: number | null;
+    dealNumber: string | null;
+    actor: string;
+    kind: string;
+    patch: Record<string, unknown>;
+    channel: string;
+    sourceRef?: string | null;
+    reason?: string | null;
+    onBehalfOf?: string | null;
+    status?: string;
+  },
+): Promise<void> {
+  await q(
+    `INSERT INTO deal_log
+       (deal_id, deal_number, actor, on_behalf_of, kind, patch, reason, source_ref, channel, status)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+    [
+      entry.dealId,
+      entry.dealNumber,
+      entry.actor,
+      entry.onBehalfOf ?? null,
+      entry.kind,
+      JSON.stringify(entry.patch),
+      entry.reason ?? null,
+      entry.sourceRef ?? null,
+      entry.channel,
+      entry.status ?? "applied",
+    ],
+  );
+}
+
+/** "a.com, b.com" → ["a.com","b.com"] for the source_domains jsonb column. */
+function sourcesToDomains(sources: string | null | undefined): string[] {
+  return (sources ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 function normalizeBusinessModel(value: string | null | undefined): string {
   const t = (value || "").trim();
@@ -225,7 +269,7 @@ async function updateMatchedDeal(
        source              = COALESCE($3, source),
        sub_source          = COALESCE($4, sub_source),
        nickname            = COALESCE($5, nickname),
-       sources             = COALESCE($6, sources),
+       source_domains      = CASE WHEN source_domains = '[]'::jsonb THEN $6::jsonb ELSE source_domains END,
        city                = COALESCE($7, city),
        state               = COALESCE($8, state),
        county              = COALESCE($9, county),
@@ -260,7 +304,7 @@ async function updateMatchedDeal(
       deal.source ?? null,
       deal.subSource ?? null,
       deal.nickname ?? null,
-      deal.sources ?? null,
+      JSON.stringify(sourcesToDomains(deal.sources)),
       deal.city ?? null,
       deal.state ?? null,
       deal.county ?? null,
@@ -283,6 +327,15 @@ async function updateMatchedDeal(
       matchedId,
     ],
   );
+  await logInTx(q, {
+    dealId: matchedId,
+    dealNumber: cur.deal_number == null ? null : String(cur.deal_number),
+    actor: NEXT_INGEST_ACTOR,
+    kind: "update",
+    patch: { title: { new: title } },
+    sourceRef: deal.extId ?? null,
+    channel: "api:next/import",
+  });
 }
 
 /**
@@ -339,6 +392,16 @@ async function attachToCanonicalDeal(
       matchedId,
     ],
   );
+  await logInTx(q, {
+    dealId: matchedId,
+    dealNumber: null,
+    actor: NEXT_INGEST_ACTOR,
+    kind: "update",
+    patch: { attached: { new: title } },
+    reason: "attach-only ingest (threads/aliases/source ids)",
+    sourceRef: deal.extId ?? null,
+    channel: "api:next/import",
+  });
 }
 
 async function stampClosedRemint(
@@ -364,11 +427,15 @@ async function stampClosedRemint(
     [duplicateOf, disposition, NEXT_INGEST_ACTOR, remintId],
   );
   if (from !== "closed") {
-    await q(
-      `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
-       VALUES ($1, $2, 'closed', $3)`,
-      [remintId, from, NEXT_INGEST_ACTOR],
-    );
+    await logInTx(q, {
+      dealId: remintId,
+      dealNumber: null,
+      actor: NEXT_INGEST_ACTOR,
+      kind: "stage",
+      patch: { stage: { old: from, new: "closed" } },
+      reason: duplicateOf ? `remint of ${duplicateOf}` : "remint",
+      channel: "api:next/import",
+    });
   }
 }
 
@@ -401,7 +468,7 @@ async function insertNewDeal(
     `INSERT INTO deals_next (
        deal_number, source_deal_id, source_ids, alias_names,
        gmail_thread_ids, broker_firm, fingerprint, next_action, is_demo,
-       title, blurb, source, sub_source, nickname, sources,
+       title, blurb, source, sub_source, nickname, source_domains,
        city, state, county,
        revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
        first_seen, last_seen, times_seen,
@@ -410,7 +477,7 @@ async function insertNewDeal(
      ) VALUES (
        $1, $2, $3::jsonb, $4::jsonb,
        $5::jsonb, $6, $7, $8, $9,
-       $10, $11, $12, $13, $14, $15,
+       $10, $11, $12, $13, $14, $15::jsonb,
        $16, $17, $18,
        $19, $20, $21, $22, $23, $24::jsonb, $25,
        COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28,
@@ -433,7 +500,7 @@ async function insertNewDeal(
       deal.source ?? null,
       deal.subSource ?? null,
       deal.nickname ?? null,
-      deal.sources ?? null,
+      JSON.stringify(sourcesToDomains(deal.sources)),
       deal.city ?? null,
       deal.state ?? null,
       deal.county ?? null,
@@ -455,12 +522,21 @@ async function insertNewDeal(
   );
 
   const id = Number(inserted[0]?.id);
-  if (closed && id) {
-    await q(
-      `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
-       VALUES ($1, NULL, 'closed', $2)`,
-      [id, NEXT_INGEST_ACTOR],
-    );
+  if (id) {
+    await logInTx(q, {
+      dealId: id,
+      dealNumber: dealNumber,
+      actor: NEXT_INGEST_ACTOR,
+      kind: "create",
+      patch: {
+        title: { new: title },
+        stage: { new: closed ? "closed" : "inbox" },
+        source: { new: deal.source ?? null },
+      },
+      sourceRef: deal.extId ?? null,
+      reason: closed ? `remint audit row${duplicateOf ? ` of ${duplicateOf}` : ""}` : null,
+      channel: "api:next/import",
+    });
   }
   return id;
 }
@@ -469,9 +545,10 @@ async function applyIncomingStage(dealId: number, deal: IncomingNextDeal): Promi
   if (isAttachOnlyIngest(deal)) return;
   const stage = canonicalizeNextStage(deal.stage ?? deal.proposedStage);
   if (!stage) return;
-  const member =
-    deal.member && isMemberId(deal.member) ? deal.member : NEXT_INGEST_ACTOR;
-  await moveNextStage(dealId, member, stage);
+  await moveNextStage(dealId, NEXT_INGEST_ACTOR, stage, {
+    channel: "api:next/import",
+    onBehalfOf: deal.member && isMemberId(deal.member) ? deal.member : null,
+  });
 }
 
 function remintIntent(deal: IncomingNextDeal): {
@@ -625,46 +702,58 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
   return { dealsNew, dealsUpdated, skipped, dealIds: staged.map((item) => item.id) };
 }
 
-export async function applyNextVerdicts(verdicts: IncomingNextVerdict[]): Promise<number> {
+/**
+ * Verdicts from a snapshot.
+ *
+ * mode "apply" — trusted callers only (local seed). Writes the member's vote
+ * columns through setNextVerdict, which logs and runs combine rules.
+ *
+ * mode "propose" — agents. Agents never cast votes: each verdict becomes a
+ * needs_review deal_log row (actor = the machine, on_behalf_of = the member it
+ * claims to speak for) surfaced on /db for a human to confirm.
+ */
+export async function applyNextVerdicts(
+  verdicts: IncomingNextVerdict[],
+  mode: "apply" | "propose" = "apply",
+  machineActor: string = NEXT_INGEST_ACTOR,
+): Promise<number> {
   let applied = 0;
 
   for (const verdict of verdicts) {
     if (!isMemberId(verdict.member) || !isVerdictAction(verdict.action)) continue;
     if (!verdict.dealNumber || !parseDealNumber(verdict.dealNumber)) continue;
 
-    const deal = await query<{ id: number }>(
-      "SELECT id FROM deals_next WHERE deal_number = $1",
+    const deal = await query<{ id: number; deal_number: string }>(
+      "SELECT id, deal_number FROM deals_next WHERE deal_number = $1",
       [verdict.dealNumber.trim().toUpperCase()],
     );
     if (deal.length === 0) continue;
 
-    const result = await query<{ deal_id: number }>(
-      `INSERT INTO verdicts_next (deal_id, member, action, reason, note, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), COALESCE($6::timestamptz, now()))
-       ON CONFLICT (deal_id, member) DO UPDATE
-         SET action = excluded.action,
-             reason = excluded.reason,
-             note   = excluded.note,
-             updated_at = excluded.updated_at
-       WHERE excluded.updated_at > verdicts_next.updated_at
-       RETURNING deal_id`,
-      [
-        deal[0].id,
-        verdict.member,
-        verdict.action,
-        verdict.reason ?? null,
-        verdict.note ?? null,
-        toTimestamp(verdict.createdAt),
-      ],
-    );
-
-    if (result.length === 0) continue;
-    applied += 1;
-
-    if (verdict.action === "short" || verdict.action === "pass") {
-      await clearNextSuperLike(deal[0].id);
+    if (mode === "propose") {
+      await logDealChange({
+        dealId: deal[0].id,
+        dealNumber: deal[0].deal_number,
+        actor: machineActor,
+        onBehalfOf: verdict.member,
+        kind: "verdict",
+        patch: { proposed_verdict: { new: verdict.action } },
+        reason: verdict.reason ?? verdict.note ?? null,
+        channel: "api:next/import",
+        status: "needs_review",
+      });
+      applied += 1;
+      continue;
     }
-    await applyNextReviewOutcome(deal[0].id, verdict.member);
+
+    await setNextVerdict(
+      deal[0].id,
+      verdict.member,
+      verdict.action,
+      verdict.reason ?? null,
+      verdict.note ?? null,
+      { channel: "seed:import" },
+    );
+    applied += 1;
   }
 
   return applied;
@@ -674,15 +763,27 @@ export async function importNextSnapshot(
   payload: { deals?: IncomingNextDeal[]; verdicts?: IncomingNextVerdict[] },
   source: string,
   detail: string,
+  options: { verdictMode?: "apply" | "propose" } = {},
 ): Promise<NextImportResult> {
   const dealResult = await upsertNextDeals(payload.deals ?? []);
-  const verdictsApplied = await applyNextVerdicts(payload.verdicts ?? []);
-  const result: NextImportResult = { ...dealResult, verdictsApplied };
-  await query(
-    `INSERT INTO next_import_runs (source, detail, deals_new, deals_updated, verdicts_applied, skipped)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [source, detail, result.dealsNew, result.dealsUpdated, result.verdictsApplied, result.skipped],
+  const verdictsApplied = await applyNextVerdicts(
+    payload.verdicts ?? [],
+    options.verdictMode ?? "apply",
+    source,
   );
+  const result: NextImportResult = { ...dealResult, verdictsApplied };
+  await logDealChange({
+    actor: source,
+    kind: "import",
+    patch: {
+      deals_new: { new: result.dealsNew },
+      deals_updated: { new: result.dealsUpdated },
+      verdicts: { new: result.verdictsApplied },
+      skipped: { new: result.skipped },
+    },
+    sourceRef: detail,
+    channel: "api:next/import",
+  });
   await ensureNextSourceDealIdUnique();
   return result;
 }

@@ -28,6 +28,7 @@ const TOKEN = "test-cim-intake-token";
 async function resetNext() {
   await query(`
     TRUNCATE TABLE
+      deal_log,
       verdicts_next,
       cim_verdicts_next,
       stage_events_next,
@@ -394,8 +395,19 @@ test("unknown TLY and dealNumber mismatch fail cleanly and do not insert", async
     assert.equal(rows[0].cim_url, null);
     assert.equal(Number(rows[0].revenue), 1_000_000);
 
-    const verdicts = await query("SELECT 1 FROM cim_verdicts_next");
-    assert.equal(verdicts.length, 0);
+    const verdicts = await query<{
+      tristan_verdict: string | null;
+      jim_verdict: string | null;
+      tristan_cim_verdict: string | null;
+      jim_cim_verdict: string | null;
+    }>(
+      `SELECT tristan_verdict, jim_verdict, tristan_cim_verdict, jim_cim_verdict
+         FROM deals_next WHERE deal_number = 'TLY-031'`,
+    );
+    assert.equal(verdicts[0].tristan_verdict, null);
+    assert.equal(verdicts[0].jim_verdict, null);
+    assert.equal(verdicts[0].tristan_cim_verdict, null);
+    assert.equal(verdicts[0].jim_cim_verdict, null);
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
@@ -463,10 +475,30 @@ test("partial financials preserve existing fields; URL + financials + stage upda
     assert.equal(decoy[0].stage, "shortlist");
     assert.equal(decoy[0].cim_url, null);
 
-    const votes = await query("SELECT 1 FROM cim_verdicts_next");
-    assert.equal(votes.length, 0);
-    const inboxVotes = await query("SELECT 1 FROM verdicts_next");
-    assert.equal(inboxVotes.length, 0);
+    const votes = await query<{
+      tristan_verdict: string | null;
+      jim_verdict: string | null;
+      tristan_cim_verdict: string | null;
+      jim_cim_verdict: string | null;
+    }>(
+      `SELECT tristan_verdict, jim_verdict, tristan_cim_verdict, jim_cim_verdict
+         FROM deals_next WHERE deal_number = 'TLY-092'`,
+    );
+    assert.equal(votes[0].tristan_verdict, null);
+    assert.equal(votes[0].jim_verdict, null);
+    assert.equal(votes[0].tristan_cim_verdict, null);
+    assert.equal(votes[0].jim_cim_verdict, null);
+    const logKinds = await query<{ kind: string }>(
+      "SELECT kind FROM deal_log WHERE deal_number = 'TLY-092' ORDER BY id",
+    );
+    assert.equal(
+      logKinds.some((row) => row.kind === "update"),
+      true,
+    );
+    assert.equal(
+      logKinds.some((row) => row.kind === "stage"),
+      true,
+    );
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
@@ -590,8 +622,14 @@ test("intake with cimName writes cim_name, keeps teaser title, and does not inse
     assert.equal(decoy[0].cim_name, null);
     assert.equal(decoy[0].stage, "shortlist");
 
-    const votes = await query("SELECT 1 FROM cim_verdicts_next");
-    assert.equal(votes.length, 0);
+    const votes = await query<{
+      tristan_cim_verdict: string | null;
+      jim_cim_verdict: string | null;
+    }>(
+      `SELECT tristan_cim_verdict, jim_cim_verdict FROM deals_next WHERE deal_number = 'TLY-092'`,
+    );
+    assert.equal(votes[0].tristan_cim_verdict, null);
+    assert.equal(votes[0].jim_cim_verdict, null);
   } finally {
     if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
     else process.env.FLOW_IMPORT_TOKEN = previous;
@@ -854,6 +892,9 @@ test("CIM intake route is token-only, middleware-allowlisted, and does not creat
   assert.doesNotMatch(route, /googleapis|GOOGLE_SERVICE_ACCOUNT/);
   assert.doesNotMatch(auth, /INSERT INTO deals_next/);
   assert.doesNotMatch(auth, /INSERT INTO (cim_)?verdicts_next/);
+  assert.doesNotMatch(auth, /INSERT INTO stage_events_next/);
+  assert.doesNotMatch(auth, /INSERT INTO next_followups/);
+  assert.match(auth, /INSERT INTO deal_log/);
   assert.doesNotMatch(auth, /normalizeTeaserName|title-string|fuzzy title/);
   assert.match(client, /View CIM/);
   assert.match(client, /CimNewTabLink/);

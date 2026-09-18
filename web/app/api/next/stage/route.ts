@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { resolveMachineActor } from "@/lib/actors";
 import { currentMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { importTokenValid } from "@/lib/import-auth";
 import { applyAuthorizedNextStage } from "@/lib/next/stage-auth";
 
 /**
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   await ensureReady();
 
   const sessionMember = await currentMember();
-  if (!importTokenValid(request.headers.get("authorization")) && !sessionMember) {
+  if (!resolveMachineActor(request.headers.get("authorization")) && !sessionMember) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

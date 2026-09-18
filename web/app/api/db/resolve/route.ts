@@ -36,7 +36,10 @@ export async function POST(request: Request) {
     const proposed = row.patch.proposed_verdict?.new;
     const target = row.on_behalf_of;
     if (typeof proposed === "string" && isVerdictAction(proposed) && isMemberId(target)) {
-      await setNextVerdict(row.deal_id, target, proposed, null, null);
+      await setNextVerdict(row.deal_id, target, proposed, null, null, {
+        channel: "ui:db-confirm",
+        onBehalfOf: target,
+      });
     }
   }
 

@@ -1,5 +1,6 @@
+import { resolveMachineActor } from "../actors";
 import { query, queryOne } from "../db";
-import { importTokenValid } from "../import-auth";
+import { logDealChange } from "./change-log";
 import { findNextDealRef } from "./stage-auth";
 
 export type CimFinancialsPatch = {
@@ -113,7 +114,8 @@ export function parseCimFinancialsPatch(body: Record<string, unknown>):
 export async function applyAuthorizedCimFinancials(
   input: AuthorizedCimFinancialsInput,
 ): Promise<AuthorizedCimFinancialsResult> {
-  if (!importTokenValid(input.authorization)) {
+  const actor = resolveMachineActor(input.authorization);
+  if (!actor) {
     return { ok: false, error: "Unauthorized.", status: 401 };
   }
 
@@ -132,6 +134,13 @@ export async function applyAuthorizedCimFinancials(
     return { ok: false, error: "Deal not found.", status: 404 };
   }
 
+  const before = await queryOne<{
+    revenue: number | null;
+    ebitda: number | null;
+    margin: number | null;
+    asking: number | null;
+  }>("SELECT revenue, ebitda, margin, asking FROM deals_next WHERE id = $1", [ref.id]);
+
   await query(
     `UPDATE deals_next
         SET revenue = COALESCE($1, revenue),
@@ -148,6 +157,27 @@ export async function applyAuthorizedCimFinancials(
       ref.id,
     ],
   );
+
+  // Audit: prior values are recoverable from the patch.
+  const patch: Record<string, { old?: unknown; new?: unknown }> = {};
+  for (const field of ["revenue", "ebitda", "margin", "asking"] as const) {
+    const next = parsed.patch[field];
+    if (next === undefined) continue;
+    const old = before?.[field] == null ? null : Number(before[field]);
+    if (old === next) continue;
+    patch[field] = { old, new: next };
+  }
+  if (Object.keys(patch).length > 0) {
+    await logDealChange({
+      dealId: ref.id,
+      dealNumber: ref.dealNumber,
+      actor,
+      kind: "update",
+      patch,
+      reason: "CIM pack financials",
+      channel: "api:next/cim-financials",
+    });
+  }
 
   const row = await queryOne<{
     deal_number: string;

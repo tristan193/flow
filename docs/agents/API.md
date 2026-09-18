@@ -16,7 +16,8 @@ Live Next deals live in `deals_next` (TLY numbers). Classic harvest still posts 
 
 | Who | How |
 |-----|-----|
-| Dirk / Simon / harvest | `Authorization: Bearer $FLOW_IMPORT_TOKEN` |
+| Dirk / Simon / harvest | `Authorization: Bearer $FLOW_IMPORT_TOKEN` (still works; attributed as Dirk) |
+| Preferred | `DIRK_TOKEN` / `SIMON_TOKEN` / `PIPELINE_TOKEN` — `deal_log.actor` is the credential that called |
 | Vercel Cron | `Authorization: Bearer $CRON_SECRET` (only `/api/cron/harvest`) |
 | Tristan / Jim | Session cookie after `/login` — **agents do not use this** |
 
@@ -41,13 +42,13 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 
 | Method | Path | Who | Writes |
 |--------|------|-----|--------|
-| POST | `/api/next/import` | Dirk / Harve | `deals_next` (mint or join TLY) |
+| POST | `/api/next/import` | Dirk / Harve | `deals_next` + `deal_log` (mint or join TLY) |
 | GET | `/api/next/dirk` | Dirk | none (poll) |
-| POST | `/api/next/stage` | Dirk | stage on an existing TLY |
-| POST | `/api/next/cim-intake` | **Simon** | pack URL (+ optional numbers/name/geo) on existing TLY |
-| POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM |
-| POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage** |
-| POST | `/api/next/merge` | Dirk / ops | collapse duplicate TLY rows |
+| POST | `/api/next/stage` | Dirk | stage on an existing TLY + `deal_log` |
+| POST | `/api/next/cim-intake` | **Simon** | pack URL on existing TLY + `deal_log` |
+| POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
+| POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage**; + `deal_log` |
+| POST | `/api/next/merge` | Dirk / ops | collapse duplicate TLY rows + `deal_log` |
 | POST | `/api/import` | harvest only | classic `deals` (not Review) |
 | POST | `/api/crm/pursuit` | harvest | NDA / thread attach on classic+Next match |
 | GET/POST | `/api/cron/harvest` | Vercel Cron | dispatches GitHub Actions |
@@ -241,10 +242,10 @@ These exist for the live app. They require Tristan/Jim’s cookie. Agents impers
 
 ## Hard rules
 
-1. **Agents never vote.** No `verdicts_next`, no `cim_verdicts_next`, no “cast Tristan’s Like.”
+1. **Agents never vote.** Votes are columns on `deals_next` (`tristan_verdict` / `jim_verdict` / CIM pair). Optional ingest `verdicts` park as `needs_review` on `deal_log` for a human to confirm on `/db`. Do not POST `/api/next/verdict`.
 2. **Do not insert deals from CIM intake.** Stamp the existing TLY.
 3. **Do not call Google from Vercel.** Simon creates the Drive/Canva file, then POSTs the URL.
-4. **Do not flush** unless Tristan said so, and never with an agent-only token if that split is live (`FLOW_IMPORT_TOKEN` is required today).
+4. **Do not flush** unless Tristan said so. Flush is `FLOW_IMPORT_TOKEN` only — Dirk/Simon/pipeline tokens cannot flush.
 5. **Allowlist new token routes** in `web/middleware.ts` or they will 307 to login.
 6. After a change is **on `main` and deployed**, append `docs/agents/CHANGELOG.md`. See [README.md](./README.md).
 

@@ -1,7 +1,7 @@
 import { MAX_CIM_BYTES } from "../deals";
 import { query } from "../db";
 import { normalizeAxialHref } from "../playbooks";
-import { getNextDeal, moveNextStage, saveNextDealFile } from "./deals";
+import { getNextDeal, moveNextStage } from "./deals";
 import { upsertNextDeals, type IncomingNextDeal } from "./import";
 import { type MemberId, type NextDeal, coerceNextStage } from "./model";
 
@@ -29,10 +29,14 @@ export interface NextCimDraft {
  * the card never enters Next Review swipe. Gmail harvest does not use this
  * path and still arrives inbound.
  */
+/**
+ * URL-only CIM world: the uploaded PDF is used for extraction only and is not
+ * stored. The pack lives at a URL (Drive / Canva) stamped via cim-intake or
+ * Attach CIM.
+ */
 export async function createNextDealFromCim(
   member: MemberId,
   draft: NextCimDraft,
-  file?: { filename: string; contentType: string; bytes: Uint8Array },
 ): Promise<NextDeal> {
   const title = draft.title.trim();
   if (!title) throw new Error("Title is required.");
@@ -78,11 +82,7 @@ export async function createNextDealFromCim(
   const current = await getNextDeal(dealId);
   if (!current) throw new Error("Deal created but could not reload.");
   if (CIM_FROM_STAGES.has(coerceNextStage(current.stage))) {
-    await moveNextStage(dealId, member, "cim");
-  }
-
-  if (file) {
-    await saveNextDealFile(dealId, member, file, "cim", { moveToCim: false });
+    await moveNextStage(dealId, member, "cim", { channel: "ui:add-from-cim" });
   }
 
   const deal = await getNextDeal(dealId);

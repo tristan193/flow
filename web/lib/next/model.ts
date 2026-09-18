@@ -235,12 +235,24 @@ export function nextCimDeck<
   return [...waiting, ...hung];
 }
 
+/** Armed watch on the deal row (was the next_followups table). */
+export interface NextWatch {
+  kind: string;
+  status: string;
+  armed_by: string | null;
+  armed_at: string | null;
+  due_at: string | null;
+  note: string | null;
+}
+
 export interface NextDealRow {
   id: number;
   deal_number: string;
   source_deal_id: string | null;
   source_ids: unknown[];
   alias_names: string[];
+  /** Tombstones: TLY numbers merged into this row. */
+  alias_numbers: string[];
   gmail_thread_ids: string[];
   broker_firm: string | null;
   fingerprint: string | null;
@@ -253,7 +265,8 @@ export interface NextDealRow {
   source: string | null;
   sub_source: string | null;
   nickname: string | null;
-  sources: string | null;
+  /** Provider domains seen for this deal (was the `sources` text column). */
+  source_domains: string[];
   city: string | null;
   state: string | null;
   county: string | null;
@@ -271,9 +284,15 @@ export interface NextDealRow {
   stage_changed_at: string | null;
   stage_changed_by: string | null;
   cim_url: string | null;
+  /** Web CIM access hint (partner-visible plain text, not a secrets vault). */
+  cim_access_note: string | null;
   nda_url: string | null;
   /** ISO timestamp when Super Liked. Null = not pinned. Not a verdict. */
   super_liked_at: string | null;
+  /** Who pinned it. */
+  super_liked_by: string | null;
+  /** Armed watches (nda | cim | broker_reply), open and resolved. */
+  watches: NextWatch[];
   /** Canonical TLY when this row is a remint/dupe. Null on live deals. */
   duplicate_of: string | null;
   /** new | attached | remint. Null on older rows / ordinary harvest. */

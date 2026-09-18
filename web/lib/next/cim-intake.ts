@@ -1,6 +1,6 @@
+import { resolveMachineActor } from "../actors";
 import { canonicalCimUrl, parseCimDealId } from "../cim-pack-id";
 import { type QueryFn, withTransaction } from "../db";
-import { importTokenValid } from "../import-auth";
 import { parseOptionalMargin, parseOptionalMoney } from "./cim-financials-auth";
 import { getNextDeal } from "./deals";
 import { formatDealNumber, mergeAliasNames } from "./identity";
@@ -379,6 +379,7 @@ async function applyIntakeRow(
   dealNumber: string,
   cimUrl: string,
   patch: CimIntakePatch,
+  actor: string = CIM_INTAKE_ACTOR,
 ): Promise<{ id: number } | { error: string; status: number }> {
   const rows = await q<{
     id: number;
@@ -394,7 +395,6 @@ async function applyIntakeRow(
   }
   const row = rows[0];
   const from = coerceNextStage(row.stage);
-  const actor = CIM_INTAKE_ACTOR;
   const advance = shouldAdvanceToCimOnPack(from);
   const dest: NextStageId = advance ? "cim" : from;
   const nextAction = nextActionAfterCimPack(dest, null);
@@ -454,22 +454,51 @@ async function applyIntakeRow(
     ],
   );
 
+  const intakePatch: Record<string, unknown> = { cim_url: { new: cimUrl } };
+  if (patch.revenue != null) intakePatch.revenue = { new: patch.revenue };
+  if (patch.ebitda != null) intakePatch.ebitda = { new: patch.ebitda };
+  if (patch.margin != null) intakePatch.margin = { new: patch.margin };
+  if (patch.asking != null) intakePatch.asking = { new: patch.asking };
+  if (cimName) intakePatch.cim_name = { new: cimName };
+  if (city) intakePatch.city = { new: city };
+  if (state) intakePatch.state = { new: state };
+  if (county) intakePatch.county = { new: county };
+  await q(
+    `INSERT INTO deal_log (deal_id, deal_number, actor, kind, patch, reason, channel)
+     VALUES ($1, $2, $3, 'update', $4::jsonb, $5, 'api:next/cim-intake')`,
+    [row.id, dealNumber, actor, JSON.stringify(intakePatch), "CIM intake"],
+  );
+
   if (advance && from !== "cim") {
     await q(
-      `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
-       VALUES ($1, $2, $3, $4)`,
-      [row.id, from, "cim", actor],
+      `INSERT INTO deal_log (deal_id, deal_number, actor, kind, patch, channel)
+       VALUES ($1, $2, $3, 'stage', $4::jsonb, 'api:next/cim-intake')`,
+      [row.id, dealNumber, actor, JSON.stringify({ stage: { old: from, new: "cim" } })],
     );
     const kind = nextFollowupKind("cim");
     if (kind) {
       await q(
-        `INSERT INTO next_followups (deal_id, kind, status, armed_by)
-         SELECT $1, $2, 'open', $3
-          WHERE NOT EXISTS (
-            SELECT 1 FROM next_followups
-             WHERE deal_id = $1 AND kind = $2 AND status = 'open'
-          )`,
-        [row.id, kind, actor],
+        `UPDATE deals_next
+            SET watches = watches || $2::jsonb, updated_at = now()
+          WHERE id = $1
+            AND NOT EXISTS (
+              SELECT 1 FROM jsonb_array_elements(watches) AS w(value)
+               WHERE w.value->>'kind' = $3 AND w.value->>'status' = 'open'
+            )`,
+        [
+          row.id,
+          JSON.stringify([
+            {
+              kind,
+              status: "open",
+              armed_by: actor,
+              armed_at: new Date().toISOString(),
+              due_at: null,
+              note: null,
+            },
+          ]),
+          kind,
+        ],
       );
     }
   }
@@ -486,12 +515,15 @@ async function applyIntakeRow(
  * Omitted geo fields leave existing city/state/county alone. There is no
  * deals_next.country column — optional `country` writes `state` when state is omitted.
  */
-async function stampParsedIntake(body: Record<string, unknown>): Promise<AuthorizedCimIntakeResult> {
+async function stampParsedIntake(
+  body: Record<string, unknown>,
+  actor: string,
+): Promise<AuthorizedCimIntakeResult> {
   const parsed = parseCimIntakeBody(body);
   if (!parsed.ok) return { ok: false, error: parsed.error, status: 400 };
 
   const applied = await withTransaction(async (q) =>
-    applyIntakeRow(q, parsed.dealNumber, parsed.cimUrl, parsed.patch),
+    applyIntakeRow(q, parsed.dealNumber, parsed.cimUrl, parsed.patch, actor),
   );
   if ("error" in applied) {
     return { ok: false, error: applied.error, status: applied.status };
@@ -523,10 +555,11 @@ async function stampParsedIntake(body: Record<string, unknown>): Promise<Authori
 export async function applyAuthorizedCimIntake(
   input: AuthorizedCimIntakeInput,
 ): Promise<AuthorizedCimIntakeResult> {
-  if (!importTokenValid(input.authorization)) {
+  const actor = resolveMachineActor(input.authorization);
+  if (!actor) {
     return { ok: false, error: "Unauthorized.", status: 401 };
   }
-  return stampParsedIntake({ ...input });
+  return stampParsedIntake({ ...input }, actor);
 }
 
 export type CimIntakeBatchItemResult = AuthorizedCimIntakeResult & { index: number };
@@ -548,12 +581,13 @@ export async function applyAuthorizedCimIntakeBatch(input: {
   authorization: string | null;
   items: Record<string, unknown>[];
 }): Promise<AuthorizedCimIntakeBatchResult> {
-  if (!importTokenValid(input.authorization)) {
+  const actor = resolveMachineActor(input.authorization);
+  if (!actor) {
     return { ok: false, error: "Unauthorized.", status: 401 };
   }
   const results: CimIntakeBatchItemResult[] = [];
   for (let index = 0; index < input.items.length; index += 1) {
-    const stamped = await stampParsedIntake(input.items[index] ?? {});
+    const stamped = await stampParsedIntake(input.items[index] ?? {}, actor);
     results.push({ index, ...stamped });
   }
   return {

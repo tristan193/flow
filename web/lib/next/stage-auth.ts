@@ -1,5 +1,5 @@
+import { resolveMachineActor } from "../actors";
 import { queryOne } from "../db";
-import { importTokenValid } from "../import-auth";
 import { addNextNote, moveNextStage } from "./deals";
 import { parseDealNumber } from "./identity";
 import { canonicalizeNextStage, isMemberId, type NextStageId } from "./model";
@@ -56,13 +56,16 @@ export async function findNextDealRef(input: {
 
 function resolveActor(
   input: AuthorizedStageInput,
-): { actor: string } | { error: string; status: number } {
-  if (importTokenValid(input.authorization)) {
+): { actor: string; onBehalfOf: string | null } | { error: string; status: number } {
+  const machine = resolveMachineActor(input.authorization);
+  if (machine) {
+    // The actor is always the credential. A posted member id is recorded as
+    // on_behalf_of — a token can no longer write history as a human.
     const posted = input.member?.trim() || "";
-    return { actor: isMemberId(posted) ? posted : NEXT_STAGE_ACTOR };
+    return { actor: machine, onBehalfOf: isMemberId(posted) ? posted : null };
   }
   if (input.sessionMember) {
-    return { actor: input.sessionMember };
+    return { actor: input.sessionMember, onBehalfOf: null };
   }
   return { error: "Unauthorized.", status: 401 };
 }
@@ -94,9 +97,17 @@ export async function applyAuthorizedNextStage(
     return { ok: false, error: "Deal not found.", status: 404 };
   }
 
-  await moveNextStage(ref.id, who.actor, stage);
+  await moveNextStage(ref.id, who.actor, stage, {
+    channel: "api:next/stage",
+    onBehalfOf: who.onBehalfOf,
+  });
   const extra = noteBody(input);
-  if (extra) await addNextNote(ref.id, who.actor, extra);
+  if (extra) {
+    await addNextNote(ref.id, who.actor, extra, {
+      channel: "api:next/stage",
+      onBehalfOf: who.onBehalfOf,
+    });
+  }
   return {
     ok: true,
     dealId: ref.id,
