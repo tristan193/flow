@@ -18,13 +18,7 @@ const CANVA_URL = "https://www.canva.com/design/DAG030pack/view?utm_content=DAG0
 async function resetNext() {
   await query(`
     TRUNCATE TABLE
-      verdicts_next,
-      cim_verdicts_next,
-      stage_events_next,
-      notes_next,
-      deal_files_next,
-      next_followups,
-      next_import_runs,
+      deal_log,
       deals_next,
       next_deal_counters
     RESTART IDENTITY CASCADE
@@ -204,8 +198,12 @@ test("cim-url stamp from NDA moves to CIM and drops Await CIM copy; intake still
       ["TLY-014", "Already walked", "closed", "Await CIM / data room"],
     );
     await query(
-      `INSERT INTO next_followups (deal_id, kind, status, armed_by)
-       SELECT id, 'cim', 'open', 'dirk' FROM deals_next WHERE deal_number = 'TLY-031'`,
+      `UPDATE deals_next
+          SET watches = watches || jsonb_build_array(
+            jsonb_build_object('kind', 'cim', 'status', 'open', 'armed_by', 'dirk',
+                               'armed_at', now(), 'due_at', NULL, 'note', NULL)
+          )
+        WHERE deal_number = 'TLY-031'`,
     );
 
     const stamped = await applyAuthorizedCimUrl({

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { resolveMachineActor } from "@/lib/actors";
 import { ensureReady } from "@/lib/boot";
-import { importTokenValid } from "@/lib/import-auth";
 import { importNextSnapshot } from "@/lib/next/import";
 import { collapseNextDuplicates } from "@/lib/next/merge";
 
@@ -22,7 +22,8 @@ import { collapseNextDuplicates } from "@/lib/next/merge";
  */
 
 export async function POST(request: NextRequest) {
-  if (!importTokenValid(request.headers.get("authorization"))) {
+  const actor = resolveMachineActor(request.headers.get("authorization"));
+  if (!actor) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -45,22 +46,28 @@ export async function POST(request: NextRequest) {
   }
 
   const merge = mergeFlag
-    ? await collapseNextDuplicates({
-        keepDealNumbers: (payload as { keepDealNumbers?: string[] }).keepDealNumbers,
-        deleteDealNumbers: (payload as { deleteDealNumbers?: string[] }).deleteDealNumbers,
-        pairs: (payload as { pairs?: { keep: string; delete: string[] }[] }).pairs,
-        dryRun: Boolean((payload as { dryRun?: unknown }).dryRun),
-      })
+    ? await collapseNextDuplicates(
+        {
+          keepDealNumbers: (payload as { keepDealNumbers?: string[] }).keepDealNumbers,
+          deleteDealNumbers: (payload as { deleteDealNumbers?: string[] }).deleteDealNumbers,
+          pairs: (payload as { pairs?: { keep: string; delete: string[] }[] }).pairs,
+          dryRun: Boolean((payload as { dryRun?: unknown }).dryRun),
+        },
+        actor,
+      )
     : null;
 
   if (!hasDeals && !hasVerdicts) {
     return NextResponse.json({ ok: true, merge });
   }
 
+  // Agents never cast votes: any verdicts in the payload become needs_review
+  // proposals in deal_log, surfaced on /db for a human to confirm.
   const result = await importNextSnapshot(
     payload,
-    "dirk",
+    actor,
     String((payload as { sourceDb?: string }).sourceDb ?? "api"),
+    { verdictMode: "propose" },
   );
   return NextResponse.json({ ok: true, ...result, ...(merge ? { merge } : {}) });
 }

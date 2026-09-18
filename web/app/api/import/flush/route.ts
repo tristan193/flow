@@ -2,12 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { ensureReady } from "@/lib/boot";
 import { query } from "@/lib/db";
-import { importTokenValid } from "@/lib/import-auth";
+import { adminTokenValid } from "@/lib/actors";
 
 /**
  * Selective deal wipe (or full flush).
  *
- * Auth: same bearer as /api/import.
+ * Auth: FLOW_IMPORT_TOKEN only (not Dirk/Simon/pipeline agent tokens).
  *
  * Full wipe:
  *   { "confirm": "FLUSH" }
@@ -17,7 +17,7 @@ import { importTokenValid } from "@/lib/import-auth";
  * Matches source / nickname / sub_source / ext_id / url (case-insensitive).
  */
 export async function POST(request: NextRequest) {
-  if (!importTokenValid(request.headers.get("authorization"))) {
+  if (!adminTokenValid(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

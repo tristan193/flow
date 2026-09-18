@@ -17,13 +17,7 @@ const AXIAL_HTML =
 async function resetNext() {
   await query(`
     TRUNCATE TABLE
-      verdicts_next,
-      cim_verdicts_next,
-      stage_events_next,
-      notes_next,
-      deal_files_next,
-      next_followups,
-      next_import_runs,
+      deal_log,
       deals_next,
       next_deal_counters
     RESTART IDENTITY CASCADE

@@ -76,9 +76,8 @@ export async function listDirkInbound(limit = 50): Promise<DirkInbound[]> {
     `SELECT d.deal_number, d.title, d.source, d.nickname, d.last_seen, d.gmail_thread_ids
        FROM deals_next d
       WHERE d.stage = 'inbox'
-        AND NOT EXISTS (
-          SELECT 1 FROM verdicts_next v WHERE v.deal_id = d.id
-        )
+        AND d.tristan_verdict IS NULL
+        AND d.jim_verdict IS NULL
       ORDER BY d.last_seen DESC, d.id DESC
       LIMIT $1`,
     [limit],
@@ -94,12 +93,21 @@ export async function listDirkInbound(limit = 50): Promise<DirkInbound[]> {
 }
 
 export async function listDirkVerdicts(limit = 50): Promise<DirkVerdict[]> {
+  // Votes are member columns on the deal row now; unpivot for the feed.
   const rows = await query<Record<string, unknown>>(
-    `SELECT d.deal_number, d.title, d.stage, v.member, v.action, v.reason, v.note, v.updated_at
-       FROM verdicts_next v
-       JOIN deals_next d ON d.id = v.deal_id
-      ORDER BY v.updated_at DESC
-      LIMIT $1`,
+    `SELECT deal_number, title, stage, member, action, reason, note, at FROM (
+       SELECT d.deal_number, d.title, d.stage, 'tristan' AS member,
+              d.tristan_verdict AS action, d.tristan_verdict_reason AS reason,
+              d.tristan_verdict_note AS note, d.tristan_verdict_at AS at
+         FROM deals_next d WHERE d.tristan_verdict IS NOT NULL
+       UNION ALL
+       SELECT d.deal_number, d.title, d.stage, 'partner' AS member,
+              d.jim_verdict AS action, d.jim_verdict_reason AS reason,
+              d.jim_verdict_note AS note, d.jim_verdict_at AS at
+         FROM deals_next d WHERE d.jim_verdict IS NOT NULL
+     ) v
+     ORDER BY v.at DESC NULLS LAST
+     LIMIT $1`,
     [limit],
   );
   return rows.map((row) => {
@@ -113,20 +121,22 @@ export async function listDirkVerdicts(limit = 50): Promise<DirkVerdict[]> {
       action: String(row.action ?? ""),
       reason: row.reason == null ? null : String(row.reason),
       note: row.note == null ? null : String(row.note),
-      at: iso(row.updated_at),
+      at: iso(row.at),
       stage: nextStageLabel(stage),
     };
   });
 }
 
 export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
+  // Watches ride on the deal row (jsonb list) — expand the open ones.
   const watched = await query<Record<string, unknown>>(
     `SELECT d.deal_number, d.title, d.stage, d.next_action, d.nda_url, d.cim_url,
-            d.gmail_thread_ids, e.kind, e.due_at
-       FROM next_followups e
-       JOIN deals_next d ON d.id = e.deal_id
-      WHERE e.status = 'open'
-      ORDER BY e.armed_at DESC
+            d.gmail_thread_ids, w.value->>'kind' AS kind, w.value->>'due_at' AS due_at,
+            w.value->>'armed_at' AS armed_at
+       FROM deals_next d,
+            jsonb_array_elements(d.watches) AS w(value)
+      WHERE w.value->>'status' = 'open'
+      ORDER BY (w.value->>'armed_at') DESC NULLS LAST
       LIMIT $1`,
     [limit],
   );

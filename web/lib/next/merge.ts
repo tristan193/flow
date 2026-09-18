@@ -160,7 +160,7 @@ function pickKeep(
 
 async function loadMergeRows(): Promise<MergeRow[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT id, deal_number, source_deal_id, source_ids, alias_names,
+    `SELECT id, deal_number, source_deal_id, source_ids, alias_names, alias_numbers,
             gmail_thread_ids, nickname, url, title
        FROM deals_next`,
   );
@@ -186,24 +186,61 @@ export async function ensureNextSourceDealIdUnique(): Promise<boolean> {
   }
 }
 
+/**
+ * Two-table world: votes/notes/watches live on the deal row. Merge fills the
+ * keeper's null columns from the duplicate, concatenates notes, unions
+ * watches, keeps history by repointing the duplicate's deal_log rows at the
+ * keeper (their deal_number stays the historical TLY), and repoints any
+ * legacy stored CIM blobs.
+ */
+const MERGE_FILL_COLUMNS = [
+  "tristan_verdict",
+  "tristan_verdict_reason",
+  "tristan_verdict_note",
+  "tristan_verdict_at",
+  "jim_verdict",
+  "jim_verdict_reason",
+  "jim_verdict_note",
+  "jim_verdict_at",
+  "tristan_cim_verdict",
+  "tristan_cim_verdict_note",
+  "tristan_cim_verdict_at",
+  "jim_cim_verdict",
+  "jim_cim_verdict_note",
+  "jim_cim_verdict_at",
+  "cim_url",
+  "cim_access_note",
+  "nda_url",
+] as const;
+
 async function reassignChildren(keepId: number, dupId: number, q: QueryFn): Promise<void> {
+  const fills = MERGE_FILL_COLUMNS.map(
+    (col) => `${col} = COALESCE(keep.${col}, dup.${col})`,
+  ).join(",\n       ");
   await q(
-    `UPDATE verdicts_next SET deal_id = $1
-      WHERE deal_id = $2
-        AND NOT EXISTS (
-          SELECT 1 FROM verdicts_next v
-           WHERE v.deal_id = $1 AND v.member = verdicts_next.member
-        )`,
+    `UPDATE deals_next AS keep SET
+       ${fills},
+       tristan_notes = CASE
+         WHEN dup.tristan_notes IS NULL OR btrim(dup.tristan_notes) = '' THEN keep.tristan_notes
+         WHEN keep.tristan_notes IS NULL OR btrim(keep.tristan_notes) = '' THEN dup.tristan_notes
+         ELSE keep.tristan_notes || E'\\n\\n' || dup.tristan_notes
+       END,
+       jim_notes = CASE
+         WHEN dup.jim_notes IS NULL OR btrim(dup.jim_notes) = '' THEN keep.jim_notes
+         WHEN keep.jim_notes IS NULL OR btrim(keep.jim_notes) = '' THEN dup.jim_notes
+         ELSE keep.jim_notes || E'\\n\\n' || dup.jim_notes
+       END,
+       watches = keep.watches || dup.watches,
+       updated_at = now()
+     FROM deals_next AS dup
+    WHERE keep.id = $1 AND dup.id = $2`,
     [keepId, dupId],
   );
-  await q("DELETE FROM verdicts_next WHERE deal_id = $1", [dupId]);
-  await q("UPDATE notes_next SET deal_id = $1 WHERE deal_id = $2", [keepId, dupId]);
-  await q("UPDATE stage_events_next SET deal_id = $1 WHERE deal_id = $2", [keepId, dupId]);
+  await q("UPDATE deal_log SET deal_id = $1 WHERE deal_id = $2", [keepId, dupId]);
   await q("UPDATE deal_files_next SET deal_id = $1 WHERE deal_id = $2", [keepId, dupId]);
-  await q("UPDATE next_followups SET deal_id = $1 WHERE deal_id = $2", [keepId, dupId]);
 }
 
-async function mergeRowInto(keep: MergeRow, dup: MergeRow, q: QueryFn): Promise<void> {
+async function mergeRowInto(keep: MergeRow, dup: MergeRow, q: QueryFn, actor: string): Promise<void> {
   const aliases = mergeAliasNames(
     asStringArray(keep.alias_names),
     dup.title,
@@ -226,14 +263,43 @@ async function mergeRowInto(keep: MergeRow, dup: MergeRow, q: QueryFn): Promise<
        source_ids       = $2::jsonb,
        alias_names      = $3::jsonb,
        gmail_thread_ids = $4::jsonb,
+       alias_numbers    = (
+         SELECT COALESCE(jsonb_agg(DISTINCT x), '[]'::jsonb)
+           FROM jsonb_array_elements_text(alias_numbers || $5::jsonb) AS t(x)
+       ),
        updated_at       = now()
-     WHERE id = $5`,
-    [sourceDealId, JSON.stringify(mergedIds), JSON.stringify(aliases), JSON.stringify(threads), keep.id],
+     WHERE id = $6`,
+    [
+      sourceDealId,
+      JSON.stringify(mergedIds),
+      JSON.stringify(aliases),
+      JSON.stringify(threads),
+      JSON.stringify([dup.deal_number, ...asStringArray((dup as { alias_numbers?: unknown }).alias_numbers)]),
+      keep.id,
+    ],
   );
   keep.source_deal_id = sourceDealId;
   keep.source_ids = mergedIds;
   keep.alias_names = aliases;
   keep.gmail_thread_ids = threads;
+
+  // Tombstone + full snapshot of the row being deleted. Nothing is ever
+  // unrecoverable: the whole dup row rides in patch.old.
+  const snapshot = await q<Record<string, unknown>>(
+    "SELECT * FROM deals_next WHERE id = $1",
+    [dup.id],
+  );
+  await q(
+    `INSERT INTO deal_log (deal_id, deal_number, actor, kind, patch, reason, channel)
+     VALUES ($1, $2, $3, 'merge', $4::jsonb, $5, 'api:next/merge')`,
+    [
+      keep.id,
+      dup.deal_number,
+      actor,
+      JSON.stringify({ merged_row: { old: snapshot[0] ?? null, new: keep.deal_number } }),
+      `merged ${dup.deal_number} into ${keep.deal_number}`,
+    ],
+  );
 }
 
 function planGroups(
@@ -253,12 +319,16 @@ function planGroups(
     for (const pair of input.pairs) {
       const keep = normNumber(pair.keep);
       if (!keep || !byNumber.has(keep)) continue;
+      // Guard: a pair is only honored when the rows actually share an identity
+      // key (source id / Axial hex / listing id). A token caller can no longer
+      // delete arbitrary deals by calling them duplicates.
+      const keepKeys = new Set(identityGroupKeys(byNumber.get(keep)!));
       const deleted = (pair.delete ?? [])
         .map((n) => normNumber(n))
-        .filter((n): n is string => n != null && n !== keep && byNumber.has(n));
+        .filter((n): n is string => n != null && n !== keep && byNumber.has(n))
+        .filter((n) => identityGroupKeys(byNumber.get(n)!).some((k) => keepKeys.has(k)));
       if (!deleted.length) continue;
-      const keys = identityGroupKeys(byNumber.get(keep)!);
-      groups.push({ keep, deleted, keys });
+      groups.push({ keep, deleted, keys: [...keepKeys] });
     }
     return groups;
   }
@@ -309,6 +379,7 @@ function planGroups(
 
 export async function collapseNextDuplicates(
   input: CollapseNextDuplicatesInput = {},
+  actor: string = "dirk",
 ): Promise<CollapseNextDuplicatesResult> {
   const rows = await loadMergeRows();
   const groups = planGroups(rows, input);
@@ -334,7 +405,7 @@ export async function collapseNextDuplicates(
       for (const num of group.deleted) {
         const dup = byNumber.get(num);
         if (!dup) continue;
-        await mergeRowInto(keep, dup, q);
+        await mergeRowInto(keep, dup, q, actor);
         await reassignChildren(keep.id, dup.id, q);
         await q("DELETE FROM deals_next WHERE id = $1", [dup.id]);
         byNumber.delete(num);

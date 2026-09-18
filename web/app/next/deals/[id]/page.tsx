@@ -13,7 +13,8 @@ import { CimPartnerNotes } from "@/components/next/notes";
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
 import { gmailAllHref } from "@/lib/next/identity";
-import { getNextDealByRouteParam, listNextNotes, listNextStageEvents } from "@/lib/next/deals";
+import { listDealLog } from "@/lib/next/change-log";
+import { getNextDealByRouteParam, listNextNotes } from "@/lib/next/deals";
 import { assessNextFit } from "@/lib/next/fit";
 import {
   businessModelLabel,
@@ -37,9 +38,9 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
   const deal = await getNextDealByRouteParam(id);
   if (!deal) notFound();
 
-  const [notes, events] = await Promise.all([
+  const [notes, history] = await Promise.all([
     listNextNotes(deal.id),
-    listNextStageEvents(deal.id),
+    listDealLog({ dealId: deal.id, status: "applied", limit: 40 }),
   ]);
 
   const fit = assessNextFit(deal);
@@ -177,29 +178,49 @@ export default async function NextDealPage({ params }: { params: Promise<{ id: s
             />
           ) : null}
 
-          {events.length > 0 && (
+          {history.length > 0 && (
             <section>
               <h2 className="text-ink-faint mb-1.5 text-[11.5px] font-bold tracking-wide uppercase">
-                Stage history
+                History
               </h2>
               <ol className="border-line bg-surface divide-line divide-y rounded-xl border">
-                {events.map((event) => (
-                  <li
-                    key={event.id}
-                    className="text-ink-dim flex items-baseline justify-between px-3.5 py-2 text-[12.5px]"
-                  >
-                    <span>
-                      {event.from_stage ? `${nextStageLabel(event.from_stage)} → ` : ""}
-                      <span className="text-ink font-medium">{nextStageLabel(event.to_stage)}</span>
-                      {" · "}
-                      {memberLabel(event.member)}
-                    </span>
-                    <span className="text-ink-faint">
-                      {new Date(event.created_at).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
+                {history.map((row) => {
+                  const fields = Object.entries(row.patch)
+                    .slice(0, 3)
+                    .map(([field, change]) => {
+                      if (!change || typeof change !== "object") return field;
+                      const from = "old" in change && change.old != null ? String(change.old) : null;
+                      const to = "new" in change ? String(change.new ?? "∅") : "";
+                      return from ? `${field}: ${from} → ${to}` : `${field}: ${to}`;
+                    })
+                    .join(" · ");
+                  return (
+                    <li
+                      key={row.id}
+                      className="text-ink-dim flex items-baseline justify-between gap-3 px-3.5 py-2 text-[12.5px]"
+                    >
+                      <span className="min-w-0">
+                        <span className="text-ink font-medium">{memberLabel(row.actor)}</span>
+                        {row.on_behalf_of ? ` for ${memberLabel(row.on_behalf_of)}` : ""}
+                        {" · "}
+                        {row.kind.replace("_", " ")}
+                        {fields ? ` · ${fields}` : ""}
+                        {row.reason ? ` · ${row.reason}` : ""}
+                      </span>
+                      <span className="text-ink-faint shrink-0">
+                        {new Date(row.created_at).toLocaleDateString()}
+                      </span>
+                    </li>
+                  );
+                })}
               </ol>
+              <p className="text-ink-faint mt-1.5 text-[11.5px]">
+                Full trail on{" "}
+                <Link href="/db" className="text-flag hover:underline">
+                  Database
+                </Link>
+                .
+              </p>
             </section>
           )}
         </div>

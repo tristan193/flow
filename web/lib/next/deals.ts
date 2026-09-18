@@ -1,5 +1,6 @@
 import { query, queryOne } from "../db";
 import { normalizeAxialHref } from "../playbooks";
+import { logDealChange } from "./change-log";
 import { formatDealNumber, gmailAllHref, parseDealNumber } from "./identity";
 import {
   type MemberId,
@@ -9,6 +10,7 @@ import {
   type NextStageEventRow,
   type NextStageId,
   type NextVerdictRow,
+  type NextWatch,
   type VerdictAction,
   coerceNextStage,
   combineNextCim,
@@ -23,6 +25,19 @@ import {
   shouldAdvanceToCimOnPack,
 } from "./model";
 import { formatDuplicateOf, isNextRemintCard, parseIngestDisposition } from "./remint";
+
+/**
+ * Storage is the two-table model: deals_next holds current state (votes and
+ * notes are member columns — members are fixed), deal_log is the append-only
+ * audit trail. The in-memory NextDeal shape (verdict maps, note rows) is
+ * unchanged, synthesized from columns, so decks/boards/cards read as before.
+ */
+
+/** Member id → column prefix. Jim's member id is 'partner'. */
+const MEMBER_PREFIX: Record<MemberId, "tristan" | "jim"> = {
+  tristan: "tristan",
+  partner: "jim",
+};
 
 function isoString(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -56,6 +71,20 @@ function toJsonArray(value: unknown): unknown[] {
   return [];
 }
 
+function toWatches(value: unknown): NextWatch[] {
+  return toJsonArray(value)
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      kind: String(item.kind ?? ""),
+      status: String(item.status ?? "open"),
+      armed_by: item.armed_by == null ? null : String(item.armed_by),
+      armed_at: item.armed_at == null ? null : isoString(item.armed_at),
+      due_at: item.due_at == null ? null : isoString(item.due_at),
+      note: item.note == null ? null : String(item.note),
+    }))
+    .filter((watch) => watch.kind);
+}
+
 function normalizeDeal(row: Record<string, unknown>): NextDealRow {
   const rawUrl = row.url == null ? null : String(row.url);
   const stageRaw = row.stage == null ? "inbox" : String(row.stage);
@@ -65,6 +94,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     source_deal_id: row.source_deal_id == null ? null : String(row.source_deal_id),
     source_ids: toJsonArray(row.source_ids),
     alias_names: toStringArray(row.alias_names),
+    alias_numbers: toStringArray(row.alias_numbers),
     gmail_thread_ids: toStringArray(row.gmail_thread_ids),
     broker_firm: row.broker_firm == null ? null : String(row.broker_firm),
     fingerprint: row.fingerprint == null ? null : String(row.fingerprint),
@@ -75,12 +105,15 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     ),
     is_demo: Boolean(row.is_demo),
     title: String(row.title ?? ""),
-    cim_name: row.cim_name == null || String(row.cim_name).trim() === "" ? null : String(row.cim_name).trim(),
+    cim_name:
+      row.cim_name == null || String(row.cim_name).trim() === ""
+        ? null
+        : String(row.cim_name).trim(),
     blurb: row.blurb == null ? null : String(row.blurb),
     source: row.source == null ? null : String(row.source),
     sub_source: row.sub_source == null ? null : String(row.sub_source),
     nickname: row.nickname == null ? null : String(row.nickname),
-    sources: row.sources == null ? null : String(row.sources),
+    source_domains: toStringArray(row.source_domains),
     city: row.city == null ? null : String(row.city),
     state: row.state == null ? null : String(row.state),
     county: row.county == null ? null : String(row.county),
@@ -98,15 +131,16 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     stage_changed_at: row.stage_changed_at ? isoString(row.stage_changed_at) : null,
     stage_changed_by: row.stage_changed_by == null ? null : String(row.stage_changed_by),
     cim_url: row.cim_url == null ? null : String(row.cim_url),
+    cim_access_note: row.cim_access_note == null ? null : String(row.cim_access_note),
     nda_url: row.nda_url == null ? null : String(row.nda_url),
     super_liked_at: row.super_liked_at ? isoString(row.super_liked_at) : null,
+    super_liked_by: row.super_liked_by == null ? null : String(row.super_liked_by),
+    watches: toWatches(row.watches),
     duplicate_of: formatDuplicateOf(row.duplicate_of),
     ingest_disposition: parseIngestDisposition(row.ingest_disposition),
     earnings: row.earnings == null ? null : Number(row.earnings),
     earnings_basis:
-      row.earnings_basis === "EBITDA" || row.earnings_basis === "SDE"
-        ? row.earnings_basis
-        : null,
+      row.earnings_basis === "EBITDA" || row.earnings_basis === "SDE" ? row.earnings_basis : null,
     earnings_is_sde: Boolean(row.earnings_is_sde),
     margin: resolveMargin(row),
   };
@@ -127,52 +161,42 @@ function resolveMargin(row: Record<string, unknown>): number | null {
   return null;
 }
 
-function normalizeVerdict(row: Record<string, unknown>): NextVerdictRow | null {
-  if (!isMemberId(row.member)) return null;
+const VERDICT_ACTION_SET = new Set(["short", "pass", "discuss"]);
+
+function verdictFromColumns(
+  row: Record<string, unknown>,
+  dealId: number,
+  member: MemberId,
+  kind: "verdict" | "cim_verdict",
+): NextVerdictRow | null {
+  const prefix = MEMBER_PREFIX[member];
+  const base = kind === "verdict" ? `${prefix}_verdict` : `${prefix}_cim_verdict`;
+  const action = row[base];
+  if (action == null || !VERDICT_ACTION_SET.has(String(action))) return null;
+  const at = row[`${base}_at`] ? isoString(row[`${base}_at`]) : isoString(null);
   return {
-    deal_id: Number(row.deal_id),
-    member: row.member,
-    action: row.action as VerdictAction,
-    reason: row.reason == null ? null : String(row.reason),
-    note: row.note == null ? null : String(row.note),
-    created_at: isoString(row.created_at),
-    updated_at: isoString(row.updated_at),
+    deal_id: dealId,
+    member,
+    action: String(action) as VerdictAction,
+    reason:
+      kind === "verdict" && row[`${base}_reason`] != null ? String(row[`${base}_reason`]) : null,
+    note: row[`${base}_note`] == null ? null : String(row[`${base}_note`]),
+    created_at: at,
+    updated_at: at,
   };
 }
 
-async function attachVerdicts(rows: NextDealRow[]): Promise<NextDeal[]> {
-  if (rows.length === 0) return [];
-  const ids = rows.map((r) => r.id);
-  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-  const verdicts = await query<Record<string, unknown>>(
-    `SELECT * FROM verdicts_next WHERE deal_id IN (${placeholders})`,
-    ids,
-  );
-  const byDeal = new Map<number, NextDeal["verdicts"]>();
-  for (const raw of verdicts) {
-    const verdict = normalizeVerdict(raw);
-    if (!verdict) continue;
-    const bucket = byDeal.get(verdict.deal_id) ?? {};
-    bucket[verdict.member] = verdict;
-    byDeal.set(verdict.deal_id, bucket);
+function buildNextDeal(row: Record<string, unknown>): NextDeal {
+  const deal = normalizeDeal(row);
+  const verdicts: NextDeal["verdicts"] = {};
+  const cimVerdicts: NextDeal["cim_verdicts"] = {};
+  for (const member of ["tristan", "partner"] as MemberId[]) {
+    const verdict = verdictFromColumns(row, deal.id, member, "verdict");
+    if (verdict) verdicts[member] = verdict;
+    const cim = verdictFromColumns(row, deal.id, member, "cim_verdict");
+    if (cim) cimVerdicts[member] = cim;
   }
-  const cimVerdicts = await query<Record<string, unknown>>(
-    `SELECT * FROM cim_verdicts_next WHERE deal_id IN (${placeholders})`,
-    ids,
-  );
-  const cimByDeal = new Map<number, NextDeal["cim_verdicts"]>();
-  for (const raw of cimVerdicts) {
-    const verdict = normalizeVerdict(raw);
-    if (!verdict) continue;
-    const bucket = cimByDeal.get(verdict.deal_id) ?? {};
-    bucket[verdict.member] = verdict;
-    cimByDeal.set(verdict.deal_id, bucket);
-  }
-  return rows.map((row) => ({
-    ...row,
-    verdicts: byDeal.get(row.id) ?? {},
-    cim_verdicts: cimByDeal.get(row.id) ?? {},
-  }));
+  return { ...deal, verdicts, cim_verdicts: cimVerdicts };
 }
 
 export async function listNextDeals(): Promise<NextDeal[]> {
@@ -180,7 +204,7 @@ export async function listNextDeals(): Promise<NextDeal[]> {
     `SELECT * FROM v_deals_next
      ORDER BY super_liked_at DESC NULLS LAST, earnings DESC NULLS LAST, last_seen DESC, id DESC`,
   );
-  return attachVerdicts(rows.map(normalizeDeal));
+  return rows.map(buildNextDeal);
 }
 
 /** Inbound queue for `/next` Review → New. Board stages and remints never belong here. */
@@ -201,18 +225,14 @@ export async function listNextBoardDeals(): Promise<NextDeal[]> {
      WHERE stage <> 'inbox'
      ORDER BY super_liked_at DESC NULLS LAST, earnings DESC NULLS LAST, id DESC`,
   );
-  const deals = await attachVerdicts(rows.map(normalizeDeal));
-  return deals.filter((deal) => deal.stage !== "inbox");
+  return rows.map(buildNextDeal).filter((deal) => deal.stage !== "inbox");
 }
 
 export async function getNextDeal(id: number): Promise<NextDeal | null> {
-  const row = await queryOne<Record<string, unknown>>(
-    "SELECT * FROM v_deals_next WHERE id = $1",
-    [id],
-  );
-  if (!row) return null;
-  const [deal] = await attachVerdicts([normalizeDeal(row)]);
-  return deal ?? null;
+  const row = await queryOne<Record<string, unknown>>("SELECT * FROM v_deals_next WHERE id = $1", [
+    id,
+  ]);
+  return row ? buildNextDeal(row) : null;
 }
 
 export type NextDealRouteRef =
@@ -255,11 +275,18 @@ export async function getNextDealByRouteParam(raw: string): Promise<NextDeal | n
   if (parsed.kind === "id") return getNextDeal(parsed.id);
 
   const row = await queryOne<{ id: number }>(
-    "SELECT id FROM deals_next WHERE UPPER(deal_number) = $1",
+    "SELECT id FROM deals_next WHERE UPPER(deal_number) = $1 OR alias_numbers ? $1",
     [parsed.dealNumber],
   );
   if (!row) return null;
   return getNextDeal(Number(row.id));
+}
+
+interface WriteMeta {
+  channel?: string;
+  onBehalfOf?: string | null;
+  reason?: string | null;
+  sourceRef?: string | null;
 }
 
 export async function setNextVerdict(
@@ -268,17 +295,34 @@ export async function setNextVerdict(
   action: VerdictAction,
   reason: string | null,
   note: string | null = null,
+  meta: WriteMeta = {},
 ): Promise<void> {
-  await query(
-    `INSERT INTO verdicts_next (deal_id, member, action, reason, note)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (deal_id, member) DO UPDATE
-       SET action = excluded.action,
-           reason = excluded.reason,
-           note = excluded.note,
-           updated_at = now()`,
-    [dealId, member, action, reason, note],
+  const prefix = MEMBER_PREFIX[member];
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT deal_number, ${prefix}_verdict AS old_action FROM deals_next WHERE id = $1`,
+    [dealId],
   );
+  if (!before) return;
+  await query(
+    `UPDATE deals_next
+        SET ${prefix}_verdict = $1,
+            ${prefix}_verdict_reason = $2,
+            ${prefix}_verdict_note = $3,
+            ${prefix}_verdict_at = now(),
+            updated_at = now()
+      WHERE id = $4`,
+    [action, reason, note, dealId],
+  );
+  await logDealChange({
+    dealId,
+    dealNumber: String(before.deal_number ?? ""),
+    actor: member,
+    onBehalfOf: meta.onBehalfOf ?? null,
+    kind: "verdict",
+    patch: { [`${prefix}_verdict`]: { old: before.old_action ?? null, new: action } },
+    reason,
+    channel: meta.channel ?? "ui:review",
+  });
 
   if (action === "short" || action === "pass") {
     await clearNextSuperLike(dealId);
@@ -287,8 +331,35 @@ export async function setNextVerdict(
   await applyNextReviewOutcome(dealId, member);
 }
 
-export async function clearNextVerdict(dealId: number, member: MemberId): Promise<void> {
-  await query("DELETE FROM verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
+export async function clearNextVerdict(
+  dealId: number,
+  member: MemberId,
+  meta: WriteMeta = {},
+): Promise<void> {
+  const prefix = MEMBER_PREFIX[member];
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT deal_number, ${prefix}_verdict AS old_action FROM deals_next WHERE id = $1`,
+    [dealId],
+  );
+  if (!before || before.old_action == null) return;
+  await query(
+    `UPDATE deals_next
+        SET ${prefix}_verdict = NULL,
+            ${prefix}_verdict_reason = NULL,
+            ${prefix}_verdict_note = NULL,
+            ${prefix}_verdict_at = NULL,
+            updated_at = now()
+      WHERE id = $1`,
+    [dealId],
+  );
+  await logDealChange({
+    dealId,
+    dealNumber: String(before.deal_number ?? ""),
+    actor: member,
+    kind: "verdict",
+    patch: { [`${prefix}_verdict`]: { old: before.old_action, new: null } },
+    channel: meta.channel ?? "ui:review",
+  });
 }
 
 /**
@@ -301,20 +372,29 @@ export async function setNextSuperLike(
   dealId: number,
   liked: boolean,
   member: string = "tristan",
+  meta: WriteMeta = {},
 ): Promise<string | null> {
   if (!liked) {
-    await clearNextSuperLike(dealId);
+    await clearNextSuperLike(dealId, member, meta);
     return null;
   }
-  const rows = await query<{ super_liked_at: unknown }>(
+  const rows = await query<{ super_liked_at: unknown; deal_number: unknown }>(
     `UPDATE deals_next
-        SET super_liked_at = now(), updated_at = now()
+        SET super_liked_at = now(), super_liked_by = $2, updated_at = now()
       WHERE id = $1
-    RETURNING super_liked_at`,
-    [dealId],
+    RETURNING super_liked_at, deal_number`,
+    [dealId, member],
   );
   const raw = rows[0]?.super_liked_at;
   const at = raw ? isoString(raw) : null;
+  await logDealChange({
+    dealId,
+    dealNumber: String(rows[0]?.deal_number ?? ""),
+    actor: member,
+    kind: "super_like",
+    patch: { super_liked_at: { old: null, new: at } },
+    channel: meta.channel ?? "ui:review",
+  });
   await applyNextReviewOutcome(dealId, member);
   return at;
 }
@@ -337,23 +417,64 @@ export async function setNextCimVerdict(
   member: MemberId,
   action: VerdictAction,
   note: string | null = null,
+  meta: WriteMeta = {},
 ): Promise<void> {
   if (!isMemberId(member)) return;
-  await query(
-    `INSERT INTO cim_verdicts_next (deal_id, member, action, note)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (deal_id, member) DO UPDATE
-       SET action = excluded.action,
-           note = excluded.note,
-           updated_at = now()`,
-    [dealId, member, action, note],
+  const prefix = MEMBER_PREFIX[member];
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT deal_number, ${prefix}_cim_verdict AS old_action FROM deals_next WHERE id = $1`,
+    [dealId],
   );
+  if (!before) return;
+  await query(
+    `UPDATE deals_next
+        SET ${prefix}_cim_verdict = $1,
+            ${prefix}_cim_verdict_note = $2,
+            ${prefix}_cim_verdict_at = now(),
+            updated_at = now()
+      WHERE id = $3`,
+    [action, note, dealId],
+  );
+  await logDealChange({
+    dealId,
+    dealNumber: String(before.deal_number ?? ""),
+    actor: member,
+    kind: "cim_verdict",
+    patch: { [`${prefix}_cim_verdict`]: { old: before.old_action ?? null, new: action } },
+    channel: meta.channel ?? "ui:cim-review",
+  });
   await applyNextCimOutcome(dealId, member);
 }
 
-export async function clearNextCimVerdict(dealId: number, member: MemberId): Promise<void> {
+export async function clearNextCimVerdict(
+  dealId: number,
+  member: MemberId,
+  meta: WriteMeta = {},
+): Promise<void> {
   if (!isMemberId(member)) return;
-  await query("DELETE FROM cim_verdicts_next WHERE deal_id = $1 AND member = $2", [dealId, member]);
+  const prefix = MEMBER_PREFIX[member];
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT deal_number, ${prefix}_cim_verdict AS old_action FROM deals_next WHERE id = $1`,
+    [dealId],
+  );
+  if (!before || before.old_action == null) return;
+  await query(
+    `UPDATE deals_next
+        SET ${prefix}_cim_verdict = NULL,
+            ${prefix}_cim_verdict_note = NULL,
+            ${prefix}_cim_verdict_at = NULL,
+            updated_at = now()
+      WHERE id = $1`,
+    [dealId],
+  );
+  await logDealChange({
+    dealId,
+    dealNumber: String(before.deal_number ?? ""),
+    actor: member,
+    kind: "cim_verdict",
+    patch: { [`${prefix}_cim_verdict`]: { old: before.old_action, new: null } },
+    channel: meta.channel ?? "ui:cim-review",
+  });
 }
 
 /** CIM stays put until both partners agree (Pass→Closed, Pursue→Pursuing). Notes never call this. */
@@ -368,30 +489,46 @@ export async function applyNextCimOutcome(dealId: number, actor: string): Promis
   await moveNextStage(dealId, actor, outcome, { onlyFrom: "cim" });
 }
 
-export async function clearNextSuperLike(dealId: number): Promise<void> {
-  await query(
+export async function clearNextSuperLike(
+  dealId: number,
+  actor: string = "system",
+  meta: WriteMeta = {},
+): Promise<void> {
+  const rows = await query<{ deal_number: unknown }>(
     `UPDATE deals_next
-        SET super_liked_at = NULL, updated_at = now()
-      WHERE id = $1 AND super_liked_at IS NOT NULL`,
+        SET super_liked_at = NULL, super_liked_by = NULL, updated_at = now()
+      WHERE id = $1 AND super_liked_at IS NOT NULL
+    RETURNING deal_number`,
     [dealId],
   );
+  if (rows.length === 0) return;
+  await logDealChange({
+    dealId,
+    dealNumber: String(rows[0]?.deal_number ?? ""),
+    actor,
+    kind: "super_like",
+    patch: { super_liked_at: { new: null } },
+    channel: meta.channel ?? "app",
+  });
 }
 
 export async function moveNextStage(
   dealId: number,
   member: string,
   stage: NextStageId,
-  options: { onlyFrom?: NextStageId } = {},
+  options: { onlyFrom?: NextStageId; channel?: string; onBehalfOf?: string | null } = {},
 ): Promise<void> {
-  const current = await queryOne<{ stage: string; next_action: string | null }>(
-    "SELECT stage, next_action FROM deals_next WHERE id = $1",
-    [dealId],
-  );
+  const current = await queryOne<{
+    stage: string;
+    next_action: string | null;
+    deal_number: string;
+    watches: unknown;
+  }>("SELECT stage, next_action, deal_number, watches FROM deals_next WHERE id = $1", [dealId]);
   if (!current) return;
   const from = coerceNextStage(current.stage);
   if (options.onlyFrom && from !== options.onlyFrom) return;
   if (stage === "closed") {
-    await clearNextSuperLike(dealId);
+    await clearNextSuperLike(dealId, member);
   }
 
   if (from === stage) {
@@ -416,23 +553,42 @@ export async function moveNextStage(
       WHERE id = $4`,
     [stage, member, nextAction, dealId],
   );
-  await query(
-    `INSERT INTO stage_events_next (deal_id, from_stage, to_stage, member)
-     VALUES ($1, $2, $3, $4)`,
-    [dealId, from, stage, member],
-  );
+  await logDealChange({
+    dealId,
+    dealNumber: current.deal_number,
+    actor: member,
+    onBehalfOf: options.onBehalfOf ?? null,
+    kind: "stage",
+    patch: { stage: { old: from, new: stage } },
+    channel: options.channel ?? "app",
+  });
 
   const kind = nextFollowupKind(stage);
   if (kind) {
-    await query(
-      `INSERT INTO next_followups (deal_id, kind, status, armed_by)
-       SELECT $1, $2, 'open', $3
-        WHERE NOT EXISTS (
-          SELECT 1 FROM next_followups
-           WHERE deal_id = $1 AND kind = $2 AND status = 'open'
-        )`,
-      [dealId, kind, member],
-    );
+    const watches = toWatches(current.watches);
+    const alreadyOpen = watches.some((w) => w.kind === kind && w.status === "open");
+    if (!alreadyOpen) {
+      const armed: NextWatch = {
+        kind,
+        status: "open",
+        armed_by: member,
+        armed_at: new Date().toISOString(),
+        due_at: null,
+        note: null,
+      };
+      await query(
+        `UPDATE deals_next SET watches = watches || $1::jsonb, updated_at = now() WHERE id = $2`,
+        [JSON.stringify([armed]), dealId],
+      );
+      await logDealChange({
+        dealId,
+        dealNumber: current.deal_number,
+        actor: member,
+        kind: "watch",
+        patch: { watches: { new: armed } },
+        channel: options.channel ?? "app",
+      });
+    }
   }
 
   if (stage === "cim") {
@@ -440,73 +596,48 @@ export async function moveNextStage(
   }
 }
 
-export async function setNextAction(
-  dealId: number,
-  nextAction: string | null,
-): Promise<void> {
+export async function setNextAction(dealId: number, nextAction: string | null): Promise<void> {
   await query(`UPDATE deals_next SET next_action = $1, updated_at = now() WHERE id = $2`, [
     sanitizeNextAction(nextAction),
     dealId,
   ]);
 }
 
-const MAX_CIM_BYTES = 4 * 1024 * 1024;
-
-export async function saveNextDealFile(
-  dealId: number,
-  member: MemberId,
-  file: { filename: string; contentType: string; bytes: Uint8Array },
-  kind: string = "cim",
-  options: { moveToCim?: boolean } = {},
-): Promise<{ id: number; url: string }> {
-  if (file.bytes.byteLength > MAX_CIM_BYTES) {
-    throw new Error(`File too large — max ${MAX_CIM_BYTES / (1024 * 1024)}MB`);
-  }
-  const rows = await query<{ id: number }>(
-    `INSERT INTO deal_files_next (deal_id, member, kind, filename, content_type, bytes)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
-    [dealId, member, kind, file.filename, file.contentType, Buffer.from(file.bytes)],
-  );
-  const id = Number(rows[0]?.id);
-  if (!id) throw new Error("Could not store file");
-  const url = `/api/next/cim-files/${id}`;
-  await query(`UPDATE deals_next SET cim_url = $1, updated_at = now() WHERE id = $2`, [
-    url,
-    dealId,
-  ]);
-  if (options.moveToCim !== false) {
-    const current = await queryOne<{ stage: string }>(
-      "SELECT stage FROM deals_next WHERE id = $1",
-      [dealId],
-    );
-    if (current && shouldAdvanceToCimOnPack(coerceNextStage(current.stage))) {
-      await moveNextStage(dealId, member, "cim");
-    }
-  }
-  return { id, url };
-}
-
 export async function saveNextCimLink(
   dealId: number,
   member: MemberId,
   url: string,
+  meta: WriteMeta = {},
 ): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;
+  const before = await queryOne<{ cim_url: string | null; deal_number: string }>(
+    "SELECT cim_url, deal_number FROM deals_next WHERE id = $1",
+    [dealId],
+  );
+  if (!before) return;
   await query(`UPDATE deals_next SET cim_url = $1, updated_at = now() WHERE id = $2`, [
     trimmed,
     dealId,
   ]);
+  await logDealChange({
+    dealId,
+    dealNumber: before.deal_number,
+    actor: member,
+    kind: "update",
+    patch: { cim_url: { old: before.cim_url, new: trimmed } },
+    channel: meta.channel ?? "ui:attach-cim",
+  });
   const current = await queryOne<{ stage: string }>(
     "SELECT stage FROM deals_next WHERE id = $1",
     [dealId],
   );
   if (current && shouldAdvanceToCimOnPack(coerceNextStage(current.stage))) {
-    await moveNextStage(dealId, member, "cim");
+    await moveNextStage(dealId, member, "cim", { channel: meta.channel ?? "ui:attach-cim" });
   }
 }
 
+/** Legacy stored CIM blobs (uploads are retired — packs are URLs now). */
 export async function getNextDealFile(id: number): Promise<{
   id: number;
   deal_id: number;
@@ -534,34 +665,88 @@ export async function getNextDealFile(id: number): Promise<{
   };
 }
 
-/**
- * Partner (or Simon) note only. Must not write cim_verdicts_next, must not
- * call applyNextCimOutcome, and must not move stage.
- */
-export async function addNextNote(dealId: number, member: string, body: string): Promise<void> {
-  await query("INSERT INTO notes_next (deal_id, member, body) VALUES ($1, $2, $3)", [
-    dealId,
-    member,
-    body.trim(),
-  ]);
+const NOTE_DATE_FMT = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: "UTC",
+});
+
+function stampedNote(body: string): string {
+  return `${NOTE_DATE_FMT.format(new Date())} — ${body.trim()}`;
 }
 
-function noteFromRow(row: Record<string, unknown>): NextNoteRow {
-  return {
-    id: Number(row.id),
-    deal_id: Number(row.deal_id),
-    member: String(row.member),
-    body: String(row.body),
-    created_at: isoString(row.created_at),
-  };
+/**
+ * Partner note → appended to that member's notes column (dated). Any other
+ * actor (Simon etc.) becomes a log-only note: visible in history and on /db,
+ * never on partner cards. Never writes votes, never moves stage.
+ */
+export async function addNextNote(
+  dealId: number,
+  member: string,
+  body: string,
+  meta: WriteMeta = {},
+): Promise<void> {
+  const trimmed = body.trim();
+  if (!trimmed) return;
+  const before = await queryOne<Record<string, unknown>>(
+    "SELECT deal_number, tristan_notes, jim_notes FROM deals_next WHERE id = $1",
+    [dealId],
+  );
+  if (!before) return;
+
+  if (isMemberId(member)) {
+    const column = `${MEMBER_PREFIX[member]}_notes`;
+    const old = before[column] == null ? null : String(before[column]);
+    const next = old && old.trim() ? `${old}\n\n${stampedNote(trimmed)}` : stampedNote(trimmed);
+    await query(`UPDATE deals_next SET ${column} = $1, updated_at = now() WHERE id = $2`, [
+      next,
+      dealId,
+    ]);
+    await logDealChange({
+      dealId,
+      dealNumber: String(before.deal_number ?? ""),
+      actor: member,
+      kind: "note",
+      patch: { note: { new: trimmed } },
+      channel: meta.channel ?? "ui:notes",
+    });
+    return;
+  }
+
+  await logDealChange({
+    dealId,
+    dealNumber: String(before.deal_number ?? ""),
+    actor: member,
+    onBehalfOf: meta.onBehalfOf ?? null,
+    kind: "note",
+    patch: { note: { new: trimmed } },
+    reason: meta.reason ?? null,
+    channel: meta.channel ?? "api:next",
+  });
+}
+
+function notesFromColumns(row: Record<string, unknown>): NextNoteRow[] {
+  const dealId = Number(row.id);
+  const updated = row.updated_at ? isoString(row.updated_at) : isoString(null);
+  const out: NextNoteRow[] = [];
+  const tristan = row.tristan_notes == null ? "" : String(row.tristan_notes).trim();
+  if (tristan) {
+    out.push({ id: dealId * 10 + 1, deal_id: dealId, member: "tristan", body: tristan, created_at: updated });
+  }
+  const jim = row.jim_notes == null ? "" : String(row.jim_notes).trim();
+  if (jim) {
+    out.push({ id: dealId * 10 + 2, deal_id: dealId, member: "partner", body: jim, created_at: updated });
+  }
+  return out;
 }
 
 export async function listNextNotes(dealId: number): Promise<NextNoteRow[]> {
-  const rows = await query<Record<string, unknown>>(
-    "SELECT * FROM notes_next WHERE deal_id = $1 ORDER BY created_at DESC",
+  const row = await queryOne<Record<string, unknown>>(
+    "SELECT id, updated_at, tristan_notes, jim_notes FROM deals_next WHERE id = $1",
     [dealId],
   );
-  return rows.map(noteFromRow);
+  return row ? notesFromColumns(row) : [];
 }
 
 export async function listNextNotesForDeals(
@@ -571,31 +756,44 @@ export async function listNextNotesForDeals(
   if (dealIds.length === 0) return out;
   const placeholders = dealIds.map((_, i) => `$${i + 1}`).join(", ");
   const rows = await query<Record<string, unknown>>(
-    `SELECT * FROM notes_next WHERE deal_id IN (${placeholders}) ORDER BY created_at DESC`,
+    `SELECT id, updated_at, tristan_notes, jim_notes FROM deals_next WHERE id IN (${placeholders})`,
     dealIds,
   );
   for (const row of rows) {
-    const note = noteFromRow(row);
-    const bucket = out.get(note.deal_id) ?? [];
-    bucket.push(note);
-    out.set(note.deal_id, bucket);
+    out.set(Number(row.id), notesFromColumns(row));
   }
   return out;
 }
 
+/** Stage history now reads from deal_log (kind = stage). */
 export async function listNextStageEvents(dealId: number): Promise<NextStageEventRow[]> {
   const rows = await query<Record<string, unknown>>(
-    "SELECT * FROM stage_events_next WHERE deal_id = $1 ORDER BY created_at DESC",
+    `SELECT id, deal_id, actor, patch, created_at
+       FROM deal_log
+      WHERE deal_id = $1 AND kind = 'stage' AND status = 'applied'
+      ORDER BY created_at DESC`,
     [dealId],
   );
-  return rows.map((row) => ({
-    id: Number(row.id),
-    deal_id: Number(row.deal_id),
-    from_stage: row.from_stage == null ? null : String(row.from_stage),
-    to_stage: String(row.to_stage),
-    member: String(row.member),
-    created_at: isoString(row.created_at),
-  }));
+  return rows.map((row) => {
+    let patch: Record<string, { old?: unknown; new?: unknown }> = {};
+    if (row.patch && typeof row.patch === "object") {
+      patch = row.patch as typeof patch;
+    } else if (typeof row.patch === "string") {
+      try {
+        patch = JSON.parse(row.patch) as typeof patch;
+      } catch {
+        patch = {};
+      }
+    }
+    return {
+      id: Number(row.id),
+      deal_id: Number(row.deal_id),
+      from_stage: patch.stage?.old == null ? null : String(patch.stage.old),
+      to_stage: patch.stage?.new == null ? "" : String(patch.stage.new),
+      member: String(row.actor ?? ""),
+      created_at: isoString(row.created_at),
+    };
+  });
 }
 
 export function gmailThreadHrefs(ids: string[]): string[] {

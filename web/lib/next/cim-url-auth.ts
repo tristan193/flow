@@ -1,6 +1,7 @@
+import { resolveMachineActor } from "../actors";
 import { canonicalCimUrl } from "../cim-pack-id";
 import { query, queryOne } from "../db";
-import { importTokenValid } from "../import-auth";
+import { logDealChange } from "./change-log";
 import { moveNextStage } from "./deals";
 import {
   coerceNextStage,
@@ -8,7 +9,7 @@ import {
   shouldAdvanceToCimOnPack,
   type NextStageId,
 } from "./model";
-import { findNextDealRef, NEXT_STAGE_ACTOR } from "./stage-auth";
+import { findNextDealRef } from "./stage-auth";
 
 export interface AuthorizedCimUrlInput {
   authorization: string | null;
@@ -33,7 +34,8 @@ export type AuthorizedCimUrlResult =
 export async function applyAuthorizedCimUrl(
   input: AuthorizedCimUrlInput,
 ): Promise<AuthorizedCimUrlResult> {
-  if (!importTokenValid(input.authorization)) {
+  const actor = resolveMachineActor(input.authorization);
+  if (!actor) {
     return { ok: false, error: "Unauthorized.", status: 401 };
   }
 
@@ -47,8 +49,8 @@ export async function applyAuthorizedCimUrl(
     return { ok: false, error: "Deal not found.", status: 404 };
   }
 
-  const before = await queryOne<{ stage: string; next_action: string | null }>(
-    "SELECT stage, next_action FROM deals_next WHERE id = $1",
+  const before = await queryOne<{ stage: string; next_action: string | null; cim_url: string | null }>(
+    "SELECT stage, next_action, cim_url FROM deals_next WHERE id = $1",
     [ref.id],
   );
   if (!before) {
@@ -59,10 +61,20 @@ export async function applyAuthorizedCimUrl(
     canonical,
     ref.id,
   ]);
+  if (before.cim_url !== canonical) {
+    await logDealChange({
+      dealId: ref.id,
+      dealNumber: ref.dealNumber,
+      actor,
+      kind: "update",
+      patch: { cim_url: { old: before.cim_url, new: canonical } },
+      channel: "api:next/cim-url",
+    });
+  }
 
   const from = coerceNextStage(before.stage);
   if (shouldAdvanceToCimOnPack(from)) {
-    await moveNextStage(ref.id, NEXT_STAGE_ACTOR, "cim");
+    await moveNextStage(ref.id, actor, "cim", { channel: "api:next/cim-url" });
   }
 
   const after = await queryOne<{ stage: string; next_action: string | null }>(

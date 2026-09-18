@@ -20,7 +20,7 @@ export type DisplayDeal = {
   source?: string | null;
   sub_source?: string | null;
   nickname?: string | null;
-  sources?: string | null;
+  source_domains?: string[] | null;
   url?: string | null;
 };
 
@@ -151,7 +151,7 @@ function inferKind(value: string, deal: DisplayDeal): SourceKind {
   if (HEX_TOKEN.test(value) || UUIDISH.test(value)) return "axial";
   if (BBS_Q.test(value)) return "bbs";
   if (TRANSWORLD.test(value)) return "tw";
-  const blob = [deal.source, deal.sub_source, deal.sources, deal.url]
+  const blob = [deal.source, deal.sub_source, ...(deal.source_domains ?? []), deal.url]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -274,7 +274,9 @@ export function sourceDisplayName(deal: DisplayDeal): string {
   if (looksLikeHumanSourceName(nick)) return nick;
 
   const fromBlob = matchProvider(
-    [deal.nickname, deal.source, deal.sub_source, deal.sources, deal.url].filter(Boolean).join(" "),
+    [deal.nickname, deal.source, deal.sub_source, ...(deal.source_domains ?? []), deal.url]
+      .filter(Boolean)
+      .join(" "),
   );
   if (fromBlob) return fromBlob;
 

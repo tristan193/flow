@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { requireMember } from "@/lib/auth";
 import { ensureReady } from "@/lib/boot";
-import { MAX_CIM_BYTES, createNextDealFromCim } from "@/lib/next/cim-create";
+import { createNextDealFromCim } from "@/lib/next/cim-create";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -61,41 +61,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
-  const file = form.get("file");
-  let filePayload: { filename: string; contentType: string; bytes: Uint8Array } | undefined;
-  if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_CIM_BYTES) {
-      return NextResponse.json(
-        { error: `File too large — max ${MAX_CIM_BYTES / (1024 * 1024)}MB.` },
-        { status: 400 },
-      );
-    }
-    const contentType = file.type || "application/pdf";
-    filePayload = {
-      filename: file.name || "cim.pdf",
-      contentType: contentType === "application/octet-stream" ? "application/pdf" : contentType,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    };
-  }
-
+  // URL-only CIM world: an uploaded PDF is used for extraction only (via
+  // /api/cim/extract upstream) and is never stored. Packs live at URLs.
   try {
-    const deal = await createNextDealFromCim(
-      member,
-      {
-        title: parsed.data.title,
-        blurb: parsed.data.blurb ?? null,
-        city: parsed.data.city ?? null,
-        state: parsed.data.state ?? null,
-        revenue: parsed.data.revenue ?? null,
-        ebitda: parsed.data.ebitda ?? null,
-        sde: parsed.data.sde ?? null,
-        asking: parsed.data.asking ?? null,
-        businessModelType: parsed.data.businessModelType ?? null,
-        url: parsed.data.url ?? null,
-        brokerFirm: parsed.data.brokerFirm ?? null,
-      },
-      filePayload,
-    );
+    const deal = await createNextDealFromCim(member, {
+      title: parsed.data.title,
+      blurb: parsed.data.blurb ?? null,
+      city: parsed.data.city ?? null,
+      state: parsed.data.state ?? null,
+      revenue: parsed.data.revenue ?? null,
+      ebitda: parsed.data.ebitda ?? null,
+      sde: parsed.data.sde ?? null,
+      asking: parsed.data.asking ?? null,
+      businessModelType: parsed.data.businessModelType ?? null,
+      url: parsed.data.url ?? null,
+      brokerFirm: parsed.data.brokerFirm ?? null,
+    });
     return NextResponse.json({ ok: true, deal });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not create deal.";
