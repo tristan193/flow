@@ -6,11 +6,14 @@ import path from "node:path";
 import { query } from "../db.ts";
 import {
   applyAuthorizedCimIntake,
+  applyAuthorizedCimIntakeBatch,
+  extractCimIntakeItems,
   parseCimIntakeBody,
   parseLocationString,
   parseOptionalCimName,
   parseOptionalGeoField,
   parseTlyFromFileName,
+  parseTlyRef,
 } from "./cim-intake.ts";
 import { nextDealHeadline, nextDealSubline } from "./display.ts";
 import { listNextCimDeals } from "./deals.ts";
@@ -87,7 +90,16 @@ test("parseTlyFromFileName reads canonical TLY from Simon's upload name", () => 
   assert.equal(parseTlyFromFileName(""), null);
 });
 
-test("parseCimIntakeBody requires filename TLY and an https pack URL; posted dealNumber must match", () => {
+test("parseTlyRef reads TLY from a number, Flow deal URL, or embedded TLY", () => {
+  assert.equal(parseTlyRef("TLY-092"), "TLY-092");
+  assert.equal(parseTlyRef("tly-7"), "TLY-007");
+  assert.equal(parseTlyRef(14), "TLY-014");
+  assert.equal(parseTlyRef("https://web-tau-seven-77.vercel.app/next/deals/TLY-030"), "TLY-030");
+  assert.equal(parseTlyRef("/cim/TLY-007"), "TLY-007");
+  assert.equal(parseTlyRef("not a deal"), null);
+});
+
+test("parseCimIntakeBody accepts dealNumber or dealUrl plus an https pack URL; filename still works", () => {
   const ok = parseCimIntakeBody({
     fileName: "TLY-092 Project Cactus.pdf",
     cimUrl: "https://drive.google.com/open?id=abcFile092",
@@ -177,6 +189,37 @@ test("parseCimIntakeBody requires filename TLY and an https pack URL; posted dea
 
   const missingFile = parseCimIntakeBody({ cimUrl: FILE_URL });
   assert.equal(missingFile.ok, false);
+
+  const byNumber = parseCimIntakeBody({
+    dealNumber: "TLY-092",
+    cimUrl: FILE_URL,
+  });
+  assert.equal(byNumber.ok, true);
+  if (byNumber.ok) assert.equal(byNumber.dealNumber, "TLY-092");
+
+  const byBareId = parseCimIntakeBody({
+    dealId: 14,
+    link: FILE_URL,
+  });
+  assert.equal(byBareId.ok, true);
+  if (byBareId.ok) assert.equal(byBareId.dealNumber, "TLY-014");
+
+  const byDealUrl = parseCimIntakeBody({
+    dealUrl: "https://web-tau-seven-77.vercel.app/next/deals/TLY-030",
+    cimUrl: CANVA_URL,
+  });
+  assert.equal(byDealUrl.ok, true);
+  if (byDealUrl.ok) {
+    assert.equal(byDealUrl.dealNumber, "TLY-030");
+    assert.equal(byDealUrl.cimUrl, new URL(CANVA_URL).href);
+  }
+
+  const byCimPath = parseCimIntakeBody({
+    dealUrl: "/cim/TLY-007",
+    link: FILE_URL,
+  });
+  assert.equal(byCimPath.ok, true);
+  if (byCimPath.ok) assert.equal(byCimPath.dealNumber, "TLY-007");
 });
 
 test("parseOptionalCimName trims, omits blanks, rejects oversized names", () => {
@@ -723,6 +766,49 @@ test("intake accepts a Canva https URL, stamps it, and still advances to CIM", a
   }
 });
 
+test("one POST stamps several CIM packs independently", async () => {
+  await resetNext();
+  const previous = process.env.FLOW_IMPORT_TOKEN;
+  process.env.FLOW_IMPORT_TOKEN = TOKEN;
+  try {
+    await insertDeal("TLY-092", "Project Cactus", { stage: "nda" });
+    await insertDeal("TLY-014", "Iron Bull", { stage: "nda" });
+    const extracted = extractCimIntakeItems({
+      cims: [
+        { dealNumber: "TLY-092", cimUrl: FILE_URL },
+        { dealUrl: "/next/deals/TLY-014", link: CANVA_URL },
+        { dealNumber: "TLY-999", cimUrl: FILE_URL },
+      ],
+    });
+    assert.equal(extracted.ok, true);
+    if (!extracted.ok) return;
+    assert.equal(extracted.batch, true);
+
+    const batch = await applyAuthorizedCimIntakeBatch({
+      authorization: `Bearer ${TOKEN}`,
+      items: extracted.items,
+    });
+    assert.equal(batch.ok, true);
+    if (!batch.ok) return;
+    assert.equal(batch.applied, 2);
+    assert.equal(batch.failed, 1);
+    assert.equal(batch.results[2]?.ok, false);
+
+    const rows = await query<{ deal_number: string; cim_url: string; stage: string }>(
+      `SELECT deal_number, cim_url, stage FROM deals_next ORDER BY deal_number`,
+    );
+    const cactus = rows.find((row) => row.deal_number === "TLY-092");
+    const iron = rows.find((row) => row.deal_number === "TLY-014");
+    assert.equal(cactus?.cim_url, FILE_URL);
+    assert.equal(cactus?.stage, "cim");
+    assert.equal(iron?.cim_url, new URL(CANVA_URL).href);
+    assert.equal(iron?.stage, "cim");
+  } finally {
+    if (previous == null) delete process.env.FLOW_IMPORT_TOKEN;
+    else process.env.FLOW_IMPORT_TOKEN = previous;
+  }
+});
+
 test("intake on a closed deal stamps the pack but does not reopen the card", async () => {
   await resetNext();
   const previous = process.env.FLOW_IMPORT_TOKEN;
@@ -760,6 +846,7 @@ test("CIM intake route is token-only, middleware-allowlisted, and does not creat
 
   assert.match(route, /FLOW_IMPORT_TOKEN/);
   assert.match(route, /applyAuthorizedCimIntake/);
+  assert.match(route, /applyAuthorizedCimIntakeBatch/);
   assert.match(middleware, /\/api\/next\/cim-intake/);
   assert.match(auth, /withTransaction/);
   assert.match(auth, /Never inserts a deal or a vote/);
@@ -777,6 +864,7 @@ test("CIM intake route is token-only, middleware-allowlisted, and does not creat
   assert.match(cli, /\/api\/next\/cim-intake/);
   assert.match(cli, /--cim-name/);
   assert.match(cli, /cimName/);
+  assert.match(cli, /--batch/);
   assert.doesNotMatch(cli, /googleapis|files\.create/);
   assert.match(cli, /Never print the token/);
   assert.match(auth, /cim_name = COALESCE/);

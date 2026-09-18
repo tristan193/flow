@@ -3,7 +3,7 @@ import { type QueryFn, withTransaction } from "../db";
 import { importTokenValid } from "../import-auth";
 import { parseOptionalMargin, parseOptionalMoney } from "./cim-financials-auth";
 import { getNextDeal } from "./deals";
-import { formatDealNumber, mergeAliasNames, parseDealNumber } from "./identity";
+import { formatDealNumber, mergeAliasNames } from "./identity";
 import {
   type NextDeal,
   type NextStageId,
@@ -31,14 +31,25 @@ export type CimIntakePatch = {
   county?: string;
 };
 
+export const CIM_INTAKE_MAX_BATCH = 50;
+
 export interface AuthorizedCimIntakeInput {
   authorization: string | null;
   fileName?: unknown;
   file_name?: unknown;
   cimUrl?: unknown;
   cim_url?: unknown;
+  link?: unknown;
+  packUrl?: unknown;
+  pack_url?: unknown;
+  url?: unknown;
   dealNumber?: unknown;
   deal_number?: unknown;
+  dealId?: unknown;
+  deal_id?: unknown;
+  deal?: unknown;
+  dealUrl?: unknown;
+  deal_url?: unknown;
   revenue?: unknown;
   ebitda?: unknown;
   margin?: unknown;
@@ -199,31 +210,124 @@ function asStringArray(value: unknown): string[] {
   return [];
 }
 
+/**
+ * TLY from a deal number, Flow deal URL (`/next/deals/TLY-092`, `/cim/TLY-092`),
+ * or any string that contains `TLY-digits`. Bare positive integers count as
+ * the TLY number (92 → TLY-092), not a database id.
+ */
+export function parseTlyRef(raw: unknown): string | null {
+  if (raw == null) return null;
+  const value = String(raw).trim();
+  if (!value) return null;
+
+  const direct = parseCimDealId(value);
+  if (direct) return direct;
+
+  const asNumber = Number(value);
+  if (/^\d+$/.test(value) && Number.isInteger(asNumber) && asNumber >= 1) {
+    return formatDealNumber(asNumber);
+  }
+
+  const embedded = value.toUpperCase().match(/TLY-0*(\d+)/);
+  if (!embedded) return null;
+  const n = Number(embedded[1]);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return formatDealNumber(n);
+}
+
+function packUrlFromBody(body: Record<string, unknown>): unknown {
+  const preferred = bodyField(body, "cimUrl", "cim_url", "link", "packUrl", "pack_url");
+  if (preferred != null && String(preferred).trim()) return preferred;
+  const url = bodyField(body, "url");
+  if (url != null && String(url).trim() && !isFlowDealPath(String(url))) return url;
+  return undefined;
+}
+
+function dealRefFromBody(body: Record<string, unknown>): unknown {
+  const preferred = bodyField(
+    body,
+    "dealNumber",
+    "deal_number",
+    "dealId",
+    "deal_id",
+    "deal",
+    "dealUrl",
+    "deal_url",
+  );
+  if (preferred != null && String(preferred).trim()) return preferred;
+  const url = bodyField(body, "url");
+  if (url != null && isFlowDealPath(String(url))) return url;
+  return undefined;
+}
+
+function isFlowDealPath(raw: string): boolean {
+  const value = raw.trim();
+  if (!value) return false;
+  try {
+    const url = new URL(value, "https://web-tau-seven-77.vercel.app");
+    const path = url.pathname;
+    return /\/next\/deals\//i.test(path) || /^\/cim\//i.test(path);
+  } catch {
+    return /\/next\/deals\/|\/cim\//i.test(value);
+  }
+}
+
+/**
+ * Pull one or many CIM rows from a POST body.
+ * Single object → one item. `{ cims: [...] }`, `{ items: [...] }`, or a
+ * top-level array → a batch. Empty / oversized batches are errors.
+ */
+export function extractCimIntakeItems(
+  body: unknown,
+): { ok: true; items: Record<string, unknown>[]; batch: boolean } | { ok: false; error: string } {
+  if (body == null) return { ok: false, error: "Expected a JSON body." };
+  if (Array.isArray(body)) {
+    if (body.length === 0) return { ok: false, error: "cims array is empty." };
+    if (body.length > CIM_INTAKE_MAX_BATCH) {
+      return { ok: false, error: `At most ${CIM_INTAKE_MAX_BATCH} CIMs per request.` };
+    }
+    if (body.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+      return { ok: false, error: "Each CIM must be an object." };
+    }
+    return { ok: true, items: body as Record<string, unknown>[], batch: true };
+  }
+  if (typeof body !== "object") return { ok: false, error: "Expected a JSON body." };
+  const record = body as Record<string, unknown>;
+  const grouped = bodyField(record, "cims", "items");
+  if (Array.isArray(grouped)) {
+    return extractCimIntakeItems(grouped);
+  }
+  return { ok: true, items: [record], batch: false };
+}
+
 export function parseCimIntakeBody(body: Record<string, unknown>):
   | { ok: true; dealNumber: string; cimUrl: string; patch: CimIntakePatch }
   | { ok: false; error: string } {
   const fileNameRaw = bodyField(body, "fileName", "file_name", "filename");
   const fileName = fileNameRaw == null ? "" : String(fileNameRaw).trim();
-  if (!fileName) return { ok: false, error: "fileName is required" };
-
-  const fromFile = parseTlyFromFileName(fileName);
-  if (!fromFile) {
+  const fromFile = fileName ? parseTlyFromFileName(fileName) : null;
+  if (fileName && !fromFile) {
     return { ok: false, error: "fileName must start with TLY-XXX" };
   }
 
-  const dealNumberRaw = bodyField(body, "dealNumber", "deal_number");
-  if (dealNumberRaw != null && dealNumberRaw !== "") {
-    const posted = parseCimDealId(String(dealNumberRaw)) ?? (parseDealNumber(String(dealNumberRaw))
-      ? formatDealNumber(parseDealNumber(String(dealNumberRaw))!)
-      : null);
-    if (!posted) return { ok: false, error: "dealNumber must be TLY-XXX" };
-    if (posted !== fromFile) {
-      return { ok: false, error: "dealNumber does not match filename TLY" };
-    }
+  const dealRef = dealRefFromBody(body);
+  const fromDeal = parseTlyRef(dealRef);
+  if (dealRef != null && String(dealRef).trim() !== "" && !fromDeal) {
+    return { ok: false, error: "dealNumber / dealUrl must include TLY-XXX" };
   }
 
-  const cimUrlRaw = bodyField(body, "cimUrl", "cim_url");
-  const canonical = canonicalCimUrl(cimUrlRaw == null ? null : String(cimUrlRaw));
+  if (fromFile && fromDeal && fromFile !== fromDeal) {
+    return { ok: false, error: "dealNumber does not match filename TLY" };
+  }
+
+  const dealNumber = fromDeal ?? fromFile;
+  if (!dealNumber) {
+    return { ok: false, error: "Need a dealNumber, dealUrl, or fileName starting with TLY-XXX" };
+  }
+
+  const canonical = canonicalCimUrl(
+    packUrlFromBody(body) == null ? null : String(packUrlFromBody(body)),
+  );
   if (!canonical) {
     return { ok: false, error: "cimUrl must be an https URL." };
   }
@@ -267,7 +371,7 @@ export function parseCimIntakeBody(body: Record<string, unknown>):
   if (county.value !== undefined) patch.county = county.value;
   else if (fromLocation.county) patch.county = fromLocation.county;
 
-  return { ok: true, dealNumber: fromFile, cimUrl: canonical, patch };
+  return { ok: true, dealNumber, cimUrl: canonical, patch };
 }
 
 async function applyIntakeRow(
@@ -382,44 +486,8 @@ async function applyIntakeRow(
  * Omitted geo fields leave existing city/state/county alone. There is no
  * deals_next.country column — optional `country` writes `state` when state is omitted.
  */
-export async function applyAuthorizedCimIntake(
-  input: AuthorizedCimIntakeInput,
-): Promise<AuthorizedCimIntakeResult> {
-  if (!importTokenValid(input.authorization)) {
-    return { ok: false, error: "Unauthorized.", status: 401 };
-  }
-
-  const parsed = parseCimIntakeBody({
-    fileName: input.fileName,
-    file_name: input.file_name,
-    cimUrl: input.cimUrl,
-    cim_url: input.cim_url,
-    dealNumber: input.dealNumber,
-    deal_number: input.deal_number,
-    revenue: input.revenue,
-    ebitda: input.ebitda,
-    margin: input.margin,
-    asking: input.asking,
-    asking_price: input.asking_price,
-    price: input.price,
-    cimName: input.cimName,
-    cim_name: input.cim_name,
-    companyName: input.companyName,
-    company_name: input.company_name,
-    headline: input.headline,
-    city: input.city,
-    City: input.City,
-    state: input.state,
-    State: input.State,
-    region: input.region,
-    Region: input.Region,
-    county: input.county,
-    County: input.County,
-    country: input.country,
-    Country: input.Country,
-    location: input.location,
-    Location: input.Location,
-  });
+async function stampParsedIntake(body: Record<string, unknown>): Promise<AuthorizedCimIntakeResult> {
+  const parsed = parseCimIntakeBody(body);
   if (!parsed.ok) return { ok: false, error: parsed.error, status: 400 };
 
   const applied = await withTransaction(async (q) =>
@@ -449,5 +517,68 @@ export async function applyAuthorizedCimIntake(
     state: deal.state,
     county: deal.county,
     deal,
+  };
+}
+
+export async function applyAuthorizedCimIntake(
+  input: AuthorizedCimIntakeInput,
+): Promise<AuthorizedCimIntakeResult> {
+  if (!importTokenValid(input.authorization)) {
+    return { ok: false, error: "Unauthorized.", status: 401 };
+  }
+  return stampParsedIntake({ ...input });
+}
+
+export type CimIntakeBatchItemResult = AuthorizedCimIntakeResult & { index: number };
+
+export type AuthorizedCimIntakeBatchResult =
+  | {
+      ok: true;
+      applied: number;
+      failed: number;
+      results: CimIntakeBatchItemResult[];
+    }
+  | { ok: false; error: string; status: number };
+
+/**
+ * Stamp many packs in one POST. Each item is its own transaction — one
+ * unknown TLY does not roll back the rest. Token is checked once.
+ */
+export async function applyAuthorizedCimIntakeBatch(input: {
+  authorization: string | null;
+  items: Record<string, unknown>[];
+}): Promise<AuthorizedCimIntakeBatchResult> {
+  if (!importTokenValid(input.authorization)) {
+    return { ok: false, error: "Unauthorized.", status: 401 };
+  }
+  const results: CimIntakeBatchItemResult[] = [];
+  for (let index = 0; index < input.items.length; index += 1) {
+    const stamped = await stampParsedIntake(input.items[index] ?? {});
+    results.push({ index, ...stamped });
+  }
+  return {
+    ok: true,
+    applied: results.filter((row) => row.ok).length,
+    failed: results.filter((row) => !row.ok).length,
+    results,
+  };
+}
+
+export function publicCimIntakeResult(result: AuthorizedCimIntakeResult) {
+  if (!result.ok) return { ok: false as const, error: result.error };
+  return {
+    ok: true as const,
+    dealId: result.dealId,
+    dealNumber: result.dealNumber,
+    stage: result.stage,
+    cimUrl: result.cimUrl,
+    revenue: result.revenue,
+    ebitda: result.ebitda,
+    margin: result.margin,
+    asking: result.asking,
+    cimName: result.cimName,
+    city: result.city,
+    state: result.state,
+    county: result.county,
   };
 }
