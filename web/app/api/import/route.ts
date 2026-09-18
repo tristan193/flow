@@ -1,19 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { resolveMachineActor } from "@/lib/actors";
 import { ensureReady } from "@/lib/boot";
-import { importTokenValid } from "@/lib/import-auth";
 import { importSnapshot } from "@/lib/import";
 
 /**
- * Machine endpoint for the Python pipeline.
+ * Harvest snapshot → dealbook (`deals_next` + `deal_log`).
  *
- * Authenticated with a bearer token rather than a session cookie, because the
- * caller is `pipeline/export_snapshot.py --post`, not a browser. Middleware lets
- * this path through for that reason.
+ * Same path the Python pipeline already POSTs (`export_snapshot.py --post`).
+ * Classic `deals` is not written. Bearer is PIPELINE_TOKEN or FLOW_IMPORT_TOKEN.
  */
 
 export async function POST(request: NextRequest) {
-  if (!importTokenValid(request.headers.get("authorization"))) {
+  const actor = resolveMachineActor(request.headers.get("authorization"));
+  if (!actor) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -24,6 +24,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Expected a deals array." }, { status: 400 });
   }
 
-  const result = await importSnapshot(payload, "pipeline", payload.sourceDb ?? "api");
+  const result = await importSnapshot(
+    payload,
+    actor,
+    String(payload.sourceDb ?? "harvest"),
+  );
   return NextResponse.json({ ok: true, ...result });
 }

@@ -20,12 +20,7 @@ export function NextNav({ memberLabel }: { memberLabel: string }) {
   return (
     <header className="border-line bg-canvas/95 sticky top-0 z-20 border-b backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-        <span className="text-base font-semibold tracking-tight">
-          Flow
-          <span className="text-flag ms-1.5 text-[11px] font-bold tracking-wide uppercase">
-            Next
-          </span>
-        </span>
+        <span className="text-base font-semibold tracking-tight">Flow</span>
 
         <nav className="flex flex-1 items-center gap-1">
           {TABS.map((tab) => {
@@ -53,9 +48,6 @@ export function NextNav({ memberLabel }: { memberLabel: string }) {
           >
             {memberLabel}
           </button>
-          <Link href="/pipeline" className="text-ink-faint hover:text-ink-dim text-[11px] leading-none">
-            Classic
-          </Link>
         </div>
       </div>
     </header>

@@ -36,7 +36,7 @@ export default async function NextReviewPage() {
       <NextNav memberLabel={memberLabel(member)} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">
         <div className="mb-3">
-          <h1 className="text-lg font-semibold tracking-tight">Next Review</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Review</h1>
           <p className="text-ink-dim text-[12.5px]">
             New · {myDeck.length} in your deck
             {deals.length !== myDeck.length ? ` · ${deals.length} still inbound` : ""}

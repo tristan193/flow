@@ -22,7 +22,7 @@
  *   4. `blurb` stays human notes. Review / import must not parse English
  *      to decide "is this a duplicate?"
  *
- * Classic POST /api/import ignores these fields (no TLY identity there).
+ * Harvest POST /api/import maps these through when the snapshot carries them.
  */
 
 import { formatDealNumber, parseDealNumber } from "./identity";

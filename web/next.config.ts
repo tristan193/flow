@@ -1,12 +1,37 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Tristan's default landing is the Next Review/pipeline loop, not classic `/`.
+  // One product: Review / Pipeline / CIM are views of deals_next. Classic URLs redirect.
   async redirects() {
     return [
       {
         source: "/",
         destination: "/next",
+        permanent: true,
+      },
+      {
+        source: "/pipeline",
+        destination: "/next/pipeline",
+        permanent: true,
+      },
+      {
+        source: "/pipeline/:path*",
+        destination: "/next/pipeline",
+        permanent: true,
+      },
+      {
+        source: "/deals/:path*",
+        destination: "/next/pipeline",
+        permanent: true,
+      },
+      {
+        source: "/import",
+        destination: "/db",
+        permanent: true,
+      },
+      {
+        source: "/import/:path*",
+        destination: "/db",
         permanent: true,
       },
     ];
