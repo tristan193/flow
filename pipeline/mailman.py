@@ -1,8 +1,11 @@
-"""
+﻿"""
 Mailman — persist every dirk@ message (Mailman’s token). Do not extract deals.
 
   python mailman.py --days 3
   python mailman.py --self-test
+
+After store: archive Gmail messages newly labeled listing (remove INBOX).
+Requires gmail.modify (see gmail_auth.py). Use --no-archive to skip.
 
 Agent: nm/harvest/mailman
 Dirk is not this connection.
@@ -21,7 +24,7 @@ sys.path.insert(0, HERE)
 import catcher
 import ingest as ing
 
-# Coarse store labels — not Gmail labels (token is gmail.readonly).
+# Coarse store labels (mail table). Gmail archive is separate — listing only.
 LISTING_TYPES = {"daily_digest", "single_listing"}
 FOLLOW_TYPES = {"follow_up"}
 CONTROL_TYPES = {"account_notice"}
@@ -55,7 +58,16 @@ def _thread_id(msg: dict) -> Optional[str]:
     return str(tid) if tid else None
 
 
-def fetch_and_store(days: int, db_path: str) -> dict[str, int]:
+def archive_message(service, msg_id: str) -> None:
+    """Remove INBOX so the message leaves the inbox (stays in All Mail / archive)."""
+    service.users().messages().modify(
+        userId="me",
+        id=msg_id,
+        body={"removeLabelIds": ["INBOX"]},
+    ).execute()
+
+
+def fetch_and_store(days: int, db_path: str, *, archive_listings: bool = True) -> dict[str, int]:
     import db
     import gmail_auth
     import harvest_gmail as hg
@@ -70,8 +82,6 @@ def fetch_and_store(days: int, db_path: str) -> dict[str, int]:
     counts: Counter[str] = Counter()
     for mid in ids:
         msg = service.users().messages().get(userId="me", id=mid, format="full").execute()
-        # Reuse harvest body walk via a one-message fetch would duplicate;
-        # build RawEmail the same way harvest_gmail does.
         emails = _raw_from_message(msg)
         em = emails[0]
         label, fmt_id, em_type = classify_mail(em)
@@ -89,6 +99,16 @@ def fetch_and_store(days: int, db_path: str) -> dict[str, int]:
         )
         counts[mode] += 1
         counts[f"label:{label}"] += 1
+
+        # Archive only listing harvests. Never touch follow_up / control / noise / unknown.
+        if archive_listings and label == "listing" and mode in {"new", "updated"}:
+            try:
+                archive_message(service, em.msg_id)
+                counts["archived"] += 1
+            except Exception as exc:  # noqa: BLE001 — count and keep going
+                counts["archive_err"] += 1
+                print(f"archive failed {em.msg_id}: {exc}", file=sys.stderr)
+
     con.commit()
     con.close()
     counts["raw"] = len(ids)
@@ -161,6 +181,11 @@ def main() -> None:
         help="SQLite path (mail table lives next to harvest deals)",
     )
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument(
+        "--no-archive",
+        action="store_true",
+        help="Skip Gmail INBOX removal after listing harvest",
+    )
     args = ap.parse_args()
 
     if args.self_test:
@@ -168,11 +193,14 @@ def main() -> None:
         return
 
     local_db = os.environ.get("NM_LOCAL_DB", args.db)
-    stats = fetch_and_store(args.days, local_db)
-    print(f"mailman: raw={stats.get('raw', 0)} new={stats.get('new', 0)} "
-          f"updated={stats.get('updated', 0)} path={local_db}")
+    stats = fetch_and_store(args.days, local_db, archive_listings=not args.no_archive)
+    print(
+        f"mailman: raw={stats.get('raw', 0)} new={stats.get('new', 0)} "
+        f"updated={stats.get('updated', 0)} archived={stats.get('archived', 0)} "
+        f"path={local_db}"
+    )
     for k in sorted(stats):
-        if k.startswith("label:"):
+        if k.startswith("label:") or k == "archive_err":
             print(f"  {k} {stats[k]}")
 
 

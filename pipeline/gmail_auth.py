@@ -1,10 +1,13 @@
-"""
+﻿"""
 One-time OAuth: Mailman's access to the dirk@ catcher inbox.
 
   python gmail_auth.py
+  python gmail_auth.py --reauth
 
 Sign in as dirk@tullyinvesting.com. Writes credentials/mailman_token.json.
 That file is Mailman's connection. Never commit it.
+
+Scope is gmail.modify (read + archive). Archive only listing harvests — see mailman.py.
 """
 from __future__ import annotations
 
@@ -19,11 +22,21 @@ from googleapiclient.discovery import build
 
 import catcher
 
-# readonly is enough to harvest; never request modify/send for this catcher.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+# modify includes read; needed to remove INBOX after listing harvest.
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+MODIFY_SCOPE = SCOPES[0]
 
 DEFAULT_CLIENT = catcher.CLIENT_SECRET
 DEFAULT_TOKEN = catcher.MAILMAN_TOKEN
+
+
+def _has_modify(creds: Credentials | None) -> bool:
+    if not creds:
+        return False
+    granted = set(creds.scopes or [])
+    if not granted:
+        return False
+    return MODIFY_SCOPE in granted or "https://mail.google.com/" in granted
 
 
 def get_credentials(
@@ -37,10 +50,16 @@ def get_credentials(
     if not force_consent and os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
-    if creds and creds.valid:
+    if creds and creds.valid and _has_modify(creds) and not force_consent:
         return creds
 
-    if creds and creds.expired and creds.refresh_token:
+    if (
+        creds
+        and creds.expired
+        and creds.refresh_token
+        and _has_modify(creds)
+        and not force_consent
+    ):
         creds.refresh(Request())
         with open(token_path, "w", encoding="utf-8") as f:
             f.write(creds.to_json())
@@ -67,7 +86,7 @@ def verify_mailbox(creds: Credentials) -> str:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Authorize Gmail readonly for Mailman")
+    ap = argparse.ArgumentParser(description="Authorize Gmail modify for Mailman (read + archive)")
     ap.add_argument("--client", default=DEFAULT_CLIENT)
     ap.add_argument("--token", default=DEFAULT_TOKEN)
     ap.add_argument("--reauth", action="store_true")
@@ -77,12 +96,16 @@ def main() -> None:
     email = verify_mailbox(creds)
     print(f"Connected as: {email}")
     print(f"Token saved:  {args.token}")
+    print(f"Scopes:       {list(creds.scopes or SCOPES)}")
     expected = catcher.CATCHER_GMAIL
     if email.lower() != expected:
         print(
             f"\nWARNING: expected {expected} (catcher inbox).\n"
             "Re-run with --reauth and pick dirk@. This token is Mailman's access to that inbox."
         )
+        sys.exit(2)
+    if not _has_modify(creds):
+        print("\nWARNING: token lacks gmail.modify — re-run with --reauth.")
         sys.exit(2)
 
 
