@@ -37,6 +37,8 @@ export interface IncomingDeal {
   firstSeen?: string | null;
   lastSeen?: string | null;
   timesSeen?: number | null;
+  /** Gmail thread ids from Mailman mail.thread_id (not message ids). */
+  gmailThreadIds?: string[] | null;
   /** Accepted and ignored — remint/dupe identity lives on /api/next/import. */
   duplicateOf?: string | null;
   ingestDisposition?: string | null;
@@ -275,6 +277,7 @@ export function harvestDealToNext(deal: IncomingDeal): IncomingNextDeal {
     firstSeen: deal.firstSeen,
     lastSeen: deal.lastSeen,
     timesSeen: deal.timesSeen,
+    gmailThreadIds: deal.gmailThreadIds,
     duplicateOf: deal.duplicateOf,
     ingestDisposition: deal.ingestDisposition,
     skipIfNew: !harvestFirstSeenIsNew(deal.firstSeen),

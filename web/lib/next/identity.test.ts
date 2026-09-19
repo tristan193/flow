@@ -190,6 +190,9 @@ test("Action Summary is not a deal; threads accumulate", () => {
     true,
   );
   assert.deepEqual(mergeThreadIds(["aaa"], ["bbb", "aaa"]), ["aaa", "bbb"]);
+  assert.deepEqual(mergeThreadIds(["aaa"], []), ["aaa"]);
+  assert.deepEqual(mergeThreadIds(["aaa"], undefined), ["aaa"]);
+  assert.deepEqual(mergeThreadIds(["aaa"], null), ["aaa"]);
   assert.equal(
     gmailAllHref("18f0abc"),
     "https://mail.google.com/mail/?authuser=dirk%40tullyinvesting.com#all/18f0abc",

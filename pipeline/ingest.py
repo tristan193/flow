@@ -813,6 +813,10 @@ def _numbered_digest_items(body: str) -> List[str]:
         if cur_n is None:
             return
         text = " ".join(s.strip() for s in cur_lines if s.strip())
+        # Keep a listing URL for extract/pick_listing_url, then strip it from
+        # the title line so blurbs stay clean. (Previously the URL was discarded
+        # here and never reached deals.url_norm.)
+        listing_url = pick_listing_url(text) if text else ""
         # Markdown links first — stripping the URL alone leaves "[Title](" crumbs.
         text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
         # Drop bare URL continuation lines / trailing <https://...> crumbs.
@@ -821,6 +825,8 @@ def _numbered_digest_items(body: str) -> List[str]:
         # Do not re-prefix "#N:" — extract_title already strips list numbers, but
         # the blurb used to keep them (#2: Automotive…) and show junk in the UI.
         if text:
+            if listing_url:
+                text = f"{text}\n{listing_url}"
             items.append(text)
         cur_n, cur_lines = None, []
 
@@ -847,6 +853,36 @@ def _numbered_digest_items(body: str) -> List[str]:
         cur_lines.append(s)
     flush()
     return items
+
+def _attach_intro_listing_urls(cards: List[str], body: str) -> List[str]:
+    """If the intro #N list has a listing URL the detail card dropped, restore it.
+
+    Does not invent URLs — only copies an http(s) link already in the same email.
+    """
+    intros = _numbered_digest_items(body)
+    pairs: List[tuple] = []
+    for item in intros:
+        url = pick_listing_url(item)
+        if not url:
+            continue
+        title = extract_title(item)
+        key = re.sub(r"[^a-z0-9 ]", "", (title or "").lower()).strip()
+        if len(key) >= 12:
+            pairs.append((key, url))
+    out: List[str] = []
+    for card in cards:
+        if pick_listing_url(card):
+            out.append(card)
+            continue
+        blob = re.sub(r"[^a-z0-9 ]", "", card.lower())
+        attached = ""
+        for key, url in pairs:
+            if key[:48] in blob:
+                attached = url
+                break
+        out.append(f"{card}\n{attached}" if attached else card)
+    return out
+
 
 def _is_smb_deal_hunter(body: str, sender: str = "") -> bool:
     # Sender matters: some HTML→text bodies drop the branded domain while
@@ -949,7 +985,7 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
     if _is_smb_deal_hunter(body, sender):
         cards = _smb_detail_cards(body)
         if cards:
-            return cards
+            return _attach_intro_listing_urls(cards, body)
         digest_items = _numbered_digest_items(body)
         if digest_items:
             return digest_items

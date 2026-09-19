@@ -32,3 +32,23 @@ test("harvestDealToNext sets skipIfNew on old first_seen and passes remint field
   });
   assert.equal(fresh.skipIfNew, false);
 });
+
+test("harvestDealToNext forwards gmailThreadIds for /api/import merge", () => {
+  const mapped = harvestDealToNext({
+    extId: "bbs:3",
+    title: "Linked shop",
+    url: "https://www.bizbuysell.com/business-opportunity/hvac/2214412",
+    firstSeen: new Date().toISOString(),
+    gmailThreadIds: ["18f0threadAAA"],
+  });
+  assert.deepEqual(mapped.gmailThreadIds, ["18f0threadAAA"]);
+  assert.equal(mapped.url, "https://www.bizbuysell.com/business-opportunity/hvac/2214412");
+  assert.equal(mapped.skipIfNew, false);
+
+  const empty = harvestDealToNext({
+    extId: "bbs:4",
+    title: "No threads yet",
+    firstSeen: new Date().toISOString(),
+  });
+  assert.equal(empty.gmailThreadIds, undefined);
+});
