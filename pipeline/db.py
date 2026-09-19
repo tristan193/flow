@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 CREATE TABLE IF NOT EXISTS mail (
   gmail_id      TEXT PRIMARY KEY,
   thread_id     TEXT,
+  gmail_thread_url TEXT,
   sender        TEXT,
   subject       TEXT,
   received      TEXT,
@@ -190,6 +191,7 @@ def _ensure_mail_table(con: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS mail (
           gmail_id      TEXT PRIMARY KEY,
           thread_id     TEXT,
+          gmail_thread_url TEXT,
           sender        TEXT,
           subject       TEXT,
           received      TEXT,
@@ -204,6 +206,9 @@ def _ensure_mail_table(con: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS ix_mail_received ON mail(received);
         """
     )
+    cols = {r[1] for r in con.execute("PRAGMA table_info(mail)")}
+    if "gmail_thread_url" not in cols:
+        con.execute("ALTER TABLE mail ADD COLUMN gmail_thread_url TEXT")
 
 
 def upsert_mail(
@@ -211,6 +216,7 @@ def upsert_mail(
     *,
     gmail_id: str,
     thread_id: Optional[str],
+    gmail_thread_url: Optional[str] = None,
     sender: str,
     subject: str,
     received: str,
@@ -227,11 +233,12 @@ def upsert_mail(
     con.execute(
         """
         INSERT INTO mail (
-          gmail_id, thread_id, sender, subject, received, body,
+          gmail_id, thread_id, gmail_thread_url, sender, subject, received, body,
           label, format_id, email_type, harvested_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(gmail_id) DO UPDATE SET
           thread_id    = excluded.thread_id,
+          gmail_thread_url = excluded.gmail_thread_url,
           sender       = excluded.sender,
           subject      = excluded.subject,
           received     = excluded.received,
@@ -244,6 +251,7 @@ def upsert_mail(
         (
             gid,
             thread_id or None,
+            gmail_thread_url or None,
             sender,
             subject,
             received,
