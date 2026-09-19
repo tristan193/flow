@@ -53,7 +53,19 @@ python enrich_bizbuysell.py --backend apify --newest
 
 Skip buy-box-excluded headlines. Do not invent earnings. Axial: store Pursue, never Pass. Rejigg: subject is not the title. WebsiteClosers: ignore mailchi / buyers-club links.
 
-Snapshot fields: title, blurb, source / subSource / nickname, geo, revenue / ebitda / sde / asking, url, firstSeen / lastSeen. Harvest `ext_id` is **not** a TLY join key.
+Snapshot fields: title, blurb, source / subSource / nickname, geo, revenue / ebitda / sde / asking, url, **gmailThreadIds**, firstSeen / lastSeen. Harvest `ext_id` is **not** a TLY join key.
+
+`gmailThreadIds` is `mail.thread_id` joined deal → `deal_sources.msg_id` → `mail.gmail_id`. Deduped. Same digest thread on many deals is correct. Mailman also stores `gmail_thread_url` (`authuser=dirk@…#all/{threadId}`); export prefers `thread_id` and only parses that URL if the id column is blank. Do **not** substitute `gmail_id`. `/api/import` accepts `gmailThreadIds` (not the URL). Flow cards open the id via `web/lib/gmail-thread.ts` (`CATCHER_GMAIL` = dirk@tullyinvesting.com). Do not invent another authuser.
+
+`url` is `deals.url_norm` (fallback: a stored `deal_sources.url`). Extract a listing href only when it is already in the mail. Click wrappers are not destinations — leave url empty; do not invent or unwrap.
+
+| Source | Typical listing URL |
+|--------|---------------------|
+| BizBuySell, Axial (Pursue), WebsiteClosers | Present when extract finds the listing href |
+| Rejigg | `rejigg.com/app/businesses/{id}` when the card carried it |
+| SMB Deal Hunter | `smbdealexchange.com/listing-details?recordId=` (or `item-detail?recordId=`). Beehiiv `elink` / `mail.smbdealhunter` wrappers are not listing URLs. |
+| Baton alerts digest | Only `email.alerts.baton.com/c/…` wrappers — no safe unwrap; url stays empty |
+| Generational Group digest | Only `click.generational.deals/?qs=…` wrappers — no safe unwrap; url stays empty |
 
 **3. Post — one door**
 

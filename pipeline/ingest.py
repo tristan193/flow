@@ -813,6 +813,10 @@ def _numbered_digest_items(body: str) -> List[str]:
         if cur_n is None:
             return
         text = " ".join(s.strip() for s in cur_lines if s.strip())
+        # Keep a listing URL for extract/pick_listing_url, then strip it from
+        # the title line so blurbs stay clean. (Previously the URL was discarded
+        # here and never reached deals.url_norm.)
+        listing_url = pick_listing_url(text) if text else ""
         # Markdown links first — stripping the URL alone leaves "[Title](" crumbs.
         text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
         # Drop bare URL continuation lines / trailing <https://...> crumbs.
@@ -821,6 +825,8 @@ def _numbered_digest_items(body: str) -> List[str]:
         # Do not re-prefix "#N:" — extract_title already strips list numbers, but
         # the blurb used to keep them (#2: Automotive…) and show junk in the UI.
         if text:
+            if listing_url:
+                text = f"{text}\n{listing_url}"
             items.append(text)
         cur_n, cur_lines = None, []
 
@@ -847,6 +853,36 @@ def _numbered_digest_items(body: str) -> List[str]:
         cur_lines.append(s)
     flush()
     return items
+
+def _attach_intro_listing_urls(cards: List[str], body: str) -> List[str]:
+    """If the intro #N list has a listing URL the detail card dropped, restore it.
+
+    Does not invent URLs — only copies an http(s) link already in the same email.
+    """
+    intros = _numbered_digest_items(body)
+    pairs: List[tuple] = []
+    for item in intros:
+        url = pick_listing_url(item)
+        if not url:
+            continue
+        title = extract_title(item)
+        key = re.sub(r"[^a-z0-9 ]", "", (title or "").lower()).strip()
+        if len(key) >= 12:
+            pairs.append((key, url))
+    out: List[str] = []
+    for card in cards:
+        if pick_listing_url(card):
+            out.append(card)
+            continue
+        blob = re.sub(r"[^a-z0-9 ]", "", card.lower())
+        attached = ""
+        for key, url in pairs:
+            if key[:48] in blob:
+                attached = url
+                break
+        out.append(f"{card}\n{attached}" if attached else card)
+    return out
+
 
 def _is_smb_deal_hunter(body: str, sender: str = "") -> bool:
     # Sender matters: some HTML→text bodies drop the branded domain while
@@ -949,7 +985,7 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
     if _is_smb_deal_hunter(body, sender):
         cards = _smb_detail_cards(body)
         if cards:
-            return cards
+            return _attach_intro_listing_urls(cards, body)
         digest_items = _numbered_digest_items(body)
         if digest_items:
             return digest_items
@@ -1560,11 +1596,29 @@ def _scrub_url(u: str) -> str:
     return (u or "").strip().rstrip(").,;]'\"")
 
 
+# Click/open wrappers — not a listing destination. Do not unwrap; leave url empty.
+_CLICK_WRAPPERS = (
+    "elink",
+    "mail.smbdealhunter",
+    "email.alerts.baton.com",
+    "click.generational.deals",
+)
+
+
+def _is_click_wrapper(u: str) -> bool:
+    low = (u or "").lower()
+    return any(x in low for x in _CLICK_WRAPPERS)
+
+
 def pick_listing_url(block: str, format_family: str = "") -> str:
     """Choose the listing / pursue URL — never Axial's Pass/decline link.
 
     Axial teasers list Pass before Pursue in the body. Taking the first URL
     archives the deal. Prefer pursue, then teaser-share / opportunity pages.
+
+    Prefer known listing destinations (Rejigg / SMB Deal Exchange / WC).
+    Click wrappers (Baton email.alerts…/c/, Generational click.?qs=) are not
+    destinations — return empty rather than inventing an unwrap.
     """
     urls = [_scrub_url(u) for u in _URL_FIND.findall(block or "")]
     urls = [u for u in urls if u]
@@ -1573,11 +1627,11 @@ def pick_listing_url(block: str, format_family: str = "") -> str:
 
     def is_junk(u: str) -> bool:
         low = u.lower()
+        if _is_click_wrapper(u):
+            return True
         return any(
             x in low
             for x in (
-                "elink",
-                "mail.smbdealhunter",
                 "download-app",
                 "notifications-settings",
                 "guide.axial.net",
@@ -1614,6 +1668,12 @@ def pick_listing_url(block: str, format_family: str = "") -> str:
         if "rejigg.com/app/businesses/" in u.lower():
             return u
     for u in usable:
+        if "smbdealexchange.com/listing-details" in u.lower():
+            return u
+    for u in usable:
+        if "smbdealhunter" in u.lower() and "item-detail" in u.lower():
+            return u
+    for u in usable:
         if "websiteclosers.com/businesses/" in u.lower():
             return u
     for u in usable:
@@ -1625,10 +1685,9 @@ def pick_listing_url(block: str, format_family: str = "") -> str:
     for u in usable:
         if is_axial_deal_page(u):
             return _force_axial_pursue(u)
-    for u in urls:
-        if not is_junk(u) and "elink" not in u.lower():
-            return _force_axial_pursue(u)
-    return _force_axial_pursue(urls[0])
+    for u in usable:
+        return _force_axial_pursue(u)
+    return ""
 
 
 def _force_axial_pursue(url: str) -> str:
@@ -1647,8 +1706,8 @@ def _url_core(u: str) -> str:
     u = u.strip().rstrip("/").lower()
     if "#" in u:
         u = u.split("#", 1)[0]
-    # Tracking wrappers (SMB Deal Hunter elinks) are never the listing itself.
-    if "elink" in u or "mail.smbdealhunter" in u:
+    # Tracking wrappers are never the listing itself.
+    if _is_click_wrapper(u):
         return ""
     if "?" in u:
         base, qs = u.split("?", 1)
@@ -1690,10 +1749,7 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     money = extract_money_fields(work)
     city, state, county = extract_location(work)
     model, confident = classify_model(work)
-    url_m = re.search(r"https?://[^\s\)>\]]+", work)
     url = pick_listing_url(work, format_family)
-    if not url and url_m:
-        url = _scrub_url(url_m.group(0))
 
     domain = source or format_family
     title = extract_title(work, subject=subject)
