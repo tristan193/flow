@@ -27,6 +27,27 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-19 — `nm/harvest/gmail-threads` — DONE
+
+**Scope:** Harvest snapshot emits `gmailThreadIds` from Mailman `mail.thread_id` so Flow cards get Dirk Gmail links again; extract SMB/Rejigg listing URLs when already in the body.  
+**Risk:** low (export + import mapper + URL pick; no schema/authuser change)  
+**Coords:** after `nm/harvest/mailman` `gmail_thread_url` on `main` (`c5f88e9`)
+
+### Changed
+- `pipeline/export_snapshot.py` — join deal → `deal_sources.msg_id` → `mail.gmail_id` → `mail.thread_id`; emit `gmailThreadIds`. Parse `#all/{id}` from `gmail_thread_url` only if `thread_id` is blank. Never substitute `gmail_id`.
+- `web/lib/import.ts` — `harvestDealToNext` forwards `gmailThreadIds` (`/api/import` merge, no empty overwrite)
+- `pipeline/ingest.py` — prefer `smbdealexchange.com/listing-details?recordId=` and `rejigg.com/app/businesses/{id}`; Baton/Generational click wrappers stay empty
+- `docs/agents/HARVE.md` — snapshot + URL table; UI stays `authuser=dirk@tullyinvesting.com`
+
+### Do not touch
+- `CATCHER_GMAIL` / `web/lib/gmail-thread.ts` authuser
+- Live Gmail / inventing Baton or Generational destinations
+
+### Follow-ups
+- Harve re-POST snapshot so existing cards pick up thread ids
+
+---
+
 ## 2026-09-18 — `nm/web/one-dataset` — DONE
 
 **Scope:** One dataset — Review, CIM Review, Pipeline, harvest, and CRM all read/write `deals_next` + `deal_log`. Classic leftover tables are not a parallel product.  
