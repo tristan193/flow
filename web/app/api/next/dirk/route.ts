@@ -6,7 +6,6 @@ import {
   buildDirkFeed,
   listDirkFollowups,
   listDirkInbound,
-  listDirkLivePipeline,
   listDirkVerdicts,
 } from "@/lib/next/dirk";
 
@@ -15,7 +14,7 @@ import {
  * Same bearer as POST /api/next/import (FLOW_IMPORT_TOKEN).
  *
  *   GET /api/next/dirk            full feed
- *   GET /api/next/dirk?section=inbound|verdicts|followups|live-pipeline
+ *   GET /api/next/dirk?section=inbound|verdicts|followups
  */
 export async function GET(request: NextRequest) {
   if (!resolveMachineActor(request.headers.get("authorization"))) {
@@ -33,9 +32,6 @@ export async function GET(request: NextRequest) {
   }
   if (section === "followups") {
     return NextResponse.json({ ok: true, followups: await listDirkFollowups() });
-  }
-  if (section === "live-pipeline") {
-    return NextResponse.json({ ok: true, deals: await listDirkLivePipeline() });
   }
 
   const feed = await buildDirkFeed();

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { query } from "../db.ts";
 import { isDirkForcedGmailHref } from "../gmail-thread.ts";
 import { gmailThreadHrefs } from "./deals.ts";
-import { listDirkFollowups, listDirkInbound, listDirkLivePipeline, listDirkVerdicts } from "./dirk.ts";
+import { listDirkFollowups, listDirkInbound, listDirkVerdicts } from "./dirk.ts";
 import { gmailAllHref } from "./identity.ts";
 
 async function resetNext() {
@@ -132,27 +132,4 @@ test("listDirkVerdicts includes gmailLinks from gmail_thread_ids", async () => {
   assert.equal(isDirkForcedGmailHref(found.gmailLinks[0]), true);
   assert.match(found.gmailLinks[0], /#all\/verdict-thread$/);
   assert.doesNotMatch(found.gmailLinks[0], /\/mail\/u\/\d+/);
-});
-
-test("listDirkLivePipeline returns every live stage row with raw gmail thread ids", async () => {
-  await resetNext();
-  await query(
-    `INSERT INTO deals_next (deal_number, title, stage, gmail_thread_ids, nda_url, cim_url)
-     VALUES
-       ('TLY-401', 'Closed leftover', 'closed', '["closed-id"]'::jsonb, NULL, NULL),
-       ('TLY-402', 'SL Foundry', 'shortlist', '["sl-id"]'::jsonb, NULL, NULL),
-       ('TLY-403', 'NDA Mill', 'nda', '["nda-id"]'::jsonb, 'https://example.com/nda', NULL),
-       ('TLY-404', 'CIM Works', 'cim', '["cim-id"]'::jsonb, NULL, 'https://example.com/cim'),
-       ('TLY-405', 'Pursuing Yard', 'pursuing', '[]'::jsonb, NULL, NULL)`,
-  );
-
-  const rows = await listDirkLivePipeline();
-  assert.deepEqual(
-    rows.map((row) => row.dealNumber),
-    ["TLY-404", "TLY-403", "TLY-405", "TLY-402"],
-  );
-  const sl = rows.find((row) => row.dealNumber === "TLY-402");
-  assert.ok(sl);
-  assert.deepEqual(sl.gmailThreadIds, ["sl-id"]);
-  assert.equal(rows.some((row) => row.dealNumber === "TLY-401"), false);
 });

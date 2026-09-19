@@ -115,15 +115,6 @@ export interface DirkFeed {
   followups: DirkFollowup[];
 }
 
-export interface DirkLivePipelineRow {
-  dealNumber: string | null;
-  title: string;
-  stage: string;
-  gmailThreadIds: string[];
-  ndaUrl: string | null;
-  cimUrl: string | null;
-}
-
 export async function listDirkInbound(limit = 50): Promise<DirkInbound[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT d.deal_number, d.title, d.source, d.nickname, d.last_seen, d.gmail_thread_ids
@@ -238,22 +229,4 @@ export async function buildDirkFeed(): Promise<DirkFeed> {
     listDirkFollowups(),
   ]);
   return { inbound, verdicts, followups };
-}
-
-/** Raw live-pipeline rows for punch-list rebuilds — no watch/LIMIT starvation. */
-export async function listDirkLivePipeline(): Promise<DirkLivePipelineRow[]> {
-  const rows = await query<Record<string, unknown>>(
-    `SELECT deal_number, title, stage, gmail_thread_ids, nda_url, cim_url
-       FROM deals_next
-      WHERE stage IN ${LIVE_PIPELINE_STAGES_SQL}
-      ORDER BY stage, deal_number`,
-  );
-  return rows.map((row) => ({
-    dealNumber: row.deal_number == null ? null : String(row.deal_number),
-    title: String(row.title ?? ""),
-    stage: String(row.stage ?? ""),
-    gmailThreadIds: threadsOf(row),
-    ndaUrl: row.nda_url == null ? null : String(row.nda_url),
-    cimUrl: row.cim_url == null ? null : String(row.cim_url),
-  }));
 }
