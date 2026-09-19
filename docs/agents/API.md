@@ -119,6 +119,8 @@ GET /api/next/dirk?section=followups
 
 Read-only. Use this to see what needs a stage move or a CIM stamp. Do not scrape the Review HTML.
 
+`followups` is the punch-list: live Shortlisted / NDA / CIM / Pursuing first (with `gmailLinks`), then open watches on those stages. Closed / walked / passed / dead watches are excluded and cannot starve the list.
+
 ---
 
 ## Stage — `POST /api/next/stage`
