@@ -15,6 +15,7 @@ Google Drive is not involved.
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import urllib.error
@@ -23,23 +24,49 @@ from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# Same hash Flow uses (web/lib/gmail-thread.ts). Import accepts ids, not URLs.
+_THREAD_HASH = re.compile(r"#(?:all|inbox|sent|search|label/[^/?#]+)/([a-zA-Z0-9]+)", re.I)
+
+
+def thread_id_from_mail_row(thread_id: str | None, gmail_thread_url: str | None = None) -> str:
+    """Prefer mail.thread_id. Recover from Mailman gmail_thread_url if needed.
+
+    Never treat gmail_id as a thread id.
+    """
+    tid = (thread_id or "").strip()
+    if tid:
+        return tid
+    raw = (gmail_thread_url or "").strip()
+    if not raw:
+        return ""
+    m = _THREAD_HASH.search(raw)
+    return m.group(1) if m else ""
+
 
 def gmail_thread_ids_by_deal(con: sqlite3.Connection) -> dict[int, list[str]]:
     """Join deal → deal_sources.msg_id → mail.gmail_id → mail.thread_id.
 
-    Prefer thread_id only. Do not substitute gmail_id — Gmail message ids
-    and thread ids are different values in this DB. The same thread id on
-    several deals (digest) is correct: append, do not drop.
+    Prefer thread_id. If that is blank, parse #all/{id} from gmail_thread_url
+    (Mailman stores authuser=dirk@). Do not substitute gmail_id. The same
+    thread id on several deals (digest) is correct: append, do not drop.
     """
     out: dict[int, list[str]] = {}
     try:
+        mail_cols = {r[1] for r in con.execute("PRAGMA table_info(mail)")}
+    except sqlite3.OperationalError:
+        return out
+    if "thread_id" not in mail_cols:
+        return out
+
+    url_col = ", m.gmail_thread_url AS gmail_thread_url" if "gmail_thread_url" in mail_cols else ""
+    try:
         rows = con.execute(
-            """
-            SELECT ds.deal_id AS deal_id, m.thread_id AS thread_id
+            f"""
+            SELECT ds.deal_id AS deal_id,
+                   m.thread_id AS thread_id
+                   {url_col}
               FROM deal_sources ds
               JOIN mail m ON m.gmail_id = ds.msg_id
-             WHERE m.thread_id IS NOT NULL
-               AND TRIM(m.thread_id) <> ''
              ORDER BY ds.deal_id, m.harvested_at, m.thread_id
             """
         ).fetchall()
@@ -49,7 +76,8 @@ def gmail_thread_ids_by_deal(con: sqlite3.Connection) -> dict[int, list[str]]:
     seen: dict[int, set[str]] = {}
     for r in rows:
         did = int(r["deal_id"])
-        tid = str(r["thread_id"] or "").strip()
+        url = r["gmail_thread_url"] if "gmail_thread_url" in r.keys() else None
+        tid = thread_id_from_mail_row(r["thread_id"], url)
         if not tid:
             continue
         bucket = seen.setdefault(did, set())

@@ -119,6 +119,29 @@ class ExportSnapshotTests(unittest.TestCase):
         self.assertEqual(by_title["Deal one"], ["shared-thread"])
         self.assertEqual(by_title["Deal two"], ["shared-thread"])
 
+    def test_thread_id_from_gmail_thread_url_when_id_blank(self) -> None:
+        _seed_deal(
+            self.con, ext_id="bbs:urlrow:0", title="URL fallback",
+            url_norm="https://example.com/u", msg_id="msg-url-only",
+        )
+        db.upsert_mail(
+            self.con,
+            gmail_id="msg-url-only",
+            thread_id=None,
+            gmail_thread_url=(
+                "https://mail.google.com/mail/?authuser=dirk%40tullyinvesting.com"
+                "#all/18f0fromUrl"
+            ),
+            sender="x@y.com",
+            subject="s",
+            received="2026-09-18",
+            body="b",
+            label="listing",
+        )
+        self.con.commit()
+        deal = exp.export(self.db_path)["deals"][0]
+        self.assertEqual(deal["gmailThreadIds"], ["18f0fromUrl"])
+
     def test_null_thread_id_is_not_replaced_with_gmail_id(self) -> None:
         _seed_deal(
             self.con, ext_id="bbs:orphan:0", title="No thread",
