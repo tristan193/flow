@@ -1,7 +1,7 @@
 """
 Feed listing-labeled Mailman rows into ingest → nm_deals.db.
 
-Mailman already stored and labeled the mail. This script does not call Gmail.
+Mailman already stored and labeled the mail (incl. thread_id + gmail_thread_url). This script does not call Gmail.
 
   python ingest_mail.py --days 3
 """
@@ -32,7 +32,7 @@ def _parse_ts(value: str | None) -> datetime | None:
 def load_listing_emails(con: sqlite3.Connection, days: int) -> list[ing.RawEmail]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, days))
     rows = con.execute(
-        "SELECT gmail_id, sender, subject, received, body, harvested_at FROM mail WHERE label = 'listing'"
+        "SELECT gmail_id, thread_id, gmail_thread_url, sender, subject, received, body, harvested_at FROM mail WHERE label = 'listing'"
     ).fetchall()
     out: list[ing.RawEmail] = []
     for r in rows:

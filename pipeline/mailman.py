@@ -85,10 +85,12 @@ def fetch_and_store(days: int, db_path: str, *, archive_listings: bool = True) -
         emails = _raw_from_message(msg)
         em = emails[0]
         label, fmt_id, em_type = classify_mail(em)
+        tid = _thread_id(msg)
         mode = db.upsert_mail(
             con,
             gmail_id=em.msg_id,
-            thread_id=_thread_id(msg),
+            thread_id=tid,
+            gmail_thread_url=catcher.gmail_thread_url(tid) or None,
             sender=em.sender,
             subject=em.subject,
             received=em.received,
