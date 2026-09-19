@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "updated": "2026-08-24",
+  "version": 6,
+  "updated": "2026-09-19",
   "repertoire_path": "pipeline/formats/repertoire.yaml",
   "playbook_path": "docs/deal-format-repertoire.md",
   "formats": [
@@ -484,6 +484,338 @@
         "Often digital agencies / ecommerce \u2014 buy-box may still reject"
       ],
       "parser_notes": []
+    },
+    {
+      "id": "baton.alerts_digest",
+      "format_family": "baton",
+      "source": "alerts.baton.com",
+      "sub_source": "no-reply@alerts.baton.com",
+      "provider_subcategory": "alerts",
+      "nickname": "Baton",
+      "email_type": "daily_digest",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title",
+          "url"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "baton.marketing",
+      "format_family": "baton",
+      "source": "batonmarket.com",
+      "sub_source": "hello@batonmarket.com",
+      "provider_subcategory": "editorial",
+      "nickname": "Baton",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "baton.broker_followup",
+      "format_family": "baton",
+      "source": "batonmarket.com",
+      "sub_source": "*@batonmarket.com",
+      "provider_subcategory": "broker",
+      "nickname": "Baton",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "vested.listing_teaser",
+      "format_family": "vested",
+      "source": "vestedbb.com",
+      "sub_source": "communications@vestedbb.com",
+      "provider_subcategory": "communications",
+      "nickname": "Vested Business Brokers",
+      "email_type": "single_listing",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title",
+          "location"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "vested.nurture",
+      "format_family": "vested",
+      "source": "vestedbb.com",
+      "sub_source": "communications@vestedbb.com",
+      "provider_subcategory": "communications",
+      "nickname": "Vested Business Brokers",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "iag.follow_up",
+      "format_family": "iag",
+      "source": "iagmerger.com",
+      "sub_source": "*@iagmerger.com",
+      "provider_subcategory": "any",
+      "nickname": "IAG Merger",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "transworld.broker_followup",
+      "format_family": "transworld",
+      "source": "tworld.com",
+      "sub_source": "*@tworld.com",
+      "provider_subcategory": "any",
+      "nickname": "Transworld",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "legacy.nda_followup",
+      "format_family": "legacy",
+      "source": "legacyacquisitions.ai",
+      "sub_source": "*@legacyacquisitions.ai",
+      "provider_subcategory": "any",
+      "nickname": "Legacy Acquisitions",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "axial.messenger_followup",
+      "format_family": "axial",
+      "source": "axial.net",
+      "sub_source": "messenger@axial.net",
+      "provider_subcategory": "messenger",
+      "nickname": "Axial",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "generational.deal_listings",
+      "format_family": "generational",
+      "source": "generational.deals",
+      "sub_source": "lisa.lippe@generational.deals",
+      "provider_subcategory": "lisa",
+      "nickname": "Generational Group",
+      "email_type": "daily_digest",
+      "status": "active",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "pronova.feedback_request",
+      "format_family": "pronova",
+      "source": "pronovapartners.com",
+      "sub_source": "crm@pronovapartners.com",
+      "provider_subcategory": "crm",
+      "nickname": "ProNova Partners",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "benchmark_sa.nda_followup",
+      "format_family": "benchmark",
+      "source": "benchmarksa.com",
+      "sub_source": "*@benchmarksa.com",
+      "provider_subcategory": "any",
+      "nickname": "Benchmark Business Brokers (SA)",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "sunbelt.nda_followup",
+      "format_family": "sunbelt",
+      "source": "sunbeltatlanta.com",
+      "sub_source": "*@sunbeltatlanta.com",
+      "provider_subcategory": "any",
+      "nickname": "Sunbelt Atlanta",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "dealonomy.marketing",
+      "format_family": "dealonomy",
+      "source": "news.dealonomy.com",
+      "sub_source": "deals@news.dealonomy.com",
+      "provider_subcategory": "news",
+      "nickname": "Dealonomy",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "dealonomy.account_notice",
+      "format_family": "dealonomy",
+      "source": "updates.dealonomy.com",
+      "sub_source": "notifications@updates.dealonomy.com",
+      "provider_subcategory": "updates",
+      "nickname": "Dealonomy",
+      "email_type": "account_notice",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "dealonomy.deal_access",
+      "format_family": "dealonomy",
+      "source": "dealonomy.com",
+      "sub_source": "buyers@dealonomy.com",
+      "provider_subcategory": "buyers",
+      "nickname": "Dealonomy",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "calder.marketing",
+      "format_family": "calder",
+      "source": "caldergr.com",
+      "sub_source": "info@caldergr.com",
+      "provider_subcategory": "info",
+      "nickname": "Calder Capital",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "advisory.broker_followup",
+      "format_family": "advisory",
+      "source": "theadvisoryib.com",
+      "sub_source": "*@theadvisoryib.com",
+      "provider_subcategory": "any",
+      "nickname": "The Advisory",
+      "email_type": "follow_up",
+      "status": "active",
+      "split": "prefer_drop_or_follow_up",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [],
+      "parser_notes": []
+    },
+    {
+      "id": "trustpilot.review_ask",
+      "format_family": "newsletter",
+      "source": "trustpilotmail.com",
+      "sub_source": "noreply.invitations@trustpilotmail.com",
+      "provider_subcategory": "invitations",
+      "nickname": "Trustpilot (non-deal)",
+      "email_type": "newsletter_marketing",
+      "status": "control",
+      "split": "drop",
+      "expected_fields": {
+        "present": []
+      },
+      "gotchas": [],
+      "parser_notes": []
     }
   ],
   "subcategories": [
@@ -540,6 +872,15 @@
       "default_format": "axial.deal_alert_digest",
       "label": "Alerts digest",
       "purpose": "Multi-deal alert (fixture; rare in live survey)"
+    },
+    {
+      "id": "messenger",
+      "email": "messenger@axial.net",
+      "provider_domain": "axial.net",
+      "provider_nickname": "Axial",
+      "default_format": "axial.messenger_followup",
+      "label": "Messenger",
+      "purpose": "In-platform CRM messages about an existing opportunity (not newdeal teasers)"
     },
     {
       "id": "helen",
@@ -693,6 +1034,186 @@
       "default_format": "websiteclosers.new_deal_alert",
       "label": "New Deal Alert",
       "purpose": "Mailchimp single-listing teaser (Asking / Sales / Earnings)"
+    },
+    {
+      "id": "alerts",
+      "email": "no-reply@alerts.baton.com",
+      "provider_domain": "baton.com",
+      "provider_nickname": "Baton",
+      "default_format": "baton.alerts_digest",
+      "label": "Search alerts",
+      "purpose": "Saved-search multi-listing digest"
+    },
+    {
+      "id": "alerts",
+      "email": "no-reply@alerts.baton.com",
+      "provider_domain": "alerts.baton.com",
+      "provider_nickname": "Baton",
+      "default_format": "baton.alerts_digest",
+      "label": "Search alerts",
+      "purpose": "Same product; From uses alerts.baton.com"
+    },
+    {
+      "id": "editorial",
+      "email": "hello@batonmarket.com",
+      "provider_domain": "batonmarket.com",
+      "provider_nickname": "Baton",
+      "default_format": "baton.marketing",
+      "label": "Editorial / marketing",
+      "purpose": "Newsletter / product marketing \u2014 yield 0"
+    },
+    {
+      "id": "broker",
+      "email": "*@batonmarket.com",
+      "provider_domain": "batonmarket.com",
+      "provider_nickname": "Baton",
+      "default_format": "baton.broker_followup",
+      "label": "Broker desk",
+      "purpose": "Listing interest / Axial bridge threads"
+    },
+    {
+      "id": "communications",
+      "email": "communications@vestedbb.com",
+      "provider_domain": "vestedbb.com",
+      "provider_nickname": "Vested Business Brokers",
+      "default_format": "",
+      "label": "Listings / nurture",
+      "purpose": "Single listing teasers + account nurture"
+    },
+    {
+      "id": "any",
+      "email": "*@iagmerger.com",
+      "provider_domain": "iagmerger.com",
+      "provider_nickname": "IAG Merger",
+      "default_format": "",
+      "label": "Broker desk",
+      "purpose": "Listing teasers and data-room / NDA follow-ups"
+    },
+    {
+      "id": "any",
+      "email": "*@tworld.com",
+      "provider_domain": "tworld.com",
+      "provider_nickname": "Transworld",
+      "default_format": "transworld.broker_followup",
+      "label": "Broker desk",
+      "purpose": "LOI / buyer-profile / pursuit threads \u2014 not fresh blasts"
+    },
+    {
+      "id": "any",
+      "email": "*@legacyacquisitions.ai",
+      "provider_domain": "legacyacquisitions.ai",
+      "provider_nickname": "Legacy Acquisitions",
+      "default_format": "legacy.nda_followup",
+      "label": "Advisor desk",
+      "purpose": "Off-market digest replies and NDA links"
+    },
+    {
+      "id": "lisa",
+      "email": "lisa.lippe@generational.deals",
+      "provider_domain": "generational.deals",
+      "provider_nickname": "Generational Group",
+      "default_format": "generational.deal_listings",
+      "label": "Deal listings",
+      "purpose": "Multi-deal listing digests"
+    },
+    {
+      "id": "crm",
+      "email": "crm@pronovapartners.com",
+      "provider_domain": "pronovapartners.com",
+      "provider_nickname": "ProNova Partners",
+      "default_format": "pronova.feedback_request",
+      "label": "CRM",
+      "purpose": "CIM review feedback / engagement chase"
+    },
+    {
+      "id": "any",
+      "email": "*@benchmarksa.com",
+      "provider_domain": "benchmarksa.com",
+      "provider_nickname": "Benchmark Business Brokers (SA)",
+      "default_format": "benchmark_sa.nda_followup",
+      "label": "SA desk",
+      "purpose": "NDA / CIM follow-ups from San Antonio Benchmark"
+    },
+    {
+      "id": "any",
+      "email": "*@sunbeltatlanta.com",
+      "provider_domain": "sunbeltatlanta.com",
+      "provider_nickname": "Sunbelt Atlanta",
+      "default_format": "sunbelt.nda_followup",
+      "label": "Broker desk",
+      "purpose": "NDA packets and pursuit mail"
+    },
+    {
+      "id": "news",
+      "email": "deals@news.dealonomy.com",
+      "provider_domain": "dealonomy.com",
+      "provider_nickname": "Dealonomy",
+      "default_format": "dealonomy.marketing",
+      "label": "News / marketing",
+      "purpose": "Welcome and editorial \u2014 yield 0"
+    },
+    {
+      "id": "updates",
+      "email": "notifications@updates.dealonomy.com",
+      "provider_domain": "dealonomy.com",
+      "provider_nickname": "Dealonomy",
+      "default_format": "dealonomy.account_notice",
+      "label": "Account",
+      "purpose": "Verify email etc \u2014 yield 0"
+    },
+    {
+      "id": "buyers",
+      "email": "buyers@dealonomy.com",
+      "provider_domain": "dealonomy.com",
+      "provider_nickname": "Dealonomy",
+      "default_format": "dealonomy.deal_access",
+      "label": "Buyers",
+      "purpose": "Deal access / data-room threads"
+    },
+    {
+      "id": "news",
+      "email": "deals@news.dealonomy.com",
+      "provider_domain": "news.dealonomy.com",
+      "provider_nickname": "Dealonomy",
+      "default_format": "dealonomy.marketing",
+      "label": "News / marketing",
+      "purpose": ""
+    },
+    {
+      "id": "updates",
+      "email": "notifications@updates.dealonomy.com",
+      "provider_domain": "updates.dealonomy.com",
+      "provider_nickname": "Dealonomy",
+      "default_format": "dealonomy.account_notice",
+      "label": "Account",
+      "purpose": ""
+    },
+    {
+      "id": "info",
+      "email": "info@caldergr.com",
+      "provider_domain": "caldergr.com",
+      "provider_nickname": "Calder Capital",
+      "default_format": "calder.marketing",
+      "label": "Marketing",
+      "purpose": "Buy/sell promo digests \u2014 yield 0"
+    },
+    {
+      "id": "any",
+      "email": "*@theadvisoryib.com",
+      "provider_domain": "theadvisoryib.com",
+      "provider_nickname": "The Advisory",
+      "default_format": "advisory.broker_followup",
+      "label": "Broker desk",
+      "purpose": "Opportunity follow-up threads"
+    },
+    {
+      "id": "invitations",
+      "email": "noreply.invitations@trustpilotmail.com",
+      "provider_domain": "trustpilotmail.com",
+      "provider_nickname": "Trustpilot (non-deal)",
+      "default_format": "trustpilot.review_ask",
+      "label": "Review ask",
+      "purpose": "Vendor review nudge \u2014 yield 0"
     }
   ],
   "by_email": {
@@ -707,7 +1228,18 @@
     "invoice+statements@mail.anthropic.com": "anthropic.receipt",
     "agencyequity@strategicagencies.com": "agencyequity.marketing",
     "info@notifications.rejigg.com": "rejigg.search_digest",
-    "info@websiteclosers.com": "websiteclosers.new_deal_alert"
+    "info@websiteclosers.com": "websiteclosers.new_deal_alert",
+    "no-reply@alerts.baton.com": "baton.alerts_digest",
+    "hello@batonmarket.com": "baton.marketing",
+    "communications@vestedbb.com": "vested.nurture",
+    "messenger@axial.net": "axial.messenger_followup",
+    "lisa.lippe@generational.deals": "generational.deal_listings",
+    "crm@pronovapartners.com": "pronova.feedback_request",
+    "deals@news.dealonomy.com": "dealonomy.marketing",
+    "notifications@updates.dealonomy.com": "dealonomy.account_notice",
+    "buyers@dealonomy.com": "dealonomy.deal_access",
+    "info@caldergr.com": "calder.marketing",
+    "noreply.invitations@trustpilotmail.com": "trustpilot.review_ask"
   },
   "by_domain": {
     "bizbuysell.com": [
@@ -719,7 +1251,8 @@
       "axial.single_deal",
       "axial.action_summary",
       "axial.deal_alert_digest",
-      "axial.account_notice"
+      "axial.account_notice",
+      "axial.messenger_followup"
     ],
     "benchmarkintl.com": [
       "benchmark.broker_followup",
@@ -765,6 +1298,56 @@
     ],
     "websiteclosers.com": [
       "websiteclosers.new_deal_alert"
+    ],
+    "alerts.baton.com": [
+      "baton.alerts_digest"
+    ],
+    "batonmarket.com": [
+      "baton.marketing",
+      "baton.broker_followup"
+    ],
+    "vestedbb.com": [
+      "vested.listing_teaser",
+      "vested.nurture"
+    ],
+    "iagmerger.com": [
+      "iag.follow_up"
+    ],
+    "tworld.com": [
+      "transworld.broker_followup"
+    ],
+    "legacyacquisitions.ai": [
+      "legacy.nda_followup"
+    ],
+    "generational.deals": [
+      "generational.deal_listings"
+    ],
+    "pronovapartners.com": [
+      "pronova.feedback_request"
+    ],
+    "benchmarksa.com": [
+      "benchmark_sa.nda_followup"
+    ],
+    "sunbeltatlanta.com": [
+      "sunbelt.nda_followup"
+    ],
+    "news.dealonomy.com": [
+      "dealonomy.marketing"
+    ],
+    "updates.dealonomy.com": [
+      "dealonomy.account_notice"
+    ],
+    "dealonomy.com": [
+      "dealonomy.deal_access"
+    ],
+    "caldergr.com": [
+      "calder.marketing"
+    ],
+    "theadvisoryib.com": [
+      "advisory.broker_followup"
+    ],
+    "trustpilotmail.com": [
+      "trustpilot.review_ask"
     ]
   }
 }

@@ -11,8 +11,8 @@
 #   nickname   = human-facing label     e.g. BizBuySell
 # format_family = internal splitter key (NOT stored as source)
 #
-version: 5
-updated: 2026-08-24
+version: 6
+updated: 2026-09-19
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -122,6 +122,12 @@ providers:
         purpose: Multi-deal alert (fixture; rare in live survey)
         typical_email_type: daily_digest
         default_format: axial.deal_alert_digest
+      - id: messenger
+        email: messenger@axial.net
+        label: Messenger
+        purpose: In-platform CRM messages about an existing opportunity (not newdeal teasers)
+        typical_email_type: follow_up
+        default_format: axial.messenger_followup
 
   - domain: smbdealhunter.xyz
     nickname: SMB Deal Hunter
@@ -290,6 +296,192 @@ providers:
         purpose: Mailchimp single-listing teaser (Asking / Sales / Earnings)
         typical_email_type: single_listing
         default_format: websiteclosers.new_deal_alert
+
+  - domain: baton.com
+    nickname: Baton
+    subcategories:
+      - id: alerts
+        email: no-reply@alerts.baton.com
+        label: Search alerts
+        purpose: Saved-search multi-listing digest
+        typical_email_type: daily_digest
+        default_format: baton.alerts_digest
+
+  - domain: alerts.baton.com
+    nickname: Baton
+    subcategories:
+      - id: alerts
+        email: no-reply@alerts.baton.com
+        label: Search alerts
+        purpose: Same product; From uses alerts.baton.com
+        typical_email_type: daily_digest
+        default_format: baton.alerts_digest
+
+  - domain: batonmarket.com
+    nickname: Baton
+    subcategories:
+      - id: editorial
+        email: hello@batonmarket.com
+        label: Editorial / marketing
+        purpose: Newsletter / product marketing — yield 0
+        typical_email_type: newsletter_marketing
+        default_format: baton.marketing
+      - id: broker
+        email: "*@batonmarket.com"
+        label: Broker desk
+        purpose: Listing interest / Axial bridge threads
+        typical_email_type: follow_up
+        default_format: baton.broker_followup
+
+  - domain: vestedbb.com
+    nickname: Vested Business Brokers
+    subcategories:
+      - id: communications
+        email: communications@vestedbb.com
+        label: Listings / nurture
+        purpose: Single listing teasers + account nurture
+        typical_email_type: null
+        default_format: null
+
+  - domain: iagmerger.com
+    nickname: IAG Merger
+    subcategories:
+      - id: any
+        email: "*@iagmerger.com"
+        label: Broker desk
+        purpose: Listing teasers and data-room / NDA follow-ups
+        typical_email_type: null
+        default_format: null
+
+  - domain: tworld.com
+    nickname: Transworld
+    subcategories:
+      - id: any
+        email: "*@tworld.com"
+        label: Broker desk
+        purpose: LOI / buyer-profile / pursuit threads — not fresh blasts
+        typical_email_type: follow_up
+        default_format: transworld.broker_followup
+
+  - domain: legacyacquisitions.ai
+    nickname: Legacy Acquisitions
+    subcategories:
+      - id: any
+        email: "*@legacyacquisitions.ai"
+        label: Advisor desk
+        purpose: Off-market digest replies and NDA links
+        typical_email_type: follow_up
+        default_format: legacy.nda_followup
+
+  - domain: generational.deals
+    nickname: Generational Group
+    subcategories:
+      - id: lisa
+        email: lisa.lippe@generational.deals
+        label: Deal listings
+        purpose: Multi-deal listing digests
+        typical_email_type: daily_digest
+        default_format: generational.deal_listings
+
+  - domain: pronovapartners.com
+    nickname: ProNova Partners
+    subcategories:
+      - id: crm
+        email: crm@pronovapartners.com
+        label: CRM
+        purpose: CIM review feedback / engagement chase
+        typical_email_type: follow_up
+        default_format: pronova.feedback_request
+
+  - domain: benchmarksa.com
+    nickname: Benchmark Business Brokers (SA)
+    subcategories:
+      - id: any
+        email: "*@benchmarksa.com"
+        label: SA desk
+        purpose: NDA / CIM follow-ups from San Antonio Benchmark
+        typical_email_type: follow_up
+        default_format: benchmark_sa.nda_followup
+
+  - domain: sunbeltatlanta.com
+    nickname: Sunbelt Atlanta
+    subcategories:
+      - id: any
+        email: "*@sunbeltatlanta.com"
+        label: Broker desk
+        purpose: NDA packets and pursuit mail
+        typical_email_type: follow_up
+        default_format: sunbelt.nda_followup
+
+  - domain: dealonomy.com
+    nickname: Dealonomy
+    subcategories:
+      - id: news
+        email: deals@news.dealonomy.com
+        label: News / marketing
+        purpose: Welcome and editorial — yield 0
+        typical_email_type: newsletter_marketing
+        default_format: dealonomy.marketing
+      - id: updates
+        email: notifications@updates.dealonomy.com
+        label: Account
+        purpose: Verify email etc — yield 0
+        typical_email_type: account_notice
+        default_format: dealonomy.account_notice
+      - id: buyers
+        email: buyers@dealonomy.com
+        label: Buyers
+        purpose: Deal access / data-room threads
+        typical_email_type: follow_up
+        default_format: dealonomy.deal_access
+
+  - domain: news.dealonomy.com
+    nickname: Dealonomy
+    subcategories:
+      - id: news
+        email: deals@news.dealonomy.com
+        label: News / marketing
+        typical_email_type: newsletter_marketing
+        default_format: dealonomy.marketing
+
+  - domain: updates.dealonomy.com
+    nickname: Dealonomy
+    subcategories:
+      - id: updates
+        email: notifications@updates.dealonomy.com
+        label: Account
+        typical_email_type: account_notice
+        default_format: dealonomy.account_notice
+
+  - domain: caldergr.com
+    nickname: Calder Capital
+    subcategories:
+      - id: info
+        email: info@caldergr.com
+        label: Marketing
+        purpose: Buy/sell promo digests — yield 0
+        typical_email_type: newsletter_marketing
+        default_format: calder.marketing
+
+  - domain: theadvisoryib.com
+    nickname: The Advisory
+    subcategories:
+      - id: any
+        email: "*@theadvisoryib.com"
+        label: Broker desk
+        purpose: Opportunity follow-up threads
+        typical_email_type: follow_up
+        default_format: advisory.broker_followup
+
+  - domain: trustpilotmail.com
+    nickname: Trustpilot (non-deal)
+    subcategories:
+      - id: invitations
+        email: noreply.invitations@trustpilotmail.com
+        label: Review ask
+        purpose: Vendor review nudge — yield 0
+        typical_email_type: newsletter_marketing
+        default_format: trustpilot.review_ask
 
 formats:
 
@@ -927,6 +1119,363 @@ formats:
       - "Sales: → revenue; Earnings: → SDE (ambiguous label rule)"
       - "Ignore mailchi.mp + /buyers-club/ URLs; keep /businesses/.../{id}/"
       - "Often digital agencies / ecommerce — buy-box may still reject"
+
+  # =========================================================================
+  # 2026-09-19 unknown catch-up (Mailman e2e) — nm/harvest/mailman
+  # =========================================================================
+
+  - id: baton.alerts_digest
+    format_family: baton
+    source: alerts.baton.com
+    sub_source: no-reply@alerts.baton.com
+    provider_subcategory: alerts
+    nickname: Baton
+    email_type: daily_digest
+    confidence: provisional
+    status: active
+    description: >
+      Saved-search multi-listing digest from Baton alerts.
+    detect:
+      sender_addresses: ["no-reply@alerts.baton.com"]
+      sender_domains: ["alerts.baton.com", "baton.com"]
+      subject_patterns:
+        - '(?i)new business listings matching'
+        - '(?i)matching .+ search'
+    expected_fields:
+      present: [title, url]
+    split: newsletter
+
+  - id: baton.marketing
+    format_family: baton
+    source: batonmarket.com
+    sub_source: hello@batonmarket.com
+    provider_subcategory: editorial
+    nickname: Baton
+    email_type: newsletter_marketing
+    confidence: provisional
+    status: control
+    description: Editorial / product marketing. Yield 0.
+    detect:
+      sender_addresses: ["hello@batonmarket.com"]
+      sender_domains: ["batonmarket.com"]
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: baton.broker_followup
+    format_family: baton
+    source: batonmarket.com
+    sub_source: "*@batonmarket.com"
+    provider_subcategory: broker
+    nickname: Baton
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: Broker interest / Axial bridge threads (not a fresh listing blast).
+    detect:
+      sender_domains: ["batonmarket.com"]
+      subject_patterns:
+        - '(?i)interest from axial'
+        - '(?i)\bnda\b'
+        - '(?i)^re:'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: vested.listing_teaser
+    format_family: vested
+    source: vestedbb.com
+    sub_source: communications@vestedbb.com
+    provider_subcategory: communications
+    nickname: Vested Business Brokers
+    email_type: single_listing
+    confidence: provisional
+    status: active
+    description: Single listing teaser / buyer-favorite blast.
+    detect:
+      sender_addresses: ["communications@vestedbb.com"]
+      sender_domains: ["vestedbb.com"]
+      subject_patterns:
+        - '(?i)for sale'
+        - '(?i)listing'
+        - '(?i)buyer favorite'
+        - '(?i)new details added'
+    negative_subject:
+      - '(?i)almost there'
+    expected_fields:
+      present: [title, location]
+    split: newsletter
+
+  - id: vested.nurture
+    format_family: vested
+    source: vestedbb.com
+    sub_source: communications@vestedbb.com
+    provider_subcategory: communications
+    nickname: Vested Business Brokers
+    email_type: account_notice
+    confidence: provisional
+    status: control
+    description: Account nurture ("almost there"). Yield 0.
+    detect:
+      sender_addresses: ["communications@vestedbb.com"]
+      subject_patterns:
+        - '(?i)almost there'
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: iag.follow_up
+    format_family: iag
+    source: iagmerger.com
+    sub_source: "*@iagmerger.com"
+    provider_subcategory: any
+    nickname: IAG Merger
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: >
+      IAG desk mail is usually data-room / NDA / interest chase. Subject may
+      look like a listing ("IAG Listing / …") while the body asks for a call
+      before releasing CIM — label follow_up, not listing.
+    detect:
+      sender_domains: ["iagmerger.com"]
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: transworld.broker_followup
+    format_family: transworld
+    source: tworld.com
+    sub_source: "*@tworld.com"
+    provider_subcategory: any
+    nickname: Transworld
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: LOI / buyer-profile / pursuit threads from Transworld brokers.
+    detect:
+      sender_domains: ["tworld.com"]
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: legacy.nda_followup
+    format_family: legacy
+    source: legacyacquisitions.ai
+    sub_source: "*@legacyacquisitions.ai"
+    provider_subcategory: any
+    nickname: Legacy Acquisitions
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: Off-market reply threads and NDA / PandaDoc links.
+    detect:
+      sender_domains: ["legacyacquisitions.ai"]
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: axial.messenger_followup
+    format_family: axial
+    source: axial.net
+    sub_source: messenger@axial.net
+    provider_subcategory: messenger
+    nickname: Axial
+    email_type: follow_up
+    confidence: verified
+    status: active
+    description: >
+      Axial Messenger CRM check-ins ("you have 1 new message"). Not newdeal@
+      teasers — do not treat subject as a fresh listing blast.
+    detect:
+      sender_addresses: ["messenger@axial.net"]
+      sender_domains: ["axial.net"]
+      body_open_patterns:
+        - '(?i)you have \d+ new message'
+        - '(?i)still interested in pursuing'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: generational.deal_listings
+    format_family: generational
+    source: generational.deals
+    sub_source: lisa.lippe@generational.deals
+    provider_subcategory: lisa
+    nickname: Generational Group
+    email_type: daily_digest
+    confidence: provisional
+    status: active
+    description: Multi-deal "latest … deal listings" digests.
+    detect:
+      sender_addresses: ["lisa.lippe@generational.deals"]
+      sender_domains: ["generational.deals"]
+      subject_patterns:
+        - '(?i)deal listings'
+        - '(?i)view latest'
+      body_open_patterns:
+        - '(?i)latest .+ deal listings'
+    expected_fields:
+      present: [title]
+    split: newsletter
+
+  - id: pronova.feedback_request
+    format_family: pronova
+    source: pronovapartners.com
+    sub_source: crm@pronovapartners.com
+    provider_subcategory: crm
+    nickname: ProNova Partners
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: CIM / engagement feedback chase after Tristan reviewed.
+    detect:
+      sender_addresses: ["crm@pronovapartners.com"]
+      sender_domains: ["pronovapartners.com"]
+      subject_patterns:
+        - '(?i)action requested'
+        - '(?i)feedback from'
+        - '(?i)engagement #'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: benchmark_sa.nda_followup
+    format_family: benchmark
+    source: benchmarksa.com
+    sub_source: "*@benchmarksa.com"
+    provider_subcategory: any
+    nickname: Benchmark Business Brokers (SA)
+    email_type: follow_up
+    confidence: verified
+    status: active
+    description: NDA completed / CIM follow-up from Benchmark SA (not intl.com).
+    detect:
+      sender_domains: ["benchmarksa.com"]
+      subject_patterns:
+        - '(?i)\bnda\b'
+      body_open_patterns:
+        - '(?i)completing our.?nda'
+        - '(?i)thank you for completing'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: sunbelt.nda_followup
+    format_family: sunbelt
+    source: sunbeltatlanta.com
+    sub_source: "*@sunbeltatlanta.com"
+    provider_subcategory: any
+    nickname: Sunbelt Atlanta
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    description: NDA packet / pursuit mail.
+    detect:
+      sender_domains: ["sunbeltatlanta.com"]
+      subject_patterns:
+        - '(?i)\bnda\b'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: dealonomy.marketing
+    format_family: dealonomy
+    source: news.dealonomy.com
+    sub_source: deals@news.dealonomy.com
+    provider_subcategory: news
+    nickname: Dealonomy
+    email_type: newsletter_marketing
+    confidence: provisional
+    status: control
+    detect:
+      sender_addresses: ["deals@news.dealonomy.com"]
+      sender_domains: ["news.dealonomy.com", "dealonomy.com"]
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: dealonomy.account_notice
+    format_family: dealonomy
+    source: updates.dealonomy.com
+    sub_source: notifications@updates.dealonomy.com
+    provider_subcategory: updates
+    nickname: Dealonomy
+    email_type: account_notice
+    confidence: provisional
+    status: control
+    detect:
+      sender_addresses: ["notifications@updates.dealonomy.com"]
+      subject_patterns:
+        - '(?i)verify your email'
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: dealonomy.deal_access
+    format_family: dealonomy
+    source: dealonomy.com
+    sub_source: buyers@dealonomy.com
+    provider_subcategory: buyers
+    nickname: Dealonomy
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    detect:
+      sender_addresses: ["buyers@dealonomy.com"]
+      subject_patterns:
+        - '(?i)access to info'
+        - '(?i)data room'
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: calder.marketing
+    format_family: calder
+    source: caldergr.com
+    sub_source: info@caldergr.com
+    provider_subcategory: info
+    nickname: Calder Capital
+    email_type: newsletter_marketing
+    confidence: provisional
+    status: control
+    detect:
+      sender_addresses: ["info@caldergr.com"]
+      sender_domains: ["caldergr.com"]
+    expected_fields:
+      present: []
+    split: drop
+
+  - id: advisory.broker_followup
+    format_family: advisory
+    source: theadvisoryib.com
+    sub_source: "*@theadvisoryib.com"
+    provider_subcategory: any
+    nickname: The Advisory
+    email_type: follow_up
+    confidence: provisional
+    status: active
+    detect:
+      sender_domains: ["theadvisoryib.com"]
+    expected_fields:
+      present: [title]
+    split: prefer_drop_or_follow_up
+
+  - id: trustpilot.review_ask
+    format_family: newsletter
+    source: trustpilotmail.com
+    sub_source: noreply.invitations@trustpilotmail.com
+    provider_subcategory: invitations
+    nickname: Trustpilot (non-deal)
+    email_type: newsletter_marketing
+    confidence: verified
+    status: control
+    detect:
+      sender_addresses: ["noreply.invitations@trustpilotmail.com"]
+      sender_domains: ["trustpilotmail.com"]
+    expected_fields:
+      present: []
+    split: drop
 
 shared_markers:
   broker_teaser:
