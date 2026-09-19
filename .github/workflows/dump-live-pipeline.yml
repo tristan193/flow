@@ -1,0 +1,45 @@
+# One-shot punch-list dump. Uses FLOW_IMPORT_TOKEN against the Flow App —
+# never prints DATABASE_URL. Run from this branch after the live-pipeline
+# section is deployed, or after merge.
+name: Dump live pipeline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Query live-pipeline
+        env:
+          FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
+          FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLOW_IMPORT_TOKEN:-}" ]; then
+            echo "FLOW_IMPORT_TOKEN is not set" >&2
+            exit 1
+          fi
+          BASE="${FLOW_APP_URL:-https://web-tau-seven-77.vercel.app}"
+          BASE="${BASE%/}"
+          curl -sS -f -H "Authorization: Bearer ${FLOW_IMPORT_TOKEN}" \
+            "${BASE}/api/next/dirk?section=live-pipeline" \
+            -o live-pipeline.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open("live-pipeline.json"))
+          deals = data.get("deals") or []
+          print(f"ok={data.get('ok')} rows={len(deals)}")
+          for row in deals:
+              threads = row.get("gmailThreadIds") or []
+              first = threads[0] if threads else None
+              print(f"{row.get('dealNumber')} | {row.get('stage')} | {row.get('title')} | {first}")
+          PY
+
+      - name: Upload dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-pipeline-gmail-2026-09-19
+          path: live-pipeline.json
+          retention-days: 7
