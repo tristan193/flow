@@ -153,8 +153,20 @@ class ExportSnapshotTests(unittest.TestCase):
         )
 
 
-class SmbListingUrlTests(unittest.TestCase):
-    def test_numbered_digest_keeps_app_url(self) -> None:
+class DigestListingUrlTests(unittest.TestCase):
+    def test_smb_exchange_listing_details_preferred(self) -> None:
+        body = """In Today's Issue
+
+#1: [Hawaii Tour Operator $763K SDE](https://www.smbdealexchange.com/listing-details?recordId=rectxcuPHqTYCa8q1)
+https://email.beehiiv.com/elink?x=1
+"""
+        items = ing._numbered_digest_items(body)
+        self.assertEqual(len(items), 1)
+        lst = ing.extract(items[0], "newsletter", "msg1", 0, source="smbdealhunter.xyz")
+        self.assertIn("smbdealexchange.com/listing-details?recordId=rectxcuPHqTYCa8q1", lst.url)
+        self.assertNotIn("elink", lst.url)
+
+    def test_numbered_digest_keeps_item_detail_url(self) -> None:
         body = """In Today's Issue
 
 #1: [Hawaii Tour Operator with Contract-Backed Revenue and $763K SDE](https://app.smbdealhunter.xyz/item-detail?recordId=rectxcuPHqTYCa8q1)
@@ -166,14 +178,40 @@ class SmbListingUrlTests(unittest.TestCase):
         lst = ing.extract(items[0], "newsletter", "msg1", 0, source="smbdealhunter.xyz")
         self.assertIn("recordId=rectxcuPHqTYCa8q1", lst.url)
 
-    def test_does_not_invent_url_when_digest_has_none(self) -> None:
+    def test_rejigg_businesses_id_extracted(self) -> None:
+        block = """HVAC Platform
+
+Added: 2 hours ago
+Located: Austin, TX
+Revenue: $4,200,000
+EBITDA: $610,000
+View details https://www.rejigg.com/app/businesses/124946?bid=124946
+https://click.example/track
+"""
+        url = ing.pick_listing_url(block, "rejigg")
+        self.assertIn("rejigg.com/app/businesses/124946", url)
+        lst = ing.extract(block, "rejigg", "msg-r", 0, source="rejigg.com")
+        self.assertIn("rejigg.com/app/businesses/124946", lst.url)
+
+    def test_baton_click_wrapper_is_not_a_listing_url(self) -> None:
+        block = """Coatings Shop
+Revenue: $3,100,000
+https://email.alerts.baton.com/c/eJxabc123
+"""
+        self.assertEqual(ing.pick_listing_url(block, "baton"), "")
+        lst = ing.extract(block, "baton", "msg-b", 0, source="alerts.baton.com")
+        self.assertEqual(lst.url, "")
+
+    def test_generational_click_wrapper_is_not_a_listing_url(self) -> None:
         body = """Latest Texas deal listings
 
 Industrial Coatings Platform
 Revenue: $4,200,000
 EBITDA: $610,000
 Dallas, TX
+https://click.generational.deals/?qs=deadbeef
 """
+        self.assertEqual(ing.pick_listing_url(body, "generational"), "")
         blocks = ing.split_newsletter(body, sender="lisa.lippe@generational.deals")
         self.assertTrue(blocks)
         lst = ing.extract(blocks[0], "generational", "msg2", 0, source="generational.deals")

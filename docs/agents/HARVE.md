@@ -57,14 +57,15 @@ Snapshot fields: title, blurb, source / subSource / nickname, geo, revenue / ebi
 
 `gmailThreadIds` is `mail.thread_id` joined deal → `deal_sources.msg_id` → `mail.gmail_id`. Deduped. Same digest thread on many deals is correct. Do **not** substitute `gmail_id` when `thread_id` is null. Flow cards open that id as `https://mail.google.com/mail/?authuser=dirk@tullyinvesting.com#all/{threadId}` (`CATCHER_GMAIL` in `web/lib/gmail-thread.ts`). Do not invent another authuser.
 
-`url` is `deals.url_norm` (fallback: a stored `deal_sources.url`). Some digests have no per-listing link in the body — leave url empty; do not invent one:
+`url` is `deals.url_norm` (fallback: a stored `deal_sources.url`). Extract a listing href only when it is already in the mail. Click wrappers are not destinations — leave url empty; do not invent or unwrap.
 
 | Source | Typical listing URL |
 |--------|---------------------|
-| BizBuySell, Axial (Pursue), Rejigg, WebsiteClosers | Present when extract finds the listing href |
-| SMB Deal Hunter | `app.smbdealhunter.xyz/item-detail?recordId=` when the intro `#N` list or a card carried it. Beehiiv `elink` / `mail.smbdealhunter` wrappers are not listing URLs. |
-| Baton alerts digest | Often no stable per-listing href (saved-search cards). |
-| Generational Group digest | Title / money only — no per-listing URL in the mail. |
+| BizBuySell, Axial (Pursue), WebsiteClosers | Present when extract finds the listing href |
+| Rejigg | `rejigg.com/app/businesses/{id}` when the card carried it |
+| SMB Deal Hunter | `smbdealexchange.com/listing-details?recordId=` (or `item-detail?recordId=`). Beehiiv `elink` / `mail.smbdealhunter` wrappers are not listing URLs. |
+| Baton alerts digest | Only `email.alerts.baton.com/c/…` wrappers — no safe unwrap; url stays empty |
+| Generational Group digest | Only `click.generational.deals/?qs=…` wrappers — no safe unwrap; url stays empty |
 
 **3. Post — one door**
 
