@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { query } from "../db.ts";
 import { isDirkForcedGmailHref } from "../gmail-thread.ts";
 import { gmailThreadHrefs } from "./deals.ts";
-import { listDirkFollowups, listDirkInbound } from "./dirk.ts";
+import { listDirkFollowups, listDirkInbound, listDirkVerdicts } from "./dirk.ts";
 import { gmailAllHref } from "./identity.ts";
 
 async function resetNext() {
@@ -56,4 +56,80 @@ test("Dirk API gmailLinks and Next hrefs force dirk@ on stored thread ids", asyn
 
   assert.deepEqual(gmailThreadHrefs(["18f0abc"]), [gmailAllHref("18f0abc")]);
   assert.equal(isDirkForcedGmailHref(gmailAllHref("18f0abc")), true);
+});
+
+test("listDirkFollowups keeps live SL/NDA/CIM/Pursuing when closed watches overflow LIMIT 80", async () => {
+  await resetNext();
+
+  const closedWatch = JSON.stringify([
+    { kind: "cim", status: "open", armed_by: "dirk", armed_at: "2026-01-01T00:00:00.000Z" },
+  ]);
+  const closedValues: string[] = [];
+  const closedParams: unknown[] = [];
+  for (let i = 0; i < 90; i += 1) {
+    const n = String(i + 1).padStart(3, "0");
+    const base = i * 4;
+    closedValues.push(
+      `($${base + 1}, $${base + 2}, 'closed', $${base + 3}::jsonb, $${base + 4}::jsonb)`,
+    );
+    closedParams.push(`TLY-C${n}`, `Closed ${n}`, closedWatch, JSON.stringify([`closed-thread-${n}`]));
+  }
+  await query(
+    `INSERT INTO deals_next (deal_number, title, stage, watches, gmail_thread_ids)
+     VALUES ${closedValues.join(",")}`,
+    closedParams,
+  );
+
+  const live = [
+    { num: "TLY-201", title: "Live Shortlist", stage: "shortlist", thread: "sl-thread" },
+    { num: "TLY-202", title: "Live NDA", stage: "nda", thread: "nda-thread" },
+    { num: "TLY-203", title: "Live CIM", stage: "cim", thread: "cim-thread" },
+    { num: "TLY-204", title: "Live Pursuing", stage: "pursuing", thread: "pursue-thread" },
+  ];
+  for (const deal of live) {
+    await query(
+      `INSERT INTO deals_next (deal_number, title, stage, gmail_thread_ids)
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [deal.num, deal.title, deal.stage, JSON.stringify([deal.thread])],
+    );
+  }
+
+  const followups = await listDirkFollowups(80);
+  const closedFollowups = followups.filter((row) => row.stage === "Closed");
+  assert.equal(closedFollowups.length, 0, "closed watches must not appear on the punch list");
+
+  for (const deal of live) {
+    const row = followups.find((item) => item.dealNumber === deal.num);
+    assert.ok(row, `${deal.num} must stay on the punch list`);
+    assert.equal(row.gmailLinks.length, 1);
+    assert.match(row.gmailLinks[0], new RegExp(`#all/${deal.thread}$`));
+    assert.equal(isDirkForcedGmailHref(row.gmailLinks[0]), true);
+  }
+});
+
+test("listDirkVerdicts includes gmailLinks from gmail_thread_ids", async () => {
+  await resetNext();
+  await query(
+    `INSERT INTO deals_next (
+       deal_number, title, stage, gmail_thread_ids,
+       tristan_verdict, tristan_verdict_reason, tristan_verdict_at
+     ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
+    [
+      "TLY-310",
+      "Shortlisted Foundry",
+      "shortlist",
+      JSON.stringify(["verdict-thread"]),
+      "short",
+      "fits buy box",
+      new Date("2026-09-19T12:00:00.000Z"),
+    ],
+  );
+
+  const verdicts = await listDirkVerdicts();
+  const found = verdicts.find((row) => row.dealNumber === "TLY-310");
+  assert.ok(found);
+  assert.equal(found.gmailLinks.length, 1);
+  assert.equal(isDirkForcedGmailHref(found.gmailLinks[0]), true);
+  assert.match(found.gmailLinks[0], /#all\/verdict-thread$/);
+  assert.doesNotMatch(found.gmailLinks[0], /\/mail\/u\/\d+/);
 });
