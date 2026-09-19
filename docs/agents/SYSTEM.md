@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-18 · Primary author this pass: `nm/docs/api-guide`
+Last reviewed: 2026-09-18 · Primary author this pass: `nm/harvest/mailman`
 
 ## 1. Product in one paragraph
 
@@ -19,11 +19,12 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 ┌─────────────────────────────────────────────────────────────┐
 │ pipeline/ (GitHub Actions ubuntu, cwd=pipeline)             │
 │  1. Restore artifact nm-deals-db-v2 → nm_deals.db           │
-│  2. harvest_gmail.py --days 3 --ingest                      │
-│  3. enrich_bizbuysell.py --backend apify --newest           │
-│  4. CSV snapshot artifact                                   │
-│  5. export_snapshot.py --post $FLOW_APP_URL /api/import     │
-│  6. Upload nm_deals.db artifact                             │
+│  2. mailman.py --days 3  (dirk@ via Mailman token → mail table) │
+│  3. ingest_mail.py       (listing labels → nm_deals.db)     │
+│  4. enrich_bizbuysell.py --backend apify --newest           │
+│  5. CSV snapshot artifact                                   │
+│  6. export_snapshot.py --post $FLOW_APP_URL /api/import     │
+│  7. Upload nm_deals.db artifact                             │
 └────────────────────────────┬────────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -50,7 +51,9 @@ Same names in SQLite, export JSON (`source` / `subSource` / `nickname`), and Neo
 
 | Path | Role |
 |------|------|
-| `pipeline/harvest_gmail.py` | Gmail API → `RawEmail` |
+| `pipeline/mailman.py` | Mailman token reads dirk@ → `mail` table + coarse label |
+| `pipeline/ingest_mail.py` | `label=listing` rows → ingest → `nm_deals.db` |
+| `pipeline/harvest_gmail.py` | Shared Gmail fetch helper (Mailman token) |
 | `pipeline/ingest.py` | Route, split, extract, in-memory dedupe |
 | `pipeline/db.py` | Persistent upsert into `nm_deals.db` |
 | `pipeline/formats/repertoire.yaml` | Format catalog / sender → format id |
@@ -148,7 +151,7 @@ Cross-source merge **backfills nulls only** (does not clobber existing earnings)
 | CIM pack opener | `/cim/[id]` — looks up `deals_next.cim_url` (https pack URL stamped by Dirk / Simon) and redirects. No Google credentials on Vercel. Missing URL → “CIM not in yet”. |
 | CIM → pipeline | `/next/pipeline` “Add from CIM” → `POST /api/next/cim/create` → same `deals_next` at stage `cim` (joins existing TLY on source id / fingerprint; never minting an inbound Review card). Classic `/pipeline` 308s here. Gmail teaser harvest lands inbound on the same table. |
 | Pursuit CRM | `pipeline/crm_pursuit.py` after harvest · `POST /api/crm/pursuit` · NDA URL + Gmail thread ids on `deals_next`; stage NDA/CIM; `crm_events.deal_id` FK → `deals_next` |
-| Gmail deep links | Every href Tristan sees uses `web/lib/gmail-thread.ts` (`gmailAllHref` / `normalizeGmailThreadUrl`). Canonical: `https://mail.google.com/mail/?authuser=dirk@tullyinvesting.com#all/{threadId}`. Never `/mail/u/0`. Stored `gmail_thread_url` rewritten on read (+ boot backfill). Dirk API `gmailLinks` same helper. |
+| Gmail deep links | Canonical: `https://mail.google.com/mail/?authuser=dirk@tullyinvesting.com#all/{threadId}`. Inbox is dirk@; Mailman’s token reads it. Never `/mail/u/0`. |
 | Train AI | `web/components/train-ai-button.tsx` · `POST/GET /api/train` — **listing** → repertoire; **criteria** (should-be-excluded / request change) → buy-box queue only. Criteria edits to `buybox.yaml`/`fit.ts` are **strong-trend / careful-exclude only** — most hard rules have exceptions. |
 | Cron harvest trigger | `web/app/api/cron/harvest/route.ts` |
 
@@ -157,8 +160,8 @@ Local: `npm run dev` in `web/` with `.env.local` (passcodes + session secret). R
 ## 8. Key commands
 
 ```bash
-# Harvest + ingest only (local)
-cd pipeline && python harvest_gmail.py --days 2 --ingest
+# Harvest + ingest only (local) — Mailman then Harve; do not harvest_gmail --ingest
+cd pipeline && python mailman.py --days 2 && python ingest_mail.py --days 2
 
 # Enrich (local)
 python enrich_bizbuysell.py --backend apify --newest --limit 5

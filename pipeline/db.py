@@ -104,6 +104,25 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
   alerts      TEXT
 );
 
+-- Mailman store: every catcher message, labeled, not extracted.
+-- Gmail msg_id is the identity. This is not the dealbook.
+CREATE TABLE IF NOT EXISTS mail (
+  gmail_id      TEXT PRIMARY KEY,
+  thread_id     TEXT,
+  sender        TEXT,
+  subject       TEXT,
+  received      TEXT,
+  body          TEXT,
+  label         TEXT NOT NULL DEFAULT 'unknown',
+  format_id     TEXT,
+  email_type    TEXT,
+  harvested_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_mail_label ON mail(label);
+CREATE INDEX IF NOT EXISTS ix_mail_thread ON mail(thread_id);
+CREATE INDEX IF NOT EXISTS ix_mail_received ON mail(received);
+
 CREATE VIEW IF NOT EXISTS v_deals AS
 SELECT d.*,
        COALESCE(d.ebitda, d.sde)                     AS earnings,
@@ -160,7 +179,82 @@ def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
         except sqlite3.OperationalError: pass
     con.executescript(SCHEMA)
     _ensure_attribution_columns(con)
+    _ensure_mail_table(con)
     return con
+
+
+def _ensure_mail_table(con: sqlite3.Connection) -> None:
+    """DBs created before Mailman still get the mail store on connect."""
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS mail (
+          gmail_id      TEXT PRIMARY KEY,
+          thread_id     TEXT,
+          sender        TEXT,
+          subject       TEXT,
+          received      TEXT,
+          body          TEXT,
+          label         TEXT NOT NULL DEFAULT 'unknown',
+          format_id     TEXT,
+          email_type    TEXT,
+          harvested_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_mail_label ON mail(label);
+        CREATE INDEX IF NOT EXISTS ix_mail_thread ON mail(thread_id);
+        CREATE INDEX IF NOT EXISTS ix_mail_received ON mail(received);
+        """
+    )
+
+
+def upsert_mail(
+    con: sqlite3.Connection,
+    *,
+    gmail_id: str,
+    thread_id: Optional[str],
+    sender: str,
+    subject: str,
+    received: str,
+    body: str,
+    label: str,
+    format_id: Optional[str] = None,
+    email_type: Optional[str] = None,
+) -> str:
+    """Insert or refresh a Mailman row. Returns 'new' or 'updated'."""
+    gid = (gmail_id or "").strip()
+    if not gid:
+        raise ValueError("gmail_id required")
+    existing = con.execute("SELECT gmail_id FROM mail WHERE gmail_id = ?", (gid,)).fetchone()
+    con.execute(
+        """
+        INSERT INTO mail (
+          gmail_id, thread_id, sender, subject, received, body,
+          label, format_id, email_type, harvested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(gmail_id) DO UPDATE SET
+          thread_id    = excluded.thread_id,
+          sender       = excluded.sender,
+          subject      = excluded.subject,
+          received     = excluded.received,
+          body         = excluded.body,
+          label        = excluded.label,
+          format_id    = excluded.format_id,
+          email_type   = excluded.email_type,
+          harvested_at = excluded.harvested_at
+        """,
+        (
+            gid,
+            thread_id or None,
+            sender,
+            subject,
+            received,
+            body or "",
+            label,
+            format_id or None,
+            email_type or None,
+            now(),
+        ),
+    )
+    return "updated" if existing else "new"
 
 
 def _ensure_attribution_columns(con: sqlite3.Connection) -> None:

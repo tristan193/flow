@@ -1,7 +1,6 @@
-# Daily deal harvest from dirk@ — LIVE pipeline (cloud, not Tristan's PC).
+# Daily deal harvest from Mailman — LIVE pipeline (cloud, not Tristan's PC).
 #
-# Flow: Gmail (dirk@) → ingest → Apify BBS enrich → nm_deals.db → POST Flow App
-# Google Drive is not part of this path.
+# Flow: Gmail (dirk@, Mailman token) → mail table → ingest → Apify → POST Flow App
 #
 # Schedule: driven by Vercel Cron hitting the Flow App route
 # web/app/api/cron/harvest, which calls workflow_dispatch. GitHub's own
@@ -13,7 +12,7 @@
 # triggers are harmless; concurrency below serializes them.
 #
 # Secrets required:
-#   GMAIL_CLIENT_SECRET_JSON, GMAIL_TOKEN_JSON
+#   GMAIL_TOKEN_JSON — Mailman OAuth token (credentials/mailman_token.json)
 #   FLOW_APP_URL (e.g. https://web-tau-seven-77.vercel.app)
 #   FLOW_IMPORT_TOKEN (same value as Vercel env FLOW_IMPORT_TOKEN)
 #   APIFY_TOKEN — BizBuySell listing enrich (required; email alone has no SDE)
@@ -89,7 +88,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$CLIENT" > credentials/client_secret.json
-          printf '%s' "$TOKEN" > credentials/token.json
+          printf '%s' "$TOKEN" > credentials/mailman_token.json
 
       - name: Harvest + ingest (with retries)
         env:
