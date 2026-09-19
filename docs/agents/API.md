@@ -115,9 +115,14 @@ GET /api/next/dirk
 GET /api/next/dirk?section=inbound
 GET /api/next/dirk?section=verdicts
 GET /api/next/dirk?section=followups
+GET /api/next/dirk?section=live-pipeline
 ```
 
 Read-only. Use this to see what needs a stage move or a CIM stamp. Do not scrape the Review HTML.
+
+`followups` is the punch-list: live Shortlisted / NDA / CIM / Pursuing first (with `gmailLinks`), then open watches on those stages. Closed / walked / passed / dead watches are excluded and cannot starve the list.
+
+`live-pipeline` is the raw `deals_next` dump for Saturday-email rebuilds: `dealNumber`, `title`, `stage`, `gmailThreadIds`, `ndaUrl`, `cimUrl` for every live-pipeline row. No LIMIT 80.
 
 ---
 
