@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 from typing import Optional
@@ -44,13 +45,38 @@ def label_for_email_type(email_type: str | None) -> str:
     return "unknown"
 
 
+# Blast subject only. "Re: New Businesses For Sale…" is a thread, not this shape.
+# nm/harvest/mailman: repertoire miss must not park this listing as unknown.
+# Do not widen the pattern. New formats are proposed to Tristan first.
+_NEW_BUSINESSES_FOR_SALE = re.compile(r"(?i)^new businesses for sale\b")
+
+
+def _fallback_after_repertoire_miss(em: ing.RawEmail) -> tuple[str, str]:
+    """High-precision label when repertoire misses.
+
+    Returns (label, email_type). email_type is blank when the row stays unknown.
+    format_id stays blank — this is not a repertoire entry.
+    """
+    subject = (em.subject or "").strip()
+    if _NEW_BUSINESSES_FOR_SALE.search(subject):
+        return "listing", "daily_digest"
+    return "unknown", ""
+
+
 def classify_mail(em: ing.RawEmail) -> tuple[str, str, str]:
-    """Return (label, format_id, email_type). Never extracts a Listing."""
+    """Return (label, format_id, email_type). Never extracts a Listing.
+
+    Repertoire matches first. A miss is sorted by reading the mail; the only
+    automatic miss-path is the New Businesses For Sale subject blast.
+    """
     domain, email, _nick = ing.attribution(em)
     matched = ing.classify_format(em, domain=domain, email=email)
-    fmt_id = matched.format_id if matched else ""
-    em_type = matched.email_type if matched else ""
-    return label_for_email_type(em_type), fmt_id, em_type
+    if matched is not None:
+        fmt_id = matched.format_id or ""
+        em_type = matched.email_type or ""
+        return label_for_email_type(em_type), fmt_id, em_type
+    label, em_type = _fallback_after_repertoire_miss(em)
+    return label, "", em_type
 
 
 def _thread_id(msg: dict) -> Optional[str]:
@@ -176,6 +202,27 @@ def _self_test() -> None:
     )
     label, fmt_id, em_type = classify_mail(em)
     assert label in {"listing", "unknown"}, (label, fmt_id, em_type)
+
+    blast = ing.RawEmail(
+        "tw1",
+        "Albert Fialkovich <afialkovich@tworldco.com>",
+        "New Businesses For Sale: Transworld Business Advisors of Colorado",
+        "2026-09-21",
+        body="office blast",
+    )
+    label, fmt_id, em_type = classify_mail(blast)
+    assert label == "listing", (label, fmt_id, em_type)
+    assert fmt_id == ""
+    assert em_type == "daily_digest"
+    reply = ing.RawEmail(
+        "tw2",
+        "Albert Fialkovich <afialkovich@tworldco.com>",
+        "Re: New Businesses For Sale: Transworld Business Advisors of Colorado",
+        "2026-09-21",
+        body="thanks",
+    )
+    assert classify_mail(reply)[0] == "unknown"
+
     url = catcher.gmail_thread_url("18f0threadAAA")
     assert "authuser=dirk%40tullyinvesting.com" in url
     assert url.endswith("#all/18f0threadAAA")
