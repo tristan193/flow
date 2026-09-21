@@ -138,6 +138,7 @@ def export(db_path: str) -> dict:
             "city": r["city"] or None,
             "state": r["state"] or None,
             "county": r["county"] or None,
+            "region": r["region"] if "region" in r.keys() and r["region"] else None,
             "revenue": r["revenue"],
             "ebitda": r["ebitda"],
             "sde": r["sde"],

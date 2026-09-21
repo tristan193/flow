@@ -270,6 +270,8 @@ export interface NextDealRow {
   city: string | null;
   state: string | null;
   county: string | null;
+  /** Axial/census region prose. Alongside city/state, not instead of. */
+  region: string | null;
   revenue: number | null;
   ebitda: number | null;
   sde: number | null;

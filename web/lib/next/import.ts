@@ -53,6 +53,7 @@ export interface IncomingNextDeal {
   city?: string | null;
   state?: string | null;
   county?: string | null;
+  region?: string | null;
   revenue?: number | null;
   ebitda?: number | null;
   sde?: number | null;
@@ -171,7 +172,7 @@ function toTimestamp(value: unknown): string | null {
 async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
   const rows = await q<Record<string, unknown>>(
     `SELECT id, deal_number, source_deal_id, source_ids, fingerprint,
-            title, alias_names, broker_firm, city, state, nickname
+            title, alias_names, broker_firm, city, state, region, nickname
        FROM deals_next`,
   );
   return rows.map((row) => ({
@@ -185,6 +186,7 @@ async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
     brokerFirm: row.broker_firm == null ? null : String(row.broker_firm),
     city: row.city == null ? null : String(row.city),
     state: row.state == null ? null : String(row.state),
+    region: row.region == null ? null : String(row.region),
     nickname: row.nickname == null ? null : String(row.nickname),
   }));
 }
@@ -197,6 +199,7 @@ function incomingToIdentity(deal: IncomingNextDeal): IdentityInput {
     brokerFirm: deal.brokerFirm,
     city: deal.city,
     state: deal.state,
+    region: deal.region,
     ebitda: toNumber(deal.ebitda),
     sde: toNumber(deal.sde),
     url: deal.url,
@@ -275,9 +278,18 @@ async function updateMatchedDeal(
        sub_source          = COALESCE($4, sub_source),
        nickname            = COALESCE($5, nickname),
        source_domains      = CASE WHEN source_domains = '[]'::jsonb THEN $6::jsonb ELSE source_domains END,
-       city                = COALESCE($7, city),
-       state               = COALESCE($8, state),
+       city                = CASE
+                               WHEN $7::text IS NOT NULL THEN $7::text
+                               WHEN $26::text IS NOT NULL AND city ~ '^[A-Za-z]{2}$' THEN NULL
+                               ELSE city
+                             END,
+       state               = CASE
+                               WHEN $8::text IS NOT NULL THEN $8::text
+                               WHEN $26::text IS NOT NULL AND $7::text IS NULL AND city ~ '^[A-Za-z]{2}$' THEN NULL
+                               ELSE state
+                             END,
        county              = COALESCE($9, county),
+       region              = COALESCE($26::text, region),
        revenue             = COALESCE($10, revenue),
        ebitda              = COALESCE($11, ebitda),
        sde                 = COALESCE($12, sde),
@@ -302,7 +314,7 @@ async function updateMatchedDeal(
        fingerprint         = COALESCE($24, fingerprint),
        next_action         = COALESCE($25, next_action),
        updated_at          = now()
-     WHERE id = $26`,
+     WHERE id = $27`,
     [
       title,
       deal.blurb ?? null,
@@ -329,6 +341,7 @@ async function updateMatchedDeal(
       broker,
       ident.fingerprint,
       nextAction,
+      deal.region ?? null,
       matchedId,
     ],
   );
@@ -474,7 +487,7 @@ async function insertNewDeal(
        deal_number, source_deal_id, source_ids, alias_names,
        gmail_thread_ids, broker_firm, fingerprint, next_action, is_demo,
        title, blurb, source, sub_source, nickname, source_domains,
-       city, state, county,
+       city, state, county, region,
        revenue, ebitda, sde, asking, business_model_type, needs_llm, url,
        first_seen, last_seen, times_seen,
        stage, stage_changed_at, stage_changed_by,
@@ -483,11 +496,11 @@ async function insertNewDeal(
        $1, $2, $3::jsonb, $4::jsonb,
        $5::jsonb, $6, $7, $8, $9,
        $10, $11, $12, $13, $14, $15::jsonb,
-       $16, $17, $18,
-       $19, $20, $21, $22, $23, $24::jsonb, $25,
-       COALESCE($26::timestamptz, now()), COALESCE($27::timestamptz, now()), $28,
-       $29, CASE WHEN $29 = 'closed' THEN now() ELSE NULL END, CASE WHEN $29 = 'closed' THEN $30 ELSE NULL END,
-       $31, $32
+       $16, $17, $18, $19,
+       $20, $21, $22, $23, $24, $25::jsonb, $26,
+       COALESCE($27::timestamptz, now()), COALESCE($28::timestamptz, now()), $29,
+       $30, CASE WHEN $30 = 'closed' THEN now() ELSE NULL END, CASE WHEN $30 = 'closed' THEN $31 ELSE NULL END,
+       $32, $33
      )
      RETURNING id`,
     [
@@ -509,6 +522,7 @@ async function insertNewDeal(
       deal.city ?? null,
       deal.state ?? null,
       deal.county ?? null,
+      deal.region ?? null,
       toNumber(deal.revenue),
       toNumber(deal.ebitda),
       toNumber(deal.sde),

@@ -11,6 +11,8 @@
  * NEVER assume one Gmail thread = one deal.
  */
 
+import { isRealState, looksLikeRegion, slugGeoToken } from "../geo";
+
 export type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb";
 
 export interface SourceId {
@@ -26,6 +28,7 @@ export interface IdentityInput {
   brokerFirm?: string | null;
   city?: string | null;
   state?: string | null;
+  region?: string | null;
   ebitda?: number | null;
   sde?: number | null;
   url?: string | null;
@@ -143,16 +146,15 @@ export function normalizeBrokerFirm(raw: string | null | undefined): string | nu
 export function normalizeGeo(
   city?: string | null,
   state?: string | null,
+  region?: string | null,
 ): string | null {
   const st = (state || "").trim().toUpperCase();
-  const c = (city || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (st && c) return `${c}|${st}`;
-  if (st) return st;
+  const c = slugGeoToken(city);
+  const regionSlug =
+    slugGeoToken(region) || (looksLikeRegion(city) ? slugGeoToken(city) : "");
+  if (isRealState(state, city) && c && !looksLikeRegion(city)) return `${c}|${st}`;
+  if (isRealState(state, city)) return st;
+  if (regionSlug) return `region:${regionSlug}`;
   if (c) return c;
   return null;
 }
@@ -170,13 +172,14 @@ export function computeFingerprint(input: {
   sde?: number | null;
   city?: string | null;
   state?: string | null;
+  region?: string | null;
 }): { fingerprint: string | null; complete: boolean } {
   const teaser = normalizeTeaserName(input.title);
   const broker = normalizeBrokerFirm(input.brokerFirm);
   // Prefer labeled EBITDA; SDE is a last-resort stand-in so two SDE-only
   // teasers of the same shop can still join. Never invent a figure.
   const earnings = roundEbitda(input.ebitda ?? input.sde ?? null);
-  const geo = normalizeGeo(input.city, input.state);
+  const geo = normalizeGeo(input.city, input.state, input.region);
   if (!teaser || !broker || earnings == null || !geo) {
     return { fingerprint: null, complete: false };
   }
@@ -384,7 +387,7 @@ export function buildIdentity(input: IdentityInput): IdentityRecord {
     gmailThreadIds: uniqueStrings(input.gmailThreadIds || []),
     brokerFirm: input.brokerFirm?.trim() || null,
     teaserNorm: normalizeTeaserName(input.title),
-    geoNorm: normalizeGeo(input.city, input.state),
+    geoNorm: normalizeGeo(input.city, input.state, input.region),
   };
 }
 
@@ -399,6 +402,7 @@ export interface MatchCandidate {
   brokerFirm?: string | null;
   city?: string | null;
   state?: string | null;
+  region?: string | null;
   nickname?: string | null;
 }
 
@@ -471,7 +475,7 @@ export function findIdentityMatch(
   const incomingTitle = incoming.title || null;
   const incomingAliases = uniqueStrings([...(incoming.aliasNames || []), incomingTitle || ""]);
   const incomingBroker = normalizeBrokerFirm(incoming.brokerFirm);
-  const incomingGeo = normalizeGeo(incoming.city, incoming.state);
+  const incomingGeo = normalizeGeo(incoming.city, incoming.state, incoming.region);
 
   for (const c of candidates) {
     const theirNames = uniqueStrings([c.title || "", ...(c.aliasNames || [])]);
@@ -483,7 +487,7 @@ export function findIdentityMatch(
     const theirBroker = normalizeBrokerFirm(c.brokerFirm);
     if (incomingBroker && theirBroker && incomingBroker !== theirBroker) continue;
 
-    const theirGeo = normalizeGeo(c.city, c.state);
+    const theirGeo = normalizeGeo(c.city, c.state, c.region);
     if (incomingGeo && theirGeo && incomingGeo !== theirGeo) continue;
 
     // Name overlap alone is allowed only when at least one of broker or geo

@@ -40,6 +40,8 @@ from typing import Optional, List, Dict, Tuple
 from difflib import SequenceMatcher
 from html import unescape
 
+from geo import extract_region, is_usps, region_key, STATES as GEO_STATES
+
 
 def strip_html(html: str) -> str:
     """Stdlib-only HTML->text. Required in production: real BizBuySell
@@ -131,6 +133,10 @@ class Listing:
     city: Optional[str] = None
     state: Optional[str] = None
     county: Optional[str] = None
+    # Axial/census region prose ("Western Midwest (IA, KS, …)"). Alongside
+    # city/state, not instead of them — leave city/state empty when this is
+    # the only geography the teaser gave.
+    region: Optional[str] = None
     revenue: Optional[float] = None
     # EBITDA and SDE are stored SEPARATELY and never collapsed. They are
     # different numbers measuring different things; SDE includes owner comp.
@@ -163,11 +169,18 @@ class Listing:
         return f"${v:,.0f}" + ("*" if self.earnings_basis == "SDE" else "")
 
     def fingerprint(self) -> str:
-        """Deliberately lossy. Same economics + same state = same deal,
-        even when four newsletters give it four different headlines."""
+        """Deliberately lossy. Same economics + same geo = same deal,
+        even when four newsletters give it four different headlines.
+
+        Prefer a real state. Region-only teasers (Axial) hash the region
+        slug so two shops in different regions with similar money do not
+        collapse — we used to misfile the first two paren codes as City, ST
+        and that accidental state was load-bearing here.
+        """
         def band(v, step):
             return int(v / step) if v else -1
-        raw = f"{self.state}|{band(self.revenue,250_000)}|{band(self.earnings,100_000)}"
+        geo = self.state or region_key(self.region) or ""
+        raw = f"{geo}|{band(self.revenue,250_000)}|{band(self.earnings,100_000)}"
         return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -1351,10 +1364,7 @@ def extract_money_fields(text: str) -> Dict[str, float]:
     return found
 
 
-STATES = {"AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-          "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-          "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
-          "VA","WA","WV","WI","WY","DC"}
+STATES = GEO_STATES
 
 # Real gap found against businessexits.com and Benchmark Tennessee mail: both
 # spell states out in full prose ("Location: Pennsylvania, United States",
@@ -1382,23 +1392,32 @@ _STATE_NAME_PAT = re.compile(
 )
 
 def extract_location(text: str):
+    """(city, state, county, region).
+
+    Real City, ST / County, ST stay as they are. Axial-style region prose
+    ('Western Midwest (IA, KS, …)') is stored on region — never as the first
+    two parenthetical abbreviations invented into city/state.
+    """
     city = state = county = None
     m = re.search(r"([A-Z][A-Za-z.\-/' ]{2,28}?)[ \t]+County,[ \t]*([A-Z]{2})\b", text)
     if m and m.group(2) in STATES:
-        return None, m.group(2), m.group(1).strip()
+        county = m.group(1).strip()
+        state = m.group(2)
     # [ \t] not \s — \s crosses newlines and swallows the preceding line
     # ("Plumbing Company\nGeorgetown, TX" parsed city as "Plumbing Company").
-    for m in re.finditer(r"(?:^|[^A-Za-z\n])([A-Z][A-Za-z.\-/']+(?:[ \t]+[A-Z][A-Za-z.\-/']+){0,2}),[ \t]*([A-Z]{2})\b", text, re.M):
-        if m.group(2) in STATES:
-            city, state = m.group(1).strip(), m.group(2)
-            break
     if not state:
+        for m in re.finditer(r"(?:^|[^A-Za-z\n])([A-Z][A-Za-z.\-/']+(?:[ \t]+[A-Z][A-Za-z.\-/']+){0,2}),[ \t]*([A-Z]{2})\b", text, re.M):
+            if m.group(2) in STATES and not is_usps(m.group(1).strip()):
+                city, state = m.group(1).strip(), m.group(2)
+                break
+    region = extract_region(text)
+    if not state and not region:
         m = re.search(r"\b(" + "|".join(STATES) + r")\b", text)
         if m: state = m.group(1)
-    if not state:
+    if not state and not region:
         m = _STATE_NAME_PAT.search(text)
         if m: state = STATE_NAMES[m.group(1).lower()]
-    return city, state, county
+    return city, state, county, region
 
 
 LOCAL_SIGNALS = [r"\bhvac\b", r"plumbing", r"electrical", r"roofing", r"landscap",
@@ -1747,7 +1766,7 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
     if format_id == "axial.single_deal" or format_family == "axial":
         work = normalize_axial_ltm_money(work)
     money = extract_money_fields(work)
-    city, state, county = extract_location(work)
+    city, state, county, region = extract_location(work)
     model, confident = classify_model(work)
     url = pick_listing_url(work, format_family)
 
@@ -1775,7 +1794,7 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         email_type=email_type,
         source_msg=msg_id,
         url=url,
-        city=city, state=state, county=county,
+        city=city, state=state, county=county, region=region,
         revenue=money.get("revenue"),
         ebitda=money.get("ebitda"),
         sde=money.get("sde"),
@@ -1785,7 +1804,8 @@ def extract(block: str, format_family: str, msg_id: str, idx: int,
         refs=[(domain, msg_id, url)],
     )
     if lst.earnings is None: lst.needs_llm.append("earnings")
-    if lst.state is None:    lst.needs_llm.append("location")
+    if lst.state is None and lst.region is None:
+        lst.needs_llm.append("location")
     if not confident:        lst.needs_llm.append("business_model_type")
     # newbizopps@ never labels earnings; title/blurb often say "$390K Cash Flow"
     # or "| $387k SDE" as marketing copy — do not invent money fields from that.
@@ -1910,7 +1930,7 @@ def dedupe(items: List[Listing]) -> Tuple[List[Listing], int]:
             if it.url and norm_url(it.url) == norm_url(k.url):
                 hit = k; break
             # pass 2 — economic fingerprint
-            if it.earnings and k.earnings and it.state and it.fingerprint() == k.fingerprint():
+            if it.earnings and k.earnings and (it.state or it.region) and it.fingerprint() == k.fingerprint():
                 hit = k; break
             # pass 3 — fuzzy title, same state
             if it.state and it.state == k.state and titles_match(it.title, k.title):
@@ -1928,7 +1948,7 @@ def dedupe(items: List[Listing]) -> Tuple[List[Listing], int]:
             # A merge can upgrade an SDE-only record to a real EBITDA one when
             # a second source disclosed it. That is the main reason to merge
             # rather than dedupe-and-drop.
-            for f in ("revenue", "ebitda", "sde", "asking", "city", "state", "county"):
+            for f in ("revenue", "ebitda", "sde", "asking", "city", "state", "county", "region"):
                 if getattr(hit, f) is None and getattr(it, f) is not None:
                     setattr(hit, f, getattr(it, f))
             if not hit.url and it.url:
@@ -2177,7 +2197,7 @@ if __name__ == "__main__":
 
     print("\n" + "-" * 78)
     for l in kept:
-        loc = ", ".join(x for x in [l.city, l.county, l.state] if x) or "?"
+        loc = ", ".join(x for x in [l.city, l.county, l.state, l.region] if x) or "?"
         print(f"\n{l.title[:60]}")
         print(f"   {loc:<28} {l.business_model_type:<19} src={'+'.join(l.seen_in)}")
         print(f"   rev={rv:<14} earnings={l.earnings_display()} ({l.earnings_basis or 'none'})")

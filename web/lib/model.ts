@@ -238,6 +238,8 @@ export interface DealRow {
   city: string | null;
   state: string | null;
   county: string | null;
+  /** Axial/census region prose. Alongside city/state, not instead of. */
+  region?: string | null;
   revenue: number | null;
   ebitda: number | null;
   sde: number | null;
@@ -345,8 +347,22 @@ export function earningsLabel(deal: Pick<DealRow, "ebitda" | "sde">): string {
   return "—";
 }
 
-export function locationLabel(deal: Pick<DealRow, "city" | "state">): string {
-  return [deal.city, deal.state].filter(Boolean).join(", ") || "Location not disclosed";
+export function locationLabel(
+  deal: Pick<DealRow, "city" | "state"> & { region?: string | null },
+): string {
+  const city = (deal.city || "").trim();
+  const state = (deal.state || "").trim();
+  const region = (deal.region || "").trim();
+  const cityIsCode = /^[A-Za-z]{2}$/.test(city);
+  const stateIsCode = /^[A-Za-z]{2}$/.test(state);
+  // Two USPS codes (IA, KS) are a misfiled paren list, not City, ST.
+  if (city && state && !(cityIsCode && stateIsCode)) {
+    return `${city}, ${state}`;
+  }
+  if (state && !cityIsCode) return state;
+  if (region) return region;
+  if (city && !cityIsCode) return city;
+  return "Location not disclosed";
 }
 
 /** Local / regional / national when known; null when unset or legacy labels. */

@@ -14,6 +14,7 @@ import {
   isNonDealMail,
   mergeAliasNames,
   mergeThreadIds,
+  normalizeGeo,
   parseDealNumber,
   sanitizeSourceDealId,
 } from "./identity.ts";
@@ -256,4 +257,21 @@ test("Axial hex nickname groups with source id", () => {
     sourceIds: [{ kind: "axial", value: "deadbeefcafebabe", canonical: "axial:deadbeefcafebabe" }],
   });
   assert.ok(keys.includes("axial:deadbeefcafebabe"));
+});
+
+test("normalizeGeo prefers real City/ST and uses region as a fallback", () => {
+  assert.equal(normalizeGeo("Austin", "TX"), "austin|TX");
+  assert.equal(
+    normalizeGeo(null, null, "Western Midwest (IA, KS, MO, NE, ND, SD)"),
+    "region:western midwest ia ks mo ne nd sd",
+  );
+  assert.equal(
+    normalizeGeo("Austin", "TX", "Western Midwest (IA, KS, MO, NE, ND, SD)"),
+    "austin|TX",
+  );
+  assert.notEqual(normalizeGeo("IA", "KS"), "ia|KS");
+  assert.equal(
+    normalizeGeo("IA", "KS", "Western Midwest (IA, KS, MO, NE, ND, SD)"),
+    "region:western midwest ia ks mo ne nd sd",
+  );
 });

@@ -117,6 +117,7 @@ function normalizeDeal(row: Record<string, unknown>): NextDealRow {
     city: row.city == null ? null : String(row.city),
     state: row.state == null ? null : String(row.state),
     county: row.county == null ? null : String(row.county),
+    region: row.region == null ? null : String(row.region),
     revenue: row.revenue == null ? null : Number(row.revenue),
     ebitda: row.ebitda == null ? null : Number(row.ebitda),
     sde: row.sde == null ? null : Number(row.sde),
