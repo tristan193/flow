@@ -2,7 +2,7 @@
 Pursuit CRM lane: classify non-discovery dirk@ mail → POST Flow /api/crm/pursuit.
 
   python crm_pursuit.py --days 5
-  python crm_pursuit.py --days 3 --post https://web-….vercel.app --token $FLOW_IMPORT_TOKEN
+  python crm_pursuit.py --days 3 --post https://web-….vercel.app --token $PIPELINE_TOKEN
 
 Skips known listing digests. Detects NDA e-sign / NDA PDFs / CIM attachments /
 VDR grants and sends match hints + optional file bytes.
@@ -373,7 +373,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=5)
     ap.add_argument("--post", default="", help="Flow App base URL")
-    ap.add_argument("--token", default=os.environ.get("FLOW_IMPORT_TOKEN", ""))
+    ap.add_argument("--token", default=None, help="Bearer (PIPELINE_TOKEN, else FLOW_IMPORT_TOKEN)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -396,10 +396,11 @@ def main() -> None:
     if args.dry_run or not args.post:
         print("Dry run (pass --post URL --token … to apply)")
         return
-    if not args.token:
-        print("FATAL: --token or FLOW_IMPORT_TOKEN required")
+    token = (args.token or os.environ.get("PIPELINE_TOKEN") or os.environ.get("FLOW_IMPORT_TOKEN") or "").strip()
+    if not token:
+        print("FATAL: --token or PIPELINE_TOKEN (preferred) / FLOW_IMPORT_TOKEN required")
         sys.exit(1)
-    post_events(args.post, args.token, events)
+    post_events(args.post, token, events)
 
 
 if __name__ == "__main__":

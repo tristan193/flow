@@ -4,11 +4,11 @@
   "crons": [
     {
       "path": "/api/cron/harvest",
-      "schedule": "20 11 * * *"
+      "schedule": "17 10 * * *"
     },
     {
       "path": "/api/cron/harvest",
-      "schedule": "20 15 * * *"
+      "schedule": "23 19 * * *"
     }
   ]
 }

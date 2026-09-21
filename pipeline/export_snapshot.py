@@ -7,7 +7,7 @@ is the bridge: it flattens v_deals + verdicts into a single JSON document that
 Flow App can import, either as a seed file or by POSTing to /api/import.
 
   python export_snapshot.py [--db nm_deals.db] [--out ../web/db/seed-data.json]
-  python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $FLOW_IMPORT_TOKEN
+  python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $PIPELINE_TOKEN
 
 Live path: GitHub Actions daily harvest calls --post after each successful ingest.
 Google Drive is not involved.
@@ -23,6 +23,15 @@ import urllib.request
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def harvest_bearer() -> str:
+    """Preferred harvest POST bearer: PIPELINE_TOKEN, else FLOW_IMPORT_TOKEN.
+
+    Daily catalog is POST /api/import only — never /api/next/import.
+    """
+    return (os.environ.get("PIPELINE_TOKEN") or os.environ.get("FLOW_IMPORT_TOKEN") or "").strip()
+
 
 # Same hash Flow uses (web/lib/gmail-thread.ts). Import accepts ids, not URLs.
 _THREAD_HASH = re.compile(r"#(?:all|inbox|sent|search|label/[^/?#]+)/([a-zA-Z0-9]+)", re.I)
@@ -182,7 +191,11 @@ def main() -> int:
     ap.add_argument("--db", default=os.path.join(HERE, "nm_deals.db"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "web", "db", "seed-data.json"))
     ap.add_argument("--post", help="Flow App base URL to POST the snapshot to")
-    ap.add_argument("--token", default=os.environ.get("FLOW_IMPORT_TOKEN", ""))
+    ap.add_argument(
+        "--token",
+        default=None,
+        help="Bearer for POST /api/import (default: PIPELINE_TOKEN, else FLOW_IMPORT_TOKEN)",
+    )
     a = ap.parse_args()
 
     if not os.path.exists(a.db):
@@ -192,8 +205,12 @@ def main() -> int:
     payload = export(a.db)
 
     if a.post:
-        if not a.token:
-            print("error: --post needs --token or FLOW_IMPORT_TOKEN", file=sys.stderr)
+        token = (a.token or harvest_bearer()).strip()
+        if not token:
+            print(
+                "error: --post needs --token or PIPELINE_TOKEN (preferred) / FLOW_IMPORT_TOKEN",
+                file=sys.stderr,
+            )
             return 1
         base = a.post.strip().rstrip("/")
         if not base.startswith("https://") and not base.startswith("http://"):
@@ -206,7 +223,7 @@ def main() -> int:
             base + "/api/import",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {a.token.strip()}"},
+                     "Authorization": f"Bearer {token}"},
             method="POST",
         )
         try:

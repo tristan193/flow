@@ -1,6 +1,6 @@
 # System map for agents (NM Deal Flow)
 
-Last reviewed: 2026-09-18 · Primary author this pass: `nm/harvest/mailman`
+Last reviewed: 2026-09-21 · Primary author this pass: `nm/harvest/mailman-ci`
 
 ## 1. Product in one paragraph
 
@@ -19,12 +19,13 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 ┌─────────────────────────────────────────────────────────────┐
 │ pipeline/ (GitHub Actions ubuntu, cwd=pipeline)             │
 │  1. Restore artifact nm-deals-db-v2 → nm_deals.db           │
-│  2. mailman.py --days 3  (dirk@ via Mailman token → mail table) │
+│  2. mailman.py --days 2  (dirk@ via Mailman token → mail table) │
 │  3. ingest_mail.py       (listing labels → nm_deals.db)     │
 │  4. enrich_bizbuysell.py --backend apify --newest           │
 │  5. CSV snapshot artifact                                   │
 │  6. export_snapshot.py --post $FLOW_APP_URL /api/import     │
-│  7. Upload nm_deals.db artifact                             │
+│     bearer PIPELINE_TOKEN else FLOW_IMPORT_TOKEN            │
+│  7. Upload nm_deals.db artifact (Harve 5:30 shelf; always)  │
 └────────────────────────────┬────────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -161,6 +162,7 @@ Local: `npm run dev` in `web/` with `.env.local` (passcodes + session secret). R
 
 ```bash
 # Harvest + ingest only (local) — Mailman then Harve; do not harvest_gmail --ingest
+# Live catcher is GitHub Actions daily-harvest.yml (Vercel cron), not Tristan's PC.
 cd pipeline && python mailman.py --days 2 && python ingest_mail.py --days 2
 
 # Enrich (local)
@@ -172,6 +174,7 @@ python export_snapshot.py --db nm_deals.db --out ../web/db/seed-data.json
 
 # Trigger live harvest
 gh workflow run "Daily harvest" --ref main
+gh workflow run "Daily harvest" --ref main -f mailman_only=true
 ```
 
 ## 9. Related docs (deeper / adjacent)
