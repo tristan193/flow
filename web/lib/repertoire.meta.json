@@ -112,7 +112,7 @@
       "gotchas": [
         "Financials are a table flattened to one cell per line: year header row, then label + ($amount, unit) per column \u2014 normalize_axial_ltm_money collapses each row before extract",
         "Multi-year tables are ascending left to right (2023 2024 2025); take the LAST column. Vocational Education read $6.5M/$2.1M (2023) instead of $5.0M/$2.0M (2025)",
-        "Geography: 'Western Midwest (IA, KS, \u2026)' / 'Middle Atlantic (CT, DE, \u2026)' \u2014 a census region, not City/ST. extract_location still files the first two states as city/state, which is wrong but load-bearing for dedupe",
+        "Geography: 'Western Midwest (IA, KS, \u2026)' / 'Middle Atlantic (CT, DE, \u2026)' \u2014 a census/Axial region, not City/ST. Store the full phrase on `region`; do not file the first two paren codes as city/state. Real City, ST elsewhere still wins when present. Fit maps the region's states onto G2 (any TOLA including NM) or G3.",
         "Train AI deal 45 (Architectural Sign): aspirational 'grow revenue to $15M' was filed as revenue; LTM is Revenue/EBITDA $5.4M/$1.3M \u2014 normalize_axial_ltm_money + listing correction applied 2026-08-04",
         "Body order is fixed \u2014 headline, greeting, table, seller prose, boilerplate \u2014 so the blurb is the slice between the table and the first boilerplate heading (Geography/Industries/Documents/Footnotes). Scrubbing chrome by phrase does not hold.",
         "Pass (action=decline) is listed before Pursue in the teaser \u2014 pick_listing_url must prefer action=pursue / teaser-share, never the Pass link (archives the deal)"

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS deals (
   city            TEXT,
   state           TEXT,
   county          TEXT,
+  region          TEXT,
 
   revenue         REAL,
   ebitda          REAL,      -- ONLY when labeled EBITDA
@@ -180,6 +181,7 @@ def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
         except sqlite3.OperationalError: pass
     con.executescript(SCHEMA)
     _ensure_attribution_columns(con)
+    _ensure_region_column(con)
     _ensure_mail_table(con)
     return con
 
@@ -274,11 +276,38 @@ def _ensure_attribution_columns(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE deals ADD COLUMN nickname TEXT")
 
 
+def _ensure_region_column(con: sqlite3.Connection) -> None:
+    """Axial census-region prose lives on `region`, alongside city/state."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(deals)")}
+    if "region" not in cols:
+        con.execute("ALTER TABLE deals ADD COLUMN region TEXT")
+        # SQLite expands d.* when the view is created, so recreate after ALTER.
+        con.execute("DROP VIEW IF EXISTS v_deals")
+        con.executescript(
+            """
+            CREATE VIEW IF NOT EXISTS v_deals AS
+            SELECT d.*,
+                   COALESCE(d.ebitda, d.sde)                     AS earnings,
+                   CASE WHEN d.ebitda IS NOT NULL THEN 'EBITDA'
+                        WHEN d.sde    IS NOT NULL THEN 'SDE'
+                        ELSE NULL END                            AS earnings_basis,
+                   CASE WHEN d.ebitda IS NULL AND d.sde IS NOT NULL THEN 1 ELSE 0 END
+                                                                 AS earnings_is_sde,
+                   CASE WHEN d.revenue > 0
+                        THEN ROUND(COALESCE(d.ebitda, d.sde) / d.revenue, 4)
+                        END                                      AS margin,
+                   (SELECT GROUP_CONCAT(DISTINCT s.source)
+                      FROM deal_sources s WHERE s.deal_id = d.id) AS sources
+            FROM deals d;
+            """
+        )
+
+
 # ------------------------------------------------------------------
 # UPSERT — the persistent form of dedupe
 # ------------------------------------------------------------------
 BACKFILL = (
-    "revenue", "ebitda", "sde", "asking", "city", "state", "county",
+    "revenue", "ebitda", "sde", "asking", "city", "state", "county", "region",
     "source", "sub_source", "nickname",
 )
 
@@ -342,6 +371,15 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     if not row and l.earnings and l.state:
         row = con.execute("SELECT id FROM deals WHERE fingerprint=? AND state=?", (fp, l.state)).fetchone()
         if row: mode = "merged"
+    if not row and l.earnings and getattr(l, "region", None):
+        try:
+            row = con.execute(
+                "SELECT id FROM deals WHERE fingerprint=? AND region=?",
+                (fp, l.region),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            row = None
+        if row: mode = "merged"
     if not row and l.state:
         for cand in con.execute("SELECT id, title FROM deals WHERE state=?", (l.state,)):
             if _titles_match(l.title, cand["title"]):
@@ -371,6 +409,13 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
                     updates[f] = new
             if fp != cur["fingerprint"]:
                 updates["fingerprint"] = fp
+            # Region-only reparse: drop a prior paren-list misfile (city=IA, state=KS).
+            if getattr(l, "region", None) and not l.city:
+                cur_city = (cur["city"] or "").strip()
+                if len(cur_city) == 2 and cur_city.isalpha():
+                    updates["city"] = None
+                    if not l.state:
+                        updates["state"] = None
 
         # backfill only NULLs — a later source may disclose EBITDA where the
         # first only gave SDE. Never overwrite a value we already trust.
@@ -388,15 +433,15 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
         cur = con.execute("""
           INSERT INTO deals (ext_id,fingerprint,url_norm,title,blurb,
                              source,sub_source,nickname,
-                             city,state,county,
+                             city,state,county,region,
                              revenue,ebitda,sde,asking,business_model_type,needs_llm,
                              first_seen,last_seen)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
           (l.ext_id, fp, un, l.title, l.blurb,
            getattr(l, "source", None) or None,
            getattr(l, "sub_source", None) or None,
            getattr(l, "nickname", None) or None,
-           l.city, l.state, l.county,
+           l.city, l.state, l.county, getattr(l, "region", None),
            l.revenue, l.ebitda, l.sde, l.asking, l.business_model_type,
            json.dumps(l.needs_llm), ts, ts))
         did = cur.lastrowid

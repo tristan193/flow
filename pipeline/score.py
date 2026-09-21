@@ -14,9 +14,25 @@ import re, yaml, json
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 
-CFG = yaml.safe_load(open("buybox.yaml"))
+try:
+    from geo import TOLA, is_real_state, is_usps, looks_like_region, states_of_region
+except ImportError:
+    TOLA = {"TX", "OK", "LA", "AR", "NM"}
 
-TOLA = {"TX", "OK", "LA", "AR"}
+    def is_usps(value):
+        v = (value or "").strip().upper()
+        return len(v) == 2 and v.isalpha()
+
+    def is_real_state(state, city=None):
+        return is_usps(state) and not (city and is_usps(city))
+
+    def looks_like_region(text):
+        return False
+
+    def states_of_region(text):
+        return set()
+
+CFG = yaml.safe_load(open("buybox.yaml"))
 CTX_METROS = {m.lower() for m in CFG["geography"]["G1_CENTRAL_TX"]["counties_or_metros"]}
 CTX_COUNTIES = {c.lower() for c in CFG["geography"]["G1_CENTRAL_TX"]["counties"]}
 
@@ -30,6 +46,7 @@ class Deal:
     city: Optional[str] = None
     state: Optional[str] = None
     county: Optional[str] = None
+    region: Optional[str] = None
     revenue: Optional[float] = None
     ebitda: Optional[float] = None
     ebitda_is_sde: bool = False
@@ -77,22 +94,28 @@ def _hits(text: str, keywords) -> List[str]:
 
 # ---------------------------------------------------------------- geography
 def classify_geo(d: Deal) -> str:
-    if d.state and d.state.upper() not in {
-        "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-        "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-        "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
-        "VA","WA","WV","WI","WY","DC"}:
+    city = d.city or ""
+    st = (d.state or "").strip()
+    if st and not is_usps(st) and not is_usps(city):
         return "G4_OUT"
-    st = (d.state or "").upper()
-    city = (d.city or "").lower()
-    county = (d.county or "").lower().replace(" county", "")
-    if st == "TX" and (
-        any(m in city for m in CTX_METROS) or county in CTX_COUNTIES
-    ):
-        return "G1_CENTRAL_TX"
-    if st in TOLA:
+    if is_real_state(d.state, city):
+        st_u = st.upper()
+        city_l = city.lower()
+        county = (d.county or "").lower().replace(" county", "")
+        if st_u == "TX" and (
+            any(m in city_l for m in CTX_METROS) or county in CTX_COUNTIES
+        ):
+            return "G1_CENTRAL_TX"
+        if st_u in TOLA:
+            return "G2_TOLA"
+        return "G3_NATIONAL"
+    region = (getattr(d, "region", None) or "").strip()
+    if not region and looks_like_region(city):
+        region = city
+    states = states_of_region(region)
+    if states & set(TOLA):
         return "G2_TOLA"
-    if st:
+    if states:
         return "G3_NATIONAL"
     return "G3_NATIONAL"
 

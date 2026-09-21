@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { assessFit } from "./fit.ts";
+import { assessFit, geographyOf } from "./fit.ts";
+import { locationLabel } from "./model.ts";
 import type { DealRow } from "./model.ts";
 
 const HARVE_FOOTER = "Not restaurant/retail/ecommerce/SaaS.";
@@ -18,6 +19,7 @@ function deal(partial: Partial<DealRow> & { title: string }): DealRow {
     city: null,
     state: "TX",
     county: null,
+    region: null,
     revenue: null,
     ebitda: null,
     sde: null,
@@ -118,4 +120,90 @@ test("other clear negations of restaurant do not trip the chip", () => {
     assert.notEqual(fit.level, "out", blurb);
     assert.notEqual(fit.disqualifier, "excluded category: restaurant", blurb);
   }
+});
+
+test("Axial Western Midwest region is viable G3, not a fake IA, KS city", () => {
+  const row = deal({
+    title: "Regional Restoration And Environmental Services Contractor",
+    city: null,
+    state: null,
+    region: "Western Midwest (IA, KS, MO, NE, ND, SD)",
+  });
+  const geo = geographyOf(row);
+  assert.equal(geo.tier, "G3");
+  assert.equal(geo.label, "National");
+  assert.equal(
+    locationLabel(row),
+    "Western Midwest (IA, KS, MO, NE, ND, SD)",
+  );
+  const fit = assessFit(row);
+  assert.notEqual(fit.geoTier, null);
+});
+
+test("West South Central region lands in TOLA G2", () => {
+  const geo = geographyOf(
+    deal({
+      title: "Industrial services platform",
+      city: null,
+      state: null,
+      region: "West South Central (AR, LA, OK, TX)",
+    }),
+  );
+  assert.equal(geo.tier, "G2");
+  assert.equal(geo.label, "TOLA");
+});
+
+test("truncated Mountain region includes NM so it is G2", () => {
+  const geo = geographyOf(
+    deal({
+      title: "Mountain-region contractor",
+      city: null,
+      state: null,
+      region: "Mountain (AZ, CO, …)",
+    }),
+  );
+  assert.equal(geo.tier, "G2");
+  assert.equal(geo.label, "TOLA");
+});
+
+test("Middle Atlantic region is G3 National, not city=DC state=FL", () => {
+  const row = deal({
+    title: "Middle Atlantic services",
+    city: null,
+    state: null,
+    region: "Middle Atlantic (CT, DE, DC, FL, GA, MD, NC, NJ, NY, PA, RI, SC, VA, VT)",
+  });
+  const geo = geographyOf(row);
+  assert.equal(geo.tier, "G3");
+  assert.equal(
+    locationLabel(row),
+    "Middle Atlantic (CT, DE, DC, FL, GA, MD, NC, NJ, NY, PA, RI, SC, VA, VT)",
+  );
+});
+
+test("real City/ST is preferred over a region on the same deal", () => {
+  const geo = geographyOf(
+    deal({
+      title: "Corridor HVAC",
+      city: "Austin",
+      state: "TX",
+      region: "Pacific (AK, CA, HI, OR, WA)",
+    }),
+  );
+  assert.equal(geo.tier, "G1");
+  assert.equal(
+    locationLabel({
+      city: "Austin",
+      state: "TX",
+      region: "Pacific (AK, CA, HI, OR, WA)",
+    }),
+    "Austin, TX",
+  );
+});
+
+test("misfiled two-letter city/state does not display as City, ST", () => {
+  assert.equal(
+    locationLabel({ city: "IA", state: "KS", region: "Western Midwest (IA, KS, MO, NE, ND, SD)" }),
+    "Western Midwest (IA, KS, MO, NE, ND, SD)",
+  );
 });

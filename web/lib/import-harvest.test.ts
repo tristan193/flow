@@ -52,3 +52,16 @@ test("harvestDealToNext forwards gmailThreadIds for /api/import merge", () => {
   });
   assert.equal(empty.gmailThreadIds, undefined);
 });
+
+test("harvestDealToNext forwards Axial region alongside city/state", () => {
+  const mapped = harvestDealToNext({
+    extId: "axial:1",
+    title: "Regional Restoration",
+    city: null,
+    state: null,
+    region: "Western Midwest (IA, KS, MO, NE, ND, SD)",
+  });
+  assert.equal(mapped.region, "Western Midwest (IA, KS, MO, NE, ND, SD)");
+  assert.equal(mapped.city, null);
+  assert.equal(mapped.state, null);
+});

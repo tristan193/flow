@@ -161,13 +161,15 @@ geography:
       - Robertson
 
   G2_TOLA:
-    label: "TOLA — TX / OK / LA / AR"
+    label: "TOLA — TX / OK / LA / AR / NM"
     score: 22
     financial_floor: T2
-    states: [TX, OK, LA, AR]
+    states: [TX, OK, LA, AR, NM]
     note: >
       Applies to LOCAL_SERVICE businesses outside Central TX, and to any
-      LOCATION_AGNOSTIC business that happens to sit here.
+      LOCATION_AGNOSTIC business that happens to sit here. New Mexico is
+      in-region for this shop. Axial census-region strings that include any
+      of these states also land in G2.
 
   G3_NATIONAL:
     label: "National"

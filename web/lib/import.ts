@@ -27,6 +27,8 @@ export interface IncomingDeal {
   city?: string | null;
   state?: string | null;
   county?: string | null;
+  /** Axial/census region prose. Alongside city/state. */
+  region?: string | null;
   revenue?: number | null;
   ebitda?: number | null;
   sde?: number | null;
@@ -267,6 +269,7 @@ export function harvestDealToNext(deal: IncomingDeal): IncomingNextDeal {
     city: deal.city,
     state: deal.state,
     county: deal.county,
+    region: deal.region,
     revenue: deal.revenue,
     ebitda: deal.ebitda,
     sde: deal.sde,

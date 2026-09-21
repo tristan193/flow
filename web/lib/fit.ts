@@ -7,6 +7,7 @@
  */
 
 import type { DealRow } from "./model";
+import { isRealState, regionTextOf, statesOfRegion, TOLA } from "./geo";
 
 export type FitLevel = "priority" | "fits" | "unknown" | "low" | "out";
 
@@ -30,9 +31,6 @@ export interface Fit {
   disqualifier: string | null;
 }
 
-const TOLA = new Set(["TX", "OK", "LA", "AR"]);
-
-/** Austin / San Antonio / Waco corridor — brokers rarely write "Central Texas". */
 const CORRIDOR_METROS = [
   "austin", "san antonio", "waco", "temple", "killeen", "harker heights",
   "belton", "georgetown", "round rock", "cedar park", "pflugerville",
@@ -226,24 +224,37 @@ function blobMentionsCorridor(blob: string): boolean {
   });
 }
 
-function geographyOf(deal: DealRow): { tier: Fit["geoTier"]; label: string | null } {
-  const state = (deal.state || "").trim().toUpperCase();
+export function geographyOf(deal: DealRow): { tier: Fit["geoTier"]; label: string | null } {
   const city = (deal.city || "").trim().toLowerCase();
   const county = (deal.county || "").trim().toLowerCase().replace(/\s+county$/, "");
   const placeBlob = `${city} ${county} ${deal.title ?? ""} ${deal.blurb ?? ""}`.toLowerCase();
 
-  const inCorridor =
-    (state === "TX" || state === "") &&
-    (cityLooksLikeCorridor(city) ||
-      CORRIDOR_COUNTIES.has(county) ||
-      (state === "TX" && blobMentionsCorridor(placeBlob)));
+  if (isRealState(deal.state, deal.city)) {
+    const state = (deal.state || "").trim().toUpperCase();
+    const inCorridor =
+      (state === "TX" || state === "") &&
+      (cityLooksLikeCorridor(city) ||
+        CORRIDOR_COUNTIES.has(county) ||
+        (state === "TX" && blobMentionsCorridor(placeBlob)));
 
-  if (inCorridor && (state === "TX" || state === "")) {
-    return { tier: "G1", label: CORRIDOR_LABEL };
+    if (inCorridor && (state === "TX" || state === "")) {
+      return { tier: "G1", label: CORRIDOR_LABEL };
+    }
+    if (state === "TX") return { tier: "G2", label: "Texas" };
+    if (TOLA.has(state)) return { tier: "G2", label: "TOLA" };
+    if (state) return { tier: "G3", label: "National" };
   }
-  if (state === "TX") return { tier: "G2", label: "Texas" };
-  if (TOLA.has(state)) return { tier: "G2", label: "TOLA" };
-  if (state) return { tier: "G3", label: "National" };
+
+  const region = regionTextOf(deal);
+  const regionStates = new Set(statesOfRegion(region));
+  // Regions name a multi-state band, not a corridor metro. G1 only for a
+  // real City/ST (or county) in Central TX.
+  if ([...regionStates].some((st) => TOLA.has(st))) {
+    return { tier: "G2", label: "TOLA" };
+  }
+  if (regionStates.size || region) {
+    return { tier: "G3", label: "National" };
+  }
   return { tier: null, label: null };
 }
 
