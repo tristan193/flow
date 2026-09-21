@@ -47,7 +47,8 @@ Existing repo secrets. **Do not invent new names.** Tristan must paste these in 
 | `GMAIL_CLIENT_SECRET_JSON` | contents of `credentials/client_secret.json` |
 | `GMAIL_TOKEN_JSON` | contents of `credentials/mailman_token.json` (dirk@, `gmail.modify`) |
 | `FLOW_APP_URL` | `https://web-tau-seven-77.vercel.app` |
-| `FLOW_IMPORT_TOKEN` | Same as Vercel (harvest POST stamps actor **mailman**) |
+| `PIPELINE_TOKEN` | Preferred bearer for harvest `POST /api/import` (harvest/mailman lane). Optional if `FLOW_IMPORT_TOKEN` is set. |
+| `FLOW_IMPORT_TOKEN` | Fallback; same value as Vercel. Daily dump is **`/api/import` only**, never `/api/next/import`. |
 | `APIFY_TOKEN` | BizBuySell enrich (required on full harvest; skip with `mailman_only`) |
 
 `.github/workflows/daily-harvest.yml` writes:
@@ -72,7 +73,7 @@ working-directory: `pipeline`. First stage: `python mailman.py --days 2`.
 | Vercel (`web/vercel.json`) | `17 10 * * *`, `23 19 * * *` | UTC. 5:17 AM / 2:23 PM **CDT**; during CST those are 4:17 AM / 1:23 PM CT. Vercel has no timezone field. Takes effect after a **prod deploy** of `web/`. |
 | GitHub backup | `17 5 * * *` and `23 14 * * *` with `timezone: America/Chicago` | 5:17 AM and 2:23 PM CT year-round (odd minutes so GH is less likely to drop them). |
 
-Job: Mailman fetch/label (`--days 2`) → Harve `ingest_mail.py` → Apify → POST `/api/import`. `nm_deals.db` is the `nm-deals-db-v2` artifact (restore + re-upload, never commit).
+Job: Mailman fetch/label (`--days 2`) → **re-upload `nm-deals-db-v2`** (Harve's 5:30 shelf: `mail.label=listing`; he does not open Gmail) → Harve `ingest_mail.py` → Apify → POST `/api/import`. Never commit the DB. Never drop the artifact.
 
 ## 4. Local
 

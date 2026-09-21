@@ -15,14 +15,18 @@
 #   GMAIL_CLIENT_SECRET_JSON — pipeline/credentials/client_secret.json
 #   GMAIL_TOKEN_JSON         — pipeline/credentials/mailman_token.json (dirk@, gmail.modify)
 #   FLOW_APP_URL             — https://web-tau-seven-77.vercel.app
-#   FLOW_IMPORT_TOKEN        — same value as Vercel env FLOW_IMPORT_TOKEN
+#   PIPELINE_TOKEN           — preferred bearer for POST /api/import (harvest/mailman lane)
+#   FLOW_IMPORT_TOKEN        — fallback; same value as Vercel. Do not POST /api/next/import.
 #   APIFY_TOKEN              — BizBuySell listing enrich (skipped when mailman_only)
 #
 # First stage: python mailman.py --days 2 (label only; no broker email, no URL invention).
-# Harve extract is ingest_mail.py in this same job. Weekday Grok Bot → /api/next/import
-# is a separate path and is not this workflow.
+# Harve's 5:30 does not open Gmail — he reads mail.label=listing from this job's
+# nm-deals-db-v2 artifact (and/or the same job finishes ingest_mail + export_snapshot
+# --post /api/import). His weekday Grok Bot loop still exists until this cloud
+# catcher is live; it must not depend on Tristan's Desktop DB.
 #
-# nm_deals.db: restore artifact nm-deals-db-v2, re-upload after the run. Never commit it.
+# nm_deals.db: restore artifact nm-deals-db-v2, re-upload after the run (even if
+# later steps fail or mailman_only). Never commit it. Never drop this artifact.
 
 name: Daily harvest
 
@@ -120,20 +124,54 @@ jobs:
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh
 
+      - name: Mail listing summary (Harve shelf)
+        if: always() && hashFiles('pipeline/nm_deals.db') != ''
+        env:
+          NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
+        run: |
+          python - <<'PY'
+          import os, sqlite3
+          db = os.environ["NM_LOCAL_DB"]
+          con = sqlite3.connect(db)
+          con.row_factory = sqlite3.Row
+          try:
+              rows = con.execute(
+                  "SELECT label, COUNT(*) AS n FROM mail GROUP BY label ORDER BY n DESC"
+              ).fetchall()
+              listing = con.execute(
+                  "SELECT COUNT(*) AS n FROM mail WHERE label = 'listing'"
+              ).fetchone()["n"]
+          except sqlite3.OperationalError as exc:
+              print(f"mail table not ready: {exc}")
+              raise SystemExit(0)
+          print(f"harve_shelf db={db}")
+          print(f"label=listing rows={listing}  (Harve starts here; he does not open Gmail)")
+          for r in rows:
+              print(f"  label:{r['label']} {r['n']}")
+          con.close()
+          PY
+
       # Separate step so a missing/malformed secret fails the job visibly.
+      # POST /api/import only — never /api/next/import.
       - name: Push snapshot to Flow App
         if: github.event.inputs.mailman_only != 'true'
         env:
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
           set -euo pipefail
           URL="$(printf '%s' "$FLOW_APP_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          TOKEN="$(printf '%s' "$FLOW_IMPORT_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          TOKEN="$(printf '%s' "${PIPELINE_TOKEN:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          TOKEN_SRC="PIPELINE_TOKEN"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="$(printf '%s' "${FLOW_IMPORT_TOKEN:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            TOKEN_SRC="FLOW_IMPORT_TOKEN"
+          fi
 
           if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
-            echo "::error::FLOW_APP_URL and FLOW_IMPORT_TOKEN must be set as repo Actions secrets."
+            echo "::error::FLOW_APP_URL plus PIPELINE_TOKEN (preferred) or FLOW_IMPORT_TOKEN must be set as repo Actions secrets."
             exit 1
           fi
 
@@ -148,7 +186,7 @@ jobs:
               ;;
           esac
 
-          echo "Pushing to ${URL}/api/import (token length ${#TOKEN})"
+          echo "Pushing to ${URL}/api/import via ${TOKEN_SRC} (token length ${#TOKEN})"
           python export_snapshot.py --db "$NM_LOCAL_DB" --post "$URL" --token "$TOKEN"
 
       - name: Pursuit CRM (NDA links + CIM attach)
@@ -156,13 +194,18 @@ jobs:
         env:
           DAYS: "2"
           FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
+          PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
           set -euo pipefail
           URL="$(printf '%s' "$FLOW_APP_URL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          TOKEN="$(printf '%s' "$FLOW_IMPORT_TOKEN" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          TOKEN="$(printf '%s' "${PIPELINE_TOKEN:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="$(printf '%s' "${FLOW_IMPORT_TOKEN:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          fi
           python crm_pursuit.py --days "$DAYS" --post "$URL" --token "$TOKEN"
 
+      # Harve's 5:30 shelf. Upload even when mailman_only or when Flow POST fails.
       - name: Upload SQLite db
         if: always() && hashFiles('pipeline/nm_deals.db') != ''
         uses: actions/upload-artifact@v4
@@ -171,6 +214,7 @@ jobs:
           path: pipeline/nm_deals.db
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
       - name: Upload daily CSV snapshot
         if: github.event.inputs.mailman_only != 'true'

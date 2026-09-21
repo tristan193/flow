@@ -24,7 +24,8 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 │  4. enrich_bizbuysell.py --backend apify --newest           │
 │  5. CSV snapshot artifact                                   │
 │  6. export_snapshot.py --post $FLOW_APP_URL /api/import     │
-│  7. Upload nm_deals.db artifact                             │
+│     bearer PIPELINE_TOKEN else FLOW_IMPORT_TOKEN            │
+│  7. Upload nm_deals.db artifact (Harve 5:30 shelf; always)  │
 └────────────────────────────┬────────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────┐

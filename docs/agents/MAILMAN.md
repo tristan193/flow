@@ -77,8 +77,9 @@ Mailman runs in **this repo** on GitHub Actions. Same workflow as the rest of ha
 ```
 Vercel Cron → GET /api/cron/harvest → workflow_dispatch daily-harvest.yml
                 └─ python mailman.py --days 2   ← you (first stage)
-                └─ python ingest_mail.py        ← Harve extract
-                └─ Apify + POST /api/import     ← Harve / Flow
+                └─ upload nm-deals-db-v2        ← Harve's 5:30 shelf (label=listing)
+                └─ python ingest_mail.py        ← Harve extract (same job, optional vs his loop)
+                └─ Apify + POST /api/import     ← never /api/next/import
 ```
 
 **Primary clock:** Vercel Cron (`web/vercel.json`) hits `/api/cron/harvest`, which dispatches this workflow. GitHub `schedule:` is backup only (this repo's native GH cron historically did not fire). Backup crons are `17 5 * * *` and `23 14 * * *` with `timezone: America/Chicago` (5:17 AM and 2:23 PM CT, odd minutes). Vercel crons are UTC-only: `17 10 * * *` and `23 19 * * *` (5:17 AM / 2:23 PM **CDT**; during CST those fire an hour earlier). After a merge that changes `web/vercel.json`, deploy the Flow App so the new times take effect.
@@ -89,8 +90,9 @@ Vercel Cron → GET /api/cron/harvest → workflow_dispatch daily-harvest.yml
 |--------|------------------------|
 | `GMAIL_CLIENT_SECRET_JSON` | `pipeline/credentials/client_secret.json` |
 | `GMAIL_TOKEN_JSON` | `pipeline/credentials/mailman_token.json` (dirk@, `gmail.modify`) |
-| `FLOW_APP_URL` | used after Mailman, for Harve's snapshot POST |
-| `FLOW_IMPORT_TOKEN` | same bearer as Vercel |
+| `FLOW_APP_URL` | used after Mailman, for Harve's snapshot POST `/api/import` |
+| `PIPELINE_TOKEN` | preferred bearer for that POST (harvest/mailman lane) |
+| `FLOW_IMPORT_TOKEN` | fallback; same value as Vercel. Never `/api/next/import` for the daily dump |
 | `APIFY_TOKEN` | BizBuySell enrich (skipped on `mailman_only` dispatch) |
 
 Injection (working-directory `pipeline`):
@@ -114,7 +116,9 @@ Credential paths are env-overridable for CI (`MAILMAN_TOKEN_PATH`, `GMAIL_CLIENT
 
 ### How Harve picks up listings
 
-After a successful Mailman run, rows with `label=listing` plus `gmail_thread_url` are on the artifact. Same job then runs `ingest_mail.py` (Harve extract → SQLite deals → Apify → `POST /api/import`). Harve's weekday Grok Bot path (`MCP Gmail → POST /api/next/import`) is separate and is not this workflow. You still do not extract, invent listing URLs, or POST.
+Harve's live 5:30 **does not open Gmail**. After you persist mail, he reads `label=listing` (+ `gmail_thread_url`) from **`nm-deals-db-v2`**. This job always restores that artifact, upserts `mail`, and re-uploads it (even on `mailman_only` or if Flow POST fails). That is the handoff. Tristan's Desktop DB is not the shelf.
+
+The same workflow may also run `ingest_mail.py` → Apify → `export_snapshot.py --post` **`/api/import`** (bearer `PIPELINE_TOKEN` if set, else `FLOW_IMPORT_TOKEN`). Harve's weekday Grok Bot loop still exists until this cloud catcher is live. You still do not extract, invent listing URLs, or POST.
 
 ---
 

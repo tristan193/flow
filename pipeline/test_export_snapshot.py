@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -239,6 +240,21 @@ https://click.generational.deals/?qs=deadbeef
         self.assertTrue(blocks)
         lst = ing.extract(blocks[0], "generational", "msg2", 0, source="generational.deals")
         self.assertEqual(lst.url, "")
+
+
+class HarvestBearerTests(unittest.TestCase):
+    def test_prefers_pipeline_token(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"PIPELINE_TOKEN": "pipe", "FLOW_IMPORT_TOKEN": "flow"},
+            clear=False,
+        ):
+            self.assertEqual(exp.harvest_bearer(), "pipe")
+
+    def test_falls_back_to_flow_import_token(self) -> None:
+        with mock.patch.dict(os.environ, {"FLOW_IMPORT_TOKEN": "flow"}, clear=True):
+            self.assertEqual(exp.harvest_bearer(), "flow")
+            self.assertNotIn("PIPELINE_TOKEN", os.environ)
 
 
 if __name__ == "__main__":

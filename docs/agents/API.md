@@ -198,11 +198,11 @@ Token only. Keeps the lowest TLY when collapsing twins. Do not run this casually
 
 ## Harvest — `POST /api/import`
 
-Used by `export_snapshot.py` after Gmail harvest. Posts the **entire** SQLite snapshot as `{ "deals": [ ... ] }`. Same dealbook as Review (`deals_next`). Join is URL / source id / fingerprint — harvest `ext_id` is **not** a TLY key.
+Used by `export_snapshot.py` after Mailman + ingest. Posts the **entire** SQLite snapshot as `{ "deals": [ ... ] }` to **`/api/import` only**. Bearer: **`PIPELINE_TOKEN` if present**, else `FLOW_IMPORT_TOKEN` (same value as Vercel). Same dealbook as Review (`deals_next`). Join is URL / source id / fingerprint — harvest `ext_id` is **not** a TLY key.
 
 Unmatched rows whose `first_seen` is older than four days are skipped (`skipIfNew`) so the catalog does not flood Review. Matched TLY rows still get null-fills and last_seen. Fresh first_seen listings mint inbox.
 
-If this POST fails, the Actions job fails; the SQLite artifact is still saved. Next run restores and re-posts. Upsert is idempotent.
+If this POST fails, the Actions job fails; the SQLite artifact `nm-deals-db-v2` is still saved (Harve's 5:30 starts from `mail.label=listing` on that file, not Gmail). Next run restores and re-posts. Upsert is idempotent.
 
 Do not also POST the same snapshot to `/api/next/import` — that would be a second writer. `/api/next/import` is Dirk/Harve structured TLY payloads (gmailThreadIds, remint fields).
 

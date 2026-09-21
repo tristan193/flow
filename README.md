@@ -84,7 +84,8 @@ GitHub Actions secrets:
 | `GMAIL_CLIENT_SECRET_JSON` | OAuth client for dirk@ |
 | `GMAIL_TOKEN_JSON` | Refresh token from `gmail_auth.py` |
 | `FLOW_APP_URL` | e.g. `https://web-tau-seven-77.vercel.app` |
-| `FLOW_IMPORT_TOKEN` | Same bearer token as Vercel `FLOW_IMPORT_TOKEN` |
+| `PIPELINE_TOKEN` | Preferred bearer for harvest `POST /api/import` |
+| `FLOW_IMPORT_TOKEN` | Fallback; same value as Vercel `FLOW_IMPORT_TOKEN` |
 
 ## Local development (web)
 
@@ -116,7 +117,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```powershell
 cd pipeline
-python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $env:FLOW_IMPORT_TOKEN
+python export_snapshot.py --post https://web-tau-seven-77.vercel.app --token $env:PIPELINE_TOKEN
 ```
 
 Buy-box scoring (`pipeline/buybox.yaml`, `pipeline/score.py`) stays parked until you agree criteria against real flow.
