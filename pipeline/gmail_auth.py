@@ -26,8 +26,14 @@ import catcher
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 MODIFY_SCOPE = SCOPES[0]
 
+# Import-time aliases for harvest_gmail helper signatures. get_credentials()
+# re-reads catcher.*_path() when these are omitted.
 DEFAULT_CLIENT = catcher.CLIENT_SECRET
 DEFAULT_TOKEN = catcher.MAILMAN_TOKEN
+
+
+def _running_in_ci() -> bool:
+    return os.environ.get("GITHUB_ACTIONS") == "true" or os.environ.get("CI") == "true"
 
 
 def _has_modify(creds: Credentials | None) -> bool:
@@ -39,12 +45,23 @@ def _has_modify(creds: Credentials | None) -> bool:
     return MODIFY_SCOPE in granted or "https://mail.google.com/" in granted
 
 
+def _ci_token_exit(reason: str) -> None:
+    sys.exit(
+        f"{reason}\n"
+        "Cannot open a browser in GitHub Actions. Rotate repo secret GMAIL_TOKEN_JSON "
+        "from a local `python gmail_auth.py --reauth` (sign in as dirk@) and keep "
+        "GMAIL_CLIENT_SECRET_JSON in sync. Agents cannot write GitHub secrets."
+    )
+
+
 def get_credentials(
-    client_secret: str = DEFAULT_CLIENT,
-    token_path: str = DEFAULT_TOKEN,
+    client_secret: str | None = None,
+    token_path: str | None = None,
     force_consent: bool = False,
 ) -> Credentials:
-    os.makedirs(os.path.dirname(token_path), exist_ok=True)
+    client_secret = client_secret or catcher.client_secret_path()
+    token_path = token_path or catcher.mailman_token_path()
+    os.makedirs(os.path.dirname(token_path) or ".", exist_ok=True)
 
     creds: Credentials | None = None
     if not force_consent and os.path.exists(token_path):
@@ -60,10 +77,20 @@ def get_credentials(
         and _has_modify(creds)
         and not force_consent
     ):
-        creds.refresh(Request())
-        with open(token_path, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
-        return creds
+        try:
+            creds.refresh(Request())
+            with open(token_path, "w", encoding="utf-8") as f:
+                f.write(creds.to_json())
+            return creds
+        except Exception as exc:  # noqa: BLE001 — surface refresh failure
+            if _running_in_ci():
+                _ci_token_exit(f"Gmail token refresh failed in CI: {exc}")
+            print(f"token refresh failed ({exc}); falling back to browser consent", file=sys.stderr)
+
+    if _running_in_ci():
+        _ci_token_exit(
+            "Gmail token missing, expired, or lacks gmail.modify."
+        )
 
     if not os.path.exists(client_secret):
         sys.exit(
@@ -87,15 +114,16 @@ def verify_mailbox(creds: Credentials) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Authorize Gmail modify for Mailman (read + archive)")
-    ap.add_argument("--client", default=DEFAULT_CLIENT)
-    ap.add_argument("--token", default=DEFAULT_TOKEN)
+    ap.add_argument("--client", default=None, help="OAuth client JSON (default: catcher path)")
+    ap.add_argument("--token", default=None, help="Token JSON (default: catcher mailman_token.json)")
     ap.add_argument("--reauth", action="store_true")
     args = ap.parse_args()
 
+    token_path = args.token or catcher.mailman_token_path()
     creds = get_credentials(args.client, args.token, force_consent=args.reauth)
     email = verify_mailbox(creds)
     print(f"Connected as: {email}")
-    print(f"Token saved:  {args.token}")
+    print(f"Token saved:  {token_path}")
     print(f"Scopes:       {list(creds.scopes or SCOPES)}")
     expected = catcher.CATCHER_GMAIL
     if email.lower() != expected:

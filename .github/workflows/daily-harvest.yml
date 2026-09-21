@@ -4,36 +4,46 @@
 #
 # Schedule: driven by Vercel Cron hitting the Flow App route
 # web/app/api/cron/harvest, which calls workflow_dispatch. GitHub's own
-# scheduler never fired for this repo, so the native crons below are only a
-# best-effort backup (odd minutes, since :00/:30 are the worst slots).
+# scheduler never fired reliably for this repo, so the native crons below are
+# only a best-effort backup (odd minutes, since :00/:30 are the worst slots).
 # See pipeline/GMAIL_SETUP.md §3.
 #
-# Ingest is idempotent (3-day lookback + ext_id upsert), so overlapping
+# Ingest is idempotent (2-day lookback + ext_id / gmail_id upsert), so overlapping
 # triggers are harmless; concurrency below serializes them.
 #
-# Secrets required:
-#   GMAIL_TOKEN_JSON — Mailman OAuth token (credentials/mailman_token.json)
-#   FLOW_APP_URL (e.g. https://web-tau-seven-77.vercel.app)
-#   FLOW_IMPORT_TOKEN (same value as Vercel env FLOW_IMPORT_TOKEN)
-#   APIFY_TOKEN — BizBuySell listing enrich (required; email alone has no SDE)
+# Secrets required (existing names — do not invent new ones):
+#   GMAIL_CLIENT_SECRET_JSON — pipeline/credentials/client_secret.json
+#   GMAIL_TOKEN_JSON         — pipeline/credentials/mailman_token.json (dirk@, gmail.modify)
+#   FLOW_APP_URL             — https://web-tau-seven-77.vercel.app
+#   FLOW_IMPORT_TOKEN        — same value as Vercel env FLOW_IMPORT_TOKEN
+#   APIFY_TOKEN              — BizBuySell listing enrich (skipped when mailman_only)
 #
-# Flow: Gmail → ingest → Apify BBS enrich (skip buy-box-excluded headlines) →
-#       CSV → POST Flow App /api/import
+# First stage: python mailman.py --days 2 (label only; no broker email, no URL invention).
+# Harve extract is ingest_mail.py in this same job. Weekday Grok Bot → /api/next/import
+# is a separate path and is not this workflow.
+#
+# nm_deals.db: restore artifact nm-deals-db-v2, re-upload after the run. Never commit it.
 
 name: Daily harvest
 
 on:
   # PRIMARY trigger is workflow_dispatch, called by Vercel Cron
-  # (web/app/api/cron/harvest). GitHub's own scheduler never fired for this
-  # repo, so the crons below are an unreliable backup, nothing more.
+  # (web/app/api/cron/harvest). GitHub's own scheduler is an unreliable backup.
   workflow_dispatch:
+    inputs:
+      mailman_only:
+        description: "Stop after Mailman catcher (no ingest, Apify, or Flow POST). Use this to test GMAIL_* secrets."
+        type: boolean
+        default: false
   repository_dispatch:
     types: [harvest]
   schedule:
-    # Odd minutes on purpose — :00/:30 are where GitHub drops schedules.
-    - cron: "17 11 * * *" # ~6:17 AM CT (CDT)
-    - cron: "23 13 * * *" # ~8:23 AM CT (CDT)
-    - cron: "41 15 * * *" # ~10:41 AM CT (CDT)
+    # Backup only. Timezone-aware so 5:17 AM / 2:23 PM stay on America/Chicago
+    # across DST. Odd minutes on purpose — :00/:30 are where GitHub drops schedules.
+    - cron: "17 5 * * *"
+      timezone: "America/Chicago"
+    - cron: "23 14 * * *"
+      timezone: "America/Chicago"
 
 concurrency:
   group: daily-harvest
@@ -65,6 +75,9 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
+      - name: Mailman self-test
+        run: python mailman.py --self-test && python test_mailman.py
+
       - name: Restore previous SQLite db
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -85,6 +98,8 @@ jobs:
           mkdir -p credentials
           if [ -z "$CLIENT" ] || [ -z "$TOKEN" ]; then
             echo "Missing GMAIL_CLIENT_SECRET_JSON or GMAIL_TOKEN_JSON secrets"
+            echo "Paste client_secret.json and mailman_token.json (dirk@, gmail.modify)."
+            echo "Agents cannot write GitHub secrets — Tristan must set them on the repo."
             exit 1
           fi
           printf '%s' "$CLIENT" > credentials/client_secret.json
@@ -92,20 +107,22 @@ jobs:
 
       - name: Harvest + ingest (with retries)
         env:
-          # 3-day window: a skipped trigger must not lose mail. Upserts on
-          # ext_id make the overlap free.
-          DAYS: "3"
+          # 2-day window: a skipped trigger must not lose mail. Upserts on
+          # gmail_id / ext_id make the overlap free.
+          DAYS: "2"
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           # 0 = enrich every BBS candidate (missing earnings or thin blurb).
           BBS_ENRICH_LIMIT: "0"
+          MAILMAN_ONLY: ${{ github.event.inputs.mailman_only == 'true' }}
         run: |
           chmod +x run_daily_harvest.sh
           ./run_daily_harvest.sh
 
       # Separate step so a missing/malformed secret fails the job visibly.
       - name: Push snapshot to Flow App
+        if: github.event.inputs.mailman_only != 'true'
         env:
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
@@ -135,8 +152,9 @@ jobs:
           python export_snapshot.py --db "$NM_LOCAL_DB" --post "$URL" --token "$TOKEN"
 
       - name: Pursuit CRM (NDA links + CIM attach)
+        if: github.event.inputs.mailman_only != 'true'
         env:
-          DAYS: "3"
+          DAYS: "2"
           FLOW_APP_URL: ${{ secrets.FLOW_APP_URL }}
           FLOW_IMPORT_TOKEN: ${{ secrets.FLOW_IMPORT_TOKEN }}
         run: |
@@ -146,6 +164,7 @@ jobs:
           python crm_pursuit.py --days "$DAYS" --post "$URL" --token "$TOKEN"
 
       - name: Upload SQLite db
+        if: always() && hashFiles('pipeline/nm_deals.db') != ''
         uses: actions/upload-artifact@v4
         with:
           name: nm-deals-db-v2
@@ -154,6 +173,7 @@ jobs:
           retention-days: 90
 
       - name: Upload daily CSV snapshot
+        if: github.event.inputs.mailman_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: deals-csv

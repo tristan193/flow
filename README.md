@@ -7,7 +7,8 @@ Deal review and pipeline for **Nails & Mercy**. Shared web app for Tristan and p
 ```
 dirk@tullyinvesting.com
    │  GitHub Actions · Daily harvest (Vercel cron / manual)
-   ├─ harvest_gmail.py → ingest.py → nm_deals.db
+   ├─ mailman.py --days 2 → mail table (label only)
+   ├─ ingest_mail.py → nm_deals.db
    ├─ enrich_bizbuysell.py (Apify) → SDE/EBITDA on BizBuySell URLs
    └─ export_snapshot.py --post → Flow App /api/import
                                       │

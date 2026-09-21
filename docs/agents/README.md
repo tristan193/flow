@@ -27,10 +27,10 @@ Repo: `tristan193/flow` · default branch `main`.
 ```
 Gmail (dirk@)
   → GitHub Actions daily-harvest.yml
-  → harvest_gmail.py + ingest.py
-  → enrich_bizbuysell.py (Apify)   ← required for BizBuySell money fields
-  → export_snapshot.py --post
-  → Flow App /api/import (Neon)
+    → mailman.py --days 2 + ingest_mail.py
+    → enrich_bizbuysell.py (Apify)   ← required for BizBuySell money fields
+    → export_snapshot.py --post
+    → Flow App /api/import (Neon)
 ```
 
 Local dummy app: empty `DATABASE_URL` → in-memory PGlite seeded from `web/db/seed-data.json`.

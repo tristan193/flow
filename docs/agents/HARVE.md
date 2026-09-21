@@ -112,7 +112,7 @@ If the POST fails, the job fails; keep the SQLite artifact; next run re-posts. I
 | Working store | `pipeline/nm_deals.db` table `deals` |
 | Product write | `POST /api/import` → `deals_next` |
 | Repertoire | `pipeline/formats/repertoire.yaml` — new shapes get a splitter here, not a Gmail reopen |
-| Daily job | Mailman → you (`ingest_mail`) → enrich → export `--post` |
+| Daily job | Actions `daily-harvest.yml`: Mailman → you (`ingest_mail`) → enrich → export `--post` |
 | Read | `docs/agents/SYSTEM.md`, `docs/agents/API.md` § Harvest, `docs/agents/MAILMAN.md` |
 
 House rules that apply to every NM agent: no secrets in git, no drive-by refactors, ship fully when Tristan wants it live (`docs/agents/README.md`).

@@ -86,11 +86,16 @@ def fetch_and_store(days: int, db_path: str, *, archive_listings: bool = True) -
         em = emails[0]
         label, fmt_id, em_type = classify_mail(em)
         tid = _thread_id(msg)
+        thread_url = catcher.gmail_thread_url(tid)
+        if not tid or not thread_url:
+            counts["skip_no_thread"] += 1
+            print(f"skip no thread_id gmail_id={em.msg_id}", file=sys.stderr)
+            continue
         mode = db.upsert_mail(
             con,
             gmail_id=em.msg_id,
             thread_id=tid,
-            gmail_thread_url=catcher.gmail_thread_url(tid) or None,
+            gmail_thread_url=thread_url,
             sender=em.sender,
             subject=em.subject,
             received=em.received,
@@ -171,7 +176,41 @@ def _self_test() -> None:
     )
     label, fmt_id, em_type = classify_mail(em)
     assert label in {"listing", "unknown"}, (label, fmt_id, em_type)
+    url = catcher.gmail_thread_url("18f0threadAAA")
+    assert "authuser=dirk%40tullyinvesting.com" in url
+    assert url.endswith("#all/18f0threadAAA")
+    assert catcher.gmail_thread_url(None) == ""
     print("mailman self-test ok")
+
+
+def _print_stats(stats: dict[str, int], *, days: int, db_path: str) -> None:
+    listing_n = stats.get("label:listing", 0)
+    print(
+        f"mailman: raw={stats.get('raw', 0)} new={stats.get('new', 0)} "
+        f"updated={stats.get('updated', 0)} archived={stats.get('archived', 0)} "
+        f"listings={listing_n} path={db_path}"
+    )
+    for k in sorted(stats):
+        if k.startswith("label:") or k in {"archive_err", "skip_no_thread"}:
+            print(f"  {k} {stats[k]}")
+    print(f"mailman listings this {days}d window: {listing_n} (new={stats.get('new', 0)})")
+
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary:
+        return
+    with open(summary, "a", encoding="utf-8") as fh:
+        fh.write("## Mailman catcher\n\n")
+        fh.write(f"- lookback: `{days}` days (`python mailman.py --days {days}`)\n")
+        fh.write(f"- raw messages: {stats.get('raw', 0)}\n")
+        fh.write(f"- new / updated: {stats.get('new', 0)} / {stats.get('updated', 0)}\n")
+        fh.write(f"- archived listings: {stats.get('archived', 0)}\n")
+        fh.write(f"- `label=listing`: {listing_n}\n")
+        for k in sorted(stats):
+            if k.startswith("label:") and k != "label:listing":
+                fh.write(f"- `{k}`: {stats[k]}\n")
+        if stats.get("skip_no_thread"):
+            fh.write(f"- skipped (no thread_id): {stats['skip_no_thread']}\n")
+        fh.write("\nHarve ingest reads `label=listing` plus `gmail_thread_url`.\n")
 
 
 def main() -> None:
@@ -180,7 +219,7 @@ def main() -> None:
     ap.add_argument(
         "--db",
         default=os.path.join(HERE, "nm_deals.db"),
-        help="SQLite path (mail table lives next to harvest deals)",
+        help="SQLite path (mail table lives next to harvest deals). Override with NM_LOCAL_DB.",
     )
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument(
@@ -196,14 +235,7 @@ def main() -> None:
 
     local_db = os.environ.get("NM_LOCAL_DB", args.db)
     stats = fetch_and_store(args.days, local_db, archive_listings=not args.no_archive)
-    print(
-        f"mailman: raw={stats.get('raw', 0)} new={stats.get('new', 0)} "
-        f"updated={stats.get('updated', 0)} archived={stats.get('archived', 0)} "
-        f"path={local_db}"
-    )
-    for k in sorted(stats):
-        if k.startswith("label:") or k == "archive_err":
-            print(f"  {k} {stats[k]}")
+    _print_stats(stats, days=args.days, db_path=local_db)
 
 
 if __name__ == "__main__":

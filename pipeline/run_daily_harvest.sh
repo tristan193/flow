@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Cloud / CI daily harvest with retries. Used by GitHub Actions.
+# First stage is Mailman (label mail). Harve extract is ingest_mail.py — not
+# harvest_gmail.py --ingest. Do not email brokers. Do not invent listing URLs.
 set -euo pipefail
 
 DAYS="${DAYS:-2}"
@@ -7,40 +9,61 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 BACKOFFS=(60 300 900)
 PIPELINE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PIPELINE_DIR"
+MAILMAN_ONLY="$(printf '%s' "${MAILMAN_ONLY:-false}" | tr '[:upper:]' '[:lower:]')"
 
-if [[ ! -f credentials/token.json ]]; then
-  echo "FATAL: credentials/token.json missing"
+if [[ ! -f credentials/mailman_token.json ]]; then
+  echo "FATAL: credentials/mailman_token.json missing (write GMAIL_TOKEN_JSON here)"
+  exit 1
+fi
+if [[ ! -f credentials/client_secret.json ]]; then
+  echo "FATAL: credentials/client_secret.json missing (write GMAIL_CLIENT_SECRET_JSON here)"
   exit 1
 fi
 
 export PYTHONIOENCODING=utf-8
 export NM_LOCAL_DB="${NM_LOCAL_DB:-$PIPELINE_DIR/nm_deals.db}"
 
-attempt=0
-ok=0
-while [[ $attempt -lt $MAX_ATTEMPTS && $ok -eq 0 ]]; do
-  attempt=$((attempt + 1))
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) attempt $attempt/$MAX_ATTEMPTS days=$DAYS"
-  set +e
-  python harvest_gmail.py --days "$DAYS" --ingest
-  rc=$?
-  set -e
-  if [[ $rc -eq 0 ]]; then
-    ok=1
-  else
-    echo "FAIL attempt $attempt rc=$rc"
-    if [[ $attempt -lt $MAX_ATTEMPTS ]]; then
-      wait=${BACKOFFS[$((attempt - 1))]:-900}
-      echo "retrying in ${wait}s"
-      sleep "$wait"
+run_with_retries() {
+  local label="$1"
+  shift
+  local attempt=0
+  local ok=0
+  local rc=0
+  while [[ $attempt -lt $MAX_ATTEMPTS && $ok -eq 0 ]]; do
+    attempt=$((attempt + 1))
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $label attempt $attempt/$MAX_ATTEMPTS days=$DAYS"
+    set +e
+    "$@"
+    rc=$?
+    set -e
+    if [[ $rc -eq 0 ]]; then
+      ok=1
+    else
+      echo "FAIL $label attempt $attempt rc=$rc"
+      if [[ $attempt -lt $MAX_ATTEMPTS ]]; then
+        wait=${BACKOFFS[$((attempt - 1))]:-900}
+        echo "retrying in ${wait}s"
+        sleep "$wait"
+      fi
     fi
+  done
+  if [[ $ok -ne 1 ]]; then
+    echo "FATAL: $label failed all $MAX_ATTEMPTS attempts"
+    exit 1
   fi
-done
+}
 
-if [[ $ok -ne 1 ]]; then
-  echo "FATAL: all $MAX_ATTEMPTS attempts failed"
-  exit 1
+echo "=== Mailman catcher (python mailman.py --days $DAYS) ==="
+run_with_retries mailman python mailman.py --days "$DAYS"
+
+if [[ "$MAILMAN_ONLY" == "true" || "$MAILMAN_ONLY" == "1" ]]; then
+  echo "MAILMAN_ONLY=$MAILMAN_ONLY — skipping ingest, Apify, CSV. Harve is not run."
+  echo "SUCCESS"
+  exit 0
 fi
+
+echo "=== ingest listing mail (python ingest_mail.py --days $DAYS) ==="
+run_with_retries ingest_mail python ingest_mail.py --days "$DAYS"
 
 # BizBuySell page enrich is part of the main path: email only discovers URL +
 # headline; SDE/EBITDA come from Apify. Skip only buy-box-excluded headlines.

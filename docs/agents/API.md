@@ -210,7 +210,7 @@ Do not also POST the same snapshot to `/api/next/import` — that would be a sec
 
 ## Cron — `GET|POST /api/cron/harvest`
 
-Vercel Cron → dispatches `.github/workflows/daily-harvest.yml`. Auth is `CRON_SECRET`, not the import token. Agents should not poke this unless asked to kick a harvest.
+Vercel Cron → dispatches `.github/workflows/daily-harvest.yml`. Auth is `CRON_SECRET`, not the import token. Agents should not poke this unless asked to kick a harvest. First stage of that workflow is `python mailman.py --days 2` (label mail). GitHub `schedule:` is backup only.
 
 ---
 

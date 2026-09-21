@@ -1,7 +1,8 @@
 """
 Harvest deal mail from the catcher inbox into ingest.RawEmail objects.
 
-Requires a prior successful `python gmail_auth.py` (token.json present).
+Requires a prior successful `python gmail_auth.py` (`credentials/mailman_token.json`).
+Mailman is the harvest entry point (`python mailman.py --days 2`); do not use `--ingest` on the live job.
 
   python harvest_gmail.py                 # last 1 day, print summary
   python harvest_gmail.py --days 3        # lookback
