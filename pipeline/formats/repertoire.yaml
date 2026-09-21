@@ -12,7 +12,7 @@
 # format_family = internal splitter key (NOT stored as source)
 #
 version: 6
-updated: 2026-09-19
+updated: 2026-09-21
 survey:
   path: pipeline/formats/survey/inbox_5d.json
   days: 5
@@ -482,6 +482,16 @@ providers:
         purpose: Vendor review nudge — yield 0
         typical_email_type: newsletter_marketing
         default_format: trustpilot.review_ask
+
+  - domain: ahcteam.com
+    nickname: AHC
+    subcategories:
+      - id: listings
+        email: listings@ahcteam.com
+        label: Listings desk
+        purpose: FEATURED / NEW healthcare listing blasts. Not other AHC mailboxes.
+        typical_email_type: daily_digest
+        default_format: ahc.listings_blast
 
 formats:
 
@@ -1476,6 +1486,33 @@ formats:
     expected_fields:
       present: []
     split: drop
+
+  - id: ahc.listings_blast
+    format_family: ahc
+    source: ahcteam.com
+    sub_source: listings@ahcteam.com
+    provider_subcategory: listings
+    nickname: AHC
+    email_type: daily_digest
+    confidence: provisional
+    status: needs_parser
+    description: >
+      Healthcare listing blasts from listings@ahcteam.com only.
+      Subjects start with FEATURED … Listing(s) or NEW … Listing(s).
+      Not *@ahcteam.com — individual brokers stay out of repertoire.
+    detect:
+      sender_addresses: ["listings@ahcteam.com"]
+      # Address alone is not enough — only these subject shapes.
+      subject_required: true
+      subject_patterns:
+        - '(?i)^featured\b.+\blistings?\b'
+        - '(?i)^new\b.+\blistings?\b'
+    expected_fields:
+      present: [title]
+    split: newsletter
+    gotchas:
+      - "Tristan 2026-09-21: mailbox is listings@ only. Do not add *@ahcteam.com or james@."
+      - "No dedicated splitter yet (needs_parser). Harve owns deal upsert after label=listing."
 
 shared_markers:
   broker_teaser:

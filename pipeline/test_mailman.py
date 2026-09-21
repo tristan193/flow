@@ -102,6 +102,106 @@ class MailmanLabelTests(unittest.TestCase):
         label, _fmt_id, _em_type = mailman.classify_mail(em)
         self.assertIn(label, {"listing", "unknown"})
 
+    def test_new_businesses_for_sale_subject_is_listing(self) -> None:
+        em = ing.RawEmail(
+            "tw1",
+            "Albert Fialkovich <afialkovich@tworldco.com>",
+            "New Businesses For Sale: Transworld Business Advisors of Colorado",
+            "2026-09-21",
+            body="A list of businesses. Asking prices inside.",
+        )
+        label, fmt_id, em_type = mailman.classify_mail(em)
+        self.assertEqual(label, "listing")
+        self.assertEqual(fmt_id, "")
+        self.assertEqual(em_type, "daily_digest")
+        self.assertNotEqual(label, "unknown")
+
+    def test_new_businesses_for_sale_is_case_insensitive_prefix(self) -> None:
+        em = ing.RawEmail(
+            "tw-case",
+            "Office <office@tworldco.com>",
+            "  NEW BUSINESSES FOR SALE: Transworld Business Advisors",
+            "2026-09-21",
+            body="",
+        )
+        label, fmt_id, em_type = mailman.classify_mail(em)
+        self.assertEqual((label, fmt_id, em_type), ("listing", "", "daily_digest"))
+
+    def test_reply_and_mid_subject_do_not_use_the_blast_fallback(self) -> None:
+        reply = ing.RawEmail(
+            "tw-re",
+            "Albert Fialkovich <afialkovich@tworldco.com>",
+            "Re: New Businesses For Sale: Transworld Business Advisors of Colorado",
+            "2026-09-21",
+            body="Following up on the blast.",
+        )
+        buried = ing.RawEmail(
+            "tw-mid",
+            "News <news@example.com>",
+            "Weekly note: New Businesses For Sale trends",
+            "2026-09-21",
+            body="New Businesses For Sale: not a blast subject",
+        )
+        self.assertEqual(mailman.classify_mail(reply)[0], "unknown")
+        self.assertEqual(mailman.classify_mail(buried)[0], "unknown")
+
+    def test_repertoire_hit_stays_primary_over_the_fallback(self) -> None:
+        em = ing.RawEmail(
+            "bbs1",
+            "New Biz Opps <newbizopps@bizbuysell.com>",
+            "New Businesses For Sale: would-be blast",
+            "2026-09-21",
+            body="The following business matches your specified Saved Search criteria",
+        )
+        label, fmt_id, _em_type = mailman.classify_mail(em)
+        self.assertEqual(label, "listing")
+        self.assertEqual(fmt_id, "bizbuysell.newbizopps_single")
+
+    def test_ahc_listings_subjects_match_repertoire(self) -> None:
+        featured = ing.RawEmail(
+            "ahc1",
+            "AHC Listings <listings@ahcteam.com>",
+            "FEATURED Physical Therapy Listings",
+            "2026-09-21",
+            body="Featured healthcare listings.",
+        )
+        new_listing = ing.RawEmail(
+            "ahc2",
+            "AHC Listings <listings@ahcteam.com>",
+            "NEW Healthcare Management Listing",
+            "2026-09-21",
+            body="One new listing.",
+        )
+        self.assertEqual(
+            mailman.classify_mail(featured),
+            ("listing", "ahc.listings_blast", "daily_digest"),
+        )
+        self.assertEqual(
+            mailman.classify_mail(new_listing),
+            ("listing", "ahc.listings_blast", "daily_digest"),
+        )
+
+    def test_ahc_listings_blast_is_not_the_whole_domain(self) -> None:
+        broker = ing.RawEmail(
+            "ahc-james",
+            "James McGeehan <james@ahcteam.com>",
+            "FEATURED Physical Therapy Listings",
+            "2026-09-21",
+            body="Forwarded blast from the desk.",
+        )
+        label, fmt_id, _em_type = mailman.classify_mail(broker)
+        self.assertNotEqual(fmt_id, "ahc.listings_blast")
+        self.assertEqual(label, "unknown")
+
+        other = ing.RawEmail(
+            "ahc-other",
+            "AHC Listings <listings@ahcteam.com>",
+            "RE: ahc",
+            "2026-09-21",
+            body="Desk reply, not a blast.",
+        )
+        self.assertEqual(mailman.classify_mail(other), ("unknown", "", ""))
+
 
 class GmailAuthCiTests(unittest.TestCase):
     def test_ci_refuses_browser_oauth(self) -> None:

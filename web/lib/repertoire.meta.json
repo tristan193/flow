@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "updated": "2026-09-19",
+  "updated": "2026-09-21",
   "repertoire_path": "pipeline/formats/repertoire.yaml",
   "playbook_path": "docs/deal-format-repertoire.md",
   "formats": [
@@ -816,6 +816,27 @@
       },
       "gotchas": [],
       "parser_notes": []
+    },
+    {
+      "id": "ahc.listings_blast",
+      "format_family": "ahc",
+      "source": "ahcteam.com",
+      "sub_source": "listings@ahcteam.com",
+      "provider_subcategory": "listings",
+      "nickname": "AHC",
+      "email_type": "daily_digest",
+      "status": "needs_parser",
+      "split": "newsletter",
+      "expected_fields": {
+        "present": [
+          "title"
+        ]
+      },
+      "gotchas": [
+        "Tristan 2026-09-21: mailbox is listings@ only. Do not add *@ahcteam.com or james@.",
+        "No dedicated splitter yet (needs_parser). Harve owns deal upsert after label=listing."
+      ],
+      "parser_notes": []
     }
   ],
   "subcategories": [
@@ -1214,6 +1235,15 @@
       "default_format": "trustpilot.review_ask",
       "label": "Review ask",
       "purpose": "Vendor review nudge \u2014 yield 0"
+    },
+    {
+      "id": "listings",
+      "email": "listings@ahcteam.com",
+      "provider_domain": "ahcteam.com",
+      "provider_nickname": "AHC",
+      "default_format": "ahc.listings_blast",
+      "label": "Listings desk",
+      "purpose": "FEATURED / NEW healthcare listing blasts. Not other AHC mailboxes."
     }
   ],
   "by_email": {
@@ -1239,7 +1269,8 @@
     "notifications@updates.dealonomy.com": "dealonomy.account_notice",
     "buyers@dealonomy.com": "dealonomy.deal_access",
     "info@caldergr.com": "calder.marketing",
-    "noreply.invitations@trustpilotmail.com": "trustpilot.review_ask"
+    "noreply.invitations@trustpilotmail.com": "trustpilot.review_ask",
+    "listings@ahcteam.com": "ahc.listings_blast"
   },
   "by_domain": {
     "bizbuysell.com": [
@@ -1348,6 +1379,9 @@
     ],
     "trustpilotmail.com": [
       "trustpilot.review_ask"
+    ],
+    "ahcteam.com": [
+      "ahc.listings_blast"
     ]
   }
 }

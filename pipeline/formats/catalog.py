@@ -414,6 +414,11 @@ class FormatCatalog:
         open_hit = _any_re(det.get("body_open_patterns"), open_text)
         marker_hit = _any_re(det.get("body_markers"), hay)
 
+        # subject_required: declared subject_patterns are the detect contract,
+        # not a score boost. Address match alone must not label the mail.
+        if det.get("subject_required") and not subj_hit:
+            return 0, []
+
         # Provider-scoped formats must hit address or domain.
         if (addrs or domains or fmt.source) and not (addr_hit or domain_hit):
             return 0, []
