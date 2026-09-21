@@ -19,8 +19,10 @@ nm/<domain>/<role>
 | Handle | Use when |
 |--------|----------|
 | `nm/bbs/enrich` | Apify BizBuySell enrich, harvest wiring for BBS |
-| `nm/harvest/gmail` | Gmail OAuth, harvest_gmail, Actions secrets |
-| `nm/pipeline/ingest` | Parsers, repertoire, upsert/dedupe |
+| `nm/harvest/gmail` | Legacy Gmail fetch helper — Mailman owns the inbox now |
+| `nm/harvest/mailman` | First door: read dirk@, persist + label `mail`, feed Harve |
+| `nm/harvest/harve` | Extract listing mail, enrich, POST `/api/import` — do not open Gmail |
+| `nm/pipeline/ingest` | Parsers, repertoire, upsert/dedupe (Harve’s tools) |
 | `nm/web/review` | Review UI, fit strip, deal cards |
 | `nm/ops/flush` | Purge/flush Neon or SQLite inventories |
 | `nm/docs/handoff` | This agent-to-agent documentation |

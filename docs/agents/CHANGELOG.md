@@ -27,6 +27,56 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-21 — `nm/web/review` — DONE
+
+**Scope:** Review New/CIM tab counts and “N of M” are this member’s remaining pile, not the shared inbound total.  
+**Risk:** low (UI count only)  
+**Coords:** none
+
+### Changed
+- `web/components/next/review-client.tsx` + `web/app/next/page.tsx` — New badge = unvoted cards; leftover inbound reads as waiting on the other partner
+
+### Do not touch
+- Verdict combine / stage rules
+
+---
+
+## 2026-09-21 — `nm/pipeline/axial-geo` — DONE
+
+**Scope:** Axial census-region strings are a real location shape (`region`) alongside City/ST — not invented IA/KS city/state.  
+**Risk:** medium (Neon migration `006_deal_region.sql`; fit G2 includes NM)  
+**Coords:** none — no file overlap with mailman-ci except `export_snapshot.py` (merged clean)
+
+### Changed
+- `pipeline/ingest.py` + `pipeline/geo.py` + `pipeline/db.py` — extract/store `region`
+- `web/db/migrations/006_deal_region.sql` + `web/lib/fit.ts` + `web/lib/geo.ts` — cards and buy-box geo
+- Snapshot `region` on harvest POST
+
+### Do not touch
+- Simon CIM payload `region` still meaning **state**
+
+---
+
+## 2026-09-21 — `nm/harvest/mailman-ci` — DONE
+
+**Scope:** Daily harvest first stage is Mailman on GitHub Actions (`python mailman.py`); Harve reads `mail` `label=listing` from artifact `nm-deals-db-v2`. Inbox stays dirk@.  
+**Risk:** medium (live harvest job + Vercel cron times in `web/vercel.json`)  
+**Coords:** none
+
+### Changed
+- `.github/workflows/daily-harvest.yml` + `pipeline/run_daily_harvest.sh` — mailman then ingest_mail; optional `mailman_only`
+- `pipeline/mailman.py` / `gmail_auth.py` — catcher token `mailman_token.json`, archive listings
+- Docs `MAILMAN.md` / `HARVE.md` — cloud shelf, POST `/api/import` only
+
+### Do not touch
+- Catcher address (`dirk@tullyinvesting.com`)
+- Daily dump to `/api/next/import`
+
+### Follow-ups
+- Confirm GitHub `GMAIL_TOKEN_JSON` is current `mailman_token.json` (dirk@, gmail.modify)
+
+---
+
 ## 2026-09-19 — `nm/harvest/gmail-threads` — DONE
 
 **Scope:** Harvest snapshot emits `gmailThreadIds` from Mailman `mail.thread_id` so Flow cards get Dirk Gmail links again; extract SMB/Rejigg listing URLs when already in the body.  
