@@ -19,9 +19,9 @@ import {
 import { CimReviewClient } from "./cim-review-client";
 import {
   CardFooter,
-  CimPackLink,
   DealTitleStack,
   FitStrip,
+  GmailThreadLink,
   LeadLine,
   MetricRow,
   VerdictChips,
@@ -556,7 +556,7 @@ function SwipeDeck({
                             Original listing →
                           </ListingLink>
                         ) : null}
-                        <CimPackLink dealNumber={deal.deal_number} className="text-discuss text-[11.5px]" />
+                        <GmailThreadLink deal={deal} className="text-discuss text-[11.5px]" />
                       </div>
                       <div className="flex items-center gap-3">
                         {isTop && (

@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-import { CimNewTabLink } from "../cim-new-tab-link";
 import { ListingLink } from "../listing-link";
-import { cimPackPath } from "@/lib/cim-pack-id";
 import { type Fit, type FitLevel, leadSentence, marginLabel, multipleLabel } from "@/lib/fit";
+import { gmailAllHref } from "@/lib/next/identity";
 import { dealIdLines, nextDealHeadline, nextDealSubline, sourceDisplayName } from "@/lib/next/display";
 import {
   CIM_VERDICT_LABELS,
@@ -278,22 +277,32 @@ export function VerdictChips({
   );
 }
 
-/** Opens `/cim/TLY-XXX` in a new tab so the swipe deck keeps its place. */
-export function CimPackLink({
-  dealNumber,
+/** Harvest thread in dirk@ — New cards use this instead of a CIM pack link. */
+export function GmailThreadLink({
+  deal,
   className = "text-discuss hover:text-discuss/80 text-[11.5px] font-medium transition-colors",
-  children = "CIM",
 }: {
-  dealNumber?: string | null;
+  deal: Pick<NextDeal, "gmail_thread_ids">;
   className?: string;
-  children?: React.ReactNode;
 }) {
-  const href = cimPackPath(dealNumber);
-  if (!href) return null;
+  const threads = deal.gmail_thread_ids.filter(Boolean);
+  if (threads.length === 0) return null;
   return (
-    <CimNewTabLink href={href} className={className}>
-      {children}
-    </CimNewTabLink>
+    <>
+      {threads.map((id, index) => (
+        <a
+          key={id}
+          href={gmailAllHref(id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={className}
+          title="Open in Dirk’s Gmail"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {threads.length > 1 ? `Gmail ${index + 1} →` : "Gmail →"}
+        </a>
+      ))}
+    </>
   );
 }
 
@@ -418,7 +427,7 @@ export function DealListCard({
               Original listing →
             </ListingLink>
           ) : null}
-          <CimPackLink dealNumber={deal.deal_number} />
+          <GmailThreadLink deal={deal} />
         </div>
 
         {children}

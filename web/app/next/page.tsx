@@ -59,10 +59,10 @@ export default async function NextReviewPage() {
         />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers — swipe only. CIM is every deal at stage CIM
-          (same <code>deals_next</code> row the intake stamps).
-          View CIM opens <code>/cim/TLY-XXX</code> in a new tab. Pipeline only shows progress.
-          Super Like stays on the far right of New.
+          New is inbound teasers — swipe only; Gmail opens the harvest thread.
+          CIM is every deal at stage CIM (same <code>deals_next</code> row the
+          intake stamps). View CIM lives on that tab, not New. Pipeline only
+          shows progress. Super Like stays on the far right of New.
         </p>
       </main>
     </>
