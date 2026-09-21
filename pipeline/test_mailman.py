@@ -157,7 +157,7 @@ class MailmanLabelTests(unittest.TestCase):
         self.assertEqual(label, "listing")
         self.assertEqual(fmt_id, "bizbuysell.newbizopps_single")
 
-    def test_ahc_listings_subjects_stay_unknown_without_repertoire(self) -> None:
+    def test_ahc_listings_subjects_match_repertoire(self) -> None:
         featured = ing.RawEmail(
             "ahc1",
             "AHC Listings <listings@ahcteam.com>",
@@ -172,8 +172,35 @@ class MailmanLabelTests(unittest.TestCase):
             "2026-09-21",
             body="One new listing.",
         )
-        self.assertEqual(mailman.classify_mail(featured), ("unknown", "", ""))
-        self.assertEqual(mailman.classify_mail(new_listing), ("unknown", "", ""))
+        self.assertEqual(
+            mailman.classify_mail(featured),
+            ("listing", "ahc.listings_blast", "daily_digest"),
+        )
+        self.assertEqual(
+            mailman.classify_mail(new_listing),
+            ("listing", "ahc.listings_blast", "daily_digest"),
+        )
+
+    def test_ahc_listings_blast_is_not_the_whole_domain(self) -> None:
+        broker = ing.RawEmail(
+            "ahc-james",
+            "James McGeehan <james@ahcteam.com>",
+            "FEATURED Physical Therapy Listings",
+            "2026-09-21",
+            body="Forwarded blast from the desk.",
+        )
+        label, fmt_id, _em_type = mailman.classify_mail(broker)
+        self.assertNotEqual(fmt_id, "ahc.listings_blast")
+        self.assertEqual(label, "unknown")
+
+        other = ing.RawEmail(
+            "ahc-other",
+            "AHC Listings <listings@ahcteam.com>",
+            "RE: ahc",
+            "2026-09-21",
+            body="Desk reply, not a blast.",
+        )
+        self.assertEqual(mailman.classify_mail(other), ("unknown", "", ""))
 
 
 class GmailAuthCiTests(unittest.TestCase):

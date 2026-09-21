@@ -141,24 +141,36 @@ Match repertoire first (`ingest.classify_format`: sender + subject/body). Then m
 
 **On a repertoire miss, sort by reading the mail.** Touch every message. `unknown` is how you mark "not sorted yet", not where a listing lives.
 
-One automatic miss-path, kept narrow on purpose: a subject that **starts with** `New Businesses For Sale` is `listing` (`email_type=daily_digest`, `format_id` blank). A reply (`Re: New Businesses For Sale…`) is not that shape. Do not grow this into a fuzzy classifier. Anything else you can tell by reading — AHC listing blasts, broker `Re:` threads, Luma reminders — you label by hand until Tristan approves a repertoire entry.
+One automatic miss-path, kept narrow on purpose: a subject that **starts with** `New Businesses For Sale` is `listing` (`email_type=daily_digest`, `format_id` blank). A reply (`Re: New Businesses For Sale…`) is not that shape. Do not grow this into a domain rule. Transworld sends a lot of mail; domain alone is the wrong key (Tristan rejected a `tworldco.com` repertoire entry on 2026-09-21).
 
-**Repertoire edits:** suggest the patch to Tristan first. Do not edit `pipeline/formats/repertoire.yaml` to clear one harvest's unknowns. Rapid adds drift the catalog. After he approves, add one narrow entry and let the next run match it.
+`listings@ahcteam.com` with a subject that starts with `FEATURED … Listing(s)` or `NEW … Listing(s)` is repertoire `ahc.listings_blast` (`daily_digest`, Tristan approved 2026-09-21). That entry is the listings desk only. It is not `*@ahcteam.com`.
+
+**Repertoire edits:** suggest the patch to Tristan first. Edit `pipeline/formats/repertoire.yaml` only after he approves that patch. Rapid adds drift the catalog.
+
+Tristan’s decisions on the 2026-09-21 proposals:
+
+| Proposal | Decision |
+|----------|----------|
+| `ahc.listings_blast` (`listings@ahcteam.com` + FEATURED/NEW listing subjects) | **Approved.** In repertoire. |
+| `tworldco.com` / domain-only Transworld | **Rejected.** Keep the subject-starts-with fallback. No domain match. |
+| `james@ahcteam.com` broker follow-up | **Rejected.** Individual brokers do not get repertoire. |
+| `ahmad@theoptimateam.com` broker follow-up | **Rejected.** Same. |
+| Luma event reminders | **Rejected.** Noise operationally. Not a format. |
 
 Harve only selects `label = 'listing'`. A listing left `unknown` never enters the pipeline. A newsletter stamped `listing` becomes a fake deal. Both are your miss.
 
 ### Manual sort — harvest run 35636861408 (2026-09-21)
 
-These seven were `unknown` because repertoire missed. Labels below are the operational sort. They are not repertoire entries.
+These seven were `unknown` because repertoire missed. Labels below are the operational sort. Only the two AHC listing blasts were approved into repertoire.
 
-| Sender | Subject | Label |
-|--------|---------|-------|
-| Albert Fialkovich `afialkovich@tworldco.com` | New Businesses For Sale: Transworld Business Advisors of Colorado | `listing` (also the subject fallback) |
-| `listings@ahcteam.com` | FEATURED Physical Therapy Listings | `listing` |
-| `listings@ahcteam.com` | NEW Healthcare Management Listing | `listing` |
-| James McGeehan `james@ahcteam.com` | RE: ahc | `follow_up` |
-| Ahmad Farooqi `ahmad@theoptimateam.com` | Re: Advantis Comps | `follow_up` |
-| Nick Huber `nickhuber@user.luma-mail.com` | CEO Bootcamp Luma reminders (two messages) | `noise` |
+| Sender | Subject | Label | Repertoire |
+|--------|---------|-------|------------|
+| Albert Fialkovich `afialkovich@tworldco.com` | New Businesses For Sale: Transworld Business Advisors of Colorado | `listing` | Rejected. Subject fallback only. |
+| `listings@ahcteam.com` | FEATURED Physical Therapy Listings | `listing` | `ahc.listings_blast` |
+| `listings@ahcteam.com` | NEW Healthcare Management Listing | `listing` | `ahc.listings_blast` |
+| James McGeehan `james@ahcteam.com` | RE: ahc | `follow_up` | Rejected. Sort by hand. |
+| Ahmad Farooqi `ahmad@theoptimateam.com` | Re: Advantis Comps | `follow_up` | Rejected. Sort by hand. |
+| Nick Huber `nickhuber@user.luma-mail.com` | CEO Bootcamp Luma reminders (two messages) | `noise` | Rejected. Sort by hand. |
 
 ---
 
