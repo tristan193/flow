@@ -13,6 +13,7 @@ import {
   type NextNoteRow,
   isNextRemintCard,
   isNextReviewStage,
+  nextCimDeck,
   type VerdictAction,
 } from "@/lib/next/model";
 import { CimReviewClient } from "./cim-review-client";
@@ -222,6 +223,23 @@ export function NextReviewClient({
     [scored, verdictOf, skipped],
   );
 
+  // Personal inbound pile (server votes only). Tab + "N of M" use this, not
+  // the shared inbox — a partner Pass must not inflate the other member's count.
+  const myPile = useMemo(
+    () =>
+      scored.filter(
+        (deal) =>
+          isNextReviewStage(deal.stage) &&
+          !isNextRemintCard(deal) &&
+          !deal.verdicts[member],
+      ).length,
+    [scored, member],
+  );
+  const myCimPile = useMemo(
+    () => nextCimDeck(cimDeals, member).length,
+    [cimDeals, member],
+  );
+
   const remaining = useMemo(() => {
     const counts: Record<FitLevel, number> = {
       priority: 0,
@@ -239,8 +257,8 @@ export function NextReviewClient({
       <div className="border-line bg-surface flex gap-1 rounded-xl border p-1">
         {(
           [
-            { id: "new" as const, label: "New", count: deals.length },
-            { id: "cim" as const, label: "CIM", count: cimDeals.length },
+            { id: "new" as const, label: "New", count: queue.length },
+            { id: "cim" as const, label: "CIM", count: myCimPile },
           ] as const
         ).map((tab) => (
           <button
@@ -263,7 +281,11 @@ export function NextReviewClient({
         <CimReviewClient deals={cimDeals} notesByDealId={notesByDealId} member={member} />
       ) : (
         <>
-          <QueueMeter counts={remaining} total={queue.length} reviewed={deals.length - queue.length} />
+          <QueueMeter
+            counts={remaining}
+            total={queue.length}
+            reviewed={Math.max(0, myPile - queue.length)}
+          />
 
           {failed && (
             <p className="bg-pass-bg text-pass rounded-lg px-3 py-2 text-xs">
@@ -284,7 +306,7 @@ export function NextReviewClient({
 
           <SwipeDeck
             queue={queue}
-            total={deals.length}
+            total={myPile}
             member={member}
             onCommit={commitSwipe}
             onSuperLike={(deal) => applyPin(deal, true)}
@@ -320,7 +342,9 @@ function QueueMeter({
   if (total === 0) {
     return (
       <div className="border-line bg-surface rounded-xl border px-3.5 py-3">
-        <p className="text-ink-dim text-[13px]">Queue empty · {reviewed} reviewed</p>
+        <p className="text-ink-dim text-[13px]">
+          {reviewed > 0 ? `Queue empty · ${reviewed} reviewed` : "All caught up."}
+        </p>
       </div>
     );
   }

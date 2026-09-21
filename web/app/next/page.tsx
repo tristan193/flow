@@ -39,7 +39,9 @@ export default async function NextReviewPage() {
           <h1 className="text-lg font-semibold tracking-tight">Review</h1>
           <p className="text-ink-dim text-[12.5px]">
             New · {myDeck.length} in your deck
-            {deals.length !== myDeck.length ? ` · ${deals.length} still inbound` : ""}
+            {deals.length !== myDeck.length
+              ? ` · ${deals.length - myDeck.length} waiting on ${memberLabel(otherMember(member))}`
+              : ""}
             {hidden > 0 ? ` · ${hidden} under floor hidden` : ""}
             {demoCount > 0 ? ` · ${demoCount} DEMO` : ""}
             {" · "}
