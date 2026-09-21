@@ -342,7 +342,6 @@ def _titles_match(a: str, b: str, threshold: float = 0.82) -> bool:
     shorter, longer = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
     return len(shorter) >= 12 and shorter in longer
 
-
 def _ext_id_msg_slice(ext_id: str | None) -> str | None:
     """Return 'gmailMsgId:slice' from 'family:gmailMsgId:slice', else None."""
     parts = (ext_id or "").split(":")
@@ -353,6 +352,22 @@ def _ext_id_msg_slice(ext_id: str | None) -> str | None:
         return None
     return f"{msg}:{idx}"
 
+def _money_band(value, step: int = 10_000):
+    if not value:
+        return None
+    return int(round(float(value) / step))
+
+def _revenue_compatible(a, b) -> bool:
+    if not a or not b:
+        return True
+    return _money_band(a) == _money_band(b)
+
+def _geo_compatible(state_a, state_b, region_a, region_b) -> bool:
+    if state_a and state_b and state_a != state_b:
+        return False
+    if region_a and region_b and region_a != region_b:
+        return False
+    return True
 
 def upsert(con: sqlite3.Connection, l) -> tuple:
     """Returns (deal_id, 'new'|'merged'|'repeat').
@@ -425,6 +440,29 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
         except sqlite3.OperationalError:
             row = None
         if row: mode = "merged"
+    if not row and l.earnings:
+        try:
+            money_cands = con.execute(
+                "SELECT id, title, state, region, revenue, ebitda, sde FROM deals"
+            )
+        except sqlite3.OperationalError:
+            money_cands = con.execute(
+                "SELECT id, title, state, revenue, ebitda, sde FROM deals"
+            )
+        for cand in money_cands:
+            cand_earn = cand["ebitda"] if cand["ebitda"] is not None else cand["sde"]
+            cand_region = cand["region"] if "region" in cand.keys() else None
+            if cand_earn is None or _money_band(l.earnings) != _money_band(cand_earn):
+                continue
+            if not _revenue_compatible(l.revenue, cand["revenue"]):
+                continue
+            if not _geo_compatible(l.state, cand["state"], getattr(l, "region", None), cand_region):
+                continue
+            if not _titles_match(l.title, cand["title"]):
+                continue
+            row = cand
+            mode = "merged"
+            break
 
     if row:
         did = row["id"]

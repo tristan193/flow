@@ -34,7 +34,8 @@ import {
 export { isHarvestExtId } from "./identity";
 
 /**
- * Next ingest. Identity hard-lock: listing URL → broker id → headline/alias → fingerprint.
+ * Next ingest. Identity hard-lock: listing URL → broker id →
+ * thread+teaser+earnings → headline/alias → fingerprint.
  * Harvest `ext_id = format:gmail_msg:index` is ignored as a join key.
  *
  * Remint / attach-only: see `lib/next/remint.ts`. When `duplicateOf` or
@@ -173,7 +174,7 @@ async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
   const rows = await q<Record<string, unknown>>(
     `SELECT id, deal_number, source_deal_id, source_ids, fingerprint,
             title, alias_names, broker_firm, city, state, region, nickname,
-            source, url
+            source, url, gmail_thread_ids, ebitda, sde
        FROM deals_next`,
   );
   return rows.map((row) => ({
@@ -191,6 +192,9 @@ async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
     nickname: row.nickname == null ? null : String(row.nickname),
     source: row.source == null ? null : String(row.source),
     url: row.url == null ? null : String(row.url),
+    gmailThreadIds: asStringArray(row.gmail_thread_ids),
+    ebitda: toNumber(row.ebitda),
+    sde: toNumber(row.sde),
   }));
 }
 

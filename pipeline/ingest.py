@@ -1982,6 +1982,23 @@ def titles_match(a: str, b: str, threshold: float = 0.82) -> bool:
     shorter, longer = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
     return len(shorter) >= 12 and shorter in longer
 
+def _money_band(value, step: int = 10_000):
+    if not value:
+        return None
+    return int(round(float(value) / step))
+
+def _revenue_compatible(a, b) -> bool:
+    if not a or not b:
+        return True
+    return _money_band(a) == _money_band(b)
+
+def _geo_compatible(state_a, state_b, region_a, region_b) -> bool:
+    if state_a and state_b and state_a != state_b:
+        return False
+    if region_a and region_b and region_a != region_b:
+        return False
+    return True
+
 def dedupe(items: List[Listing]) -> Tuple[List[Listing], int]:
     kept: List[Listing] = []
     merged = 0
@@ -1996,6 +2013,17 @@ def dedupe(items: List[Listing]) -> Tuple[List[Listing], int]:
                 hit = k; break
             # pass 3 — fuzzy title, same state
             if it.state and it.state == k.state and titles_match(it.title, k.title):
+                hit = k; break
+            # pass 4 — same teaser + same earnings, even when one side has no state.
+            # A region-only reparse used to miss the state row and mint a second deal.
+            if (
+                it.earnings
+                and k.earnings
+                and _money_band(it.earnings) == _money_band(k.earnings)
+                and _revenue_compatible(it.revenue, k.revenue)
+                and _geo_compatible(it.state, k.state, getattr(it, "region", None), getattr(k, "region", None))
+                and titles_match(it.title, k.title)
+            ):
                 hit = k; break
         if hit:
             merged += 1

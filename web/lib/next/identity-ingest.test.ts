@@ -45,6 +45,50 @@ test("one Gmail thread is not treated as a deal identity", () => {
         dealNumber: "TLY-009",
         title: "Water plant",
         brokerFirm: "Other Firm",
+        gmailThreadIds: ["same-thread"],
+      },
+    ],
+  );
+  assert.equal(hit, null);
+});
+
+test("same thread, same teaser, and same earnings join even without a broker", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Oilfield and Agriculture Supply Company in Kansas",
+      ebitda: 1_250_000,
+      region: "Heartland",
+      gmailThreadIds: ["1a0ac26af41f876c"],
+    },
+    [
+      {
+        id: 240,
+        dealNumber: "TLY-240",
+        title: "Oilfield and Agriculture Supply Company in Kansas",
+        ebitda: 1_252_000,
+        state: "KS",
+        gmailThreadIds: ["1a0ac26af41f876c"],
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "thread_title");
+  assert.equal(hit?.candidate.dealNumber, "TLY-240");
+});
+
+test("same thread and teaser do not join when earnings disagree", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Oilfield and Agriculture Supply Company in Kansas",
+      ebitda: 400_000,
+      gmailThreadIds: ["1a0ac26af41f876c"],
+    },
+    [
+      {
+        id: 240,
+        dealNumber: "TLY-240",
+        title: "Oilfield and Agriculture Supply Company in Kansas",
+        ebitda: 1_250_000,
+        gmailThreadIds: ["1a0ac26af41f876c"],
       },
     ],
   );

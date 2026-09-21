@@ -27,6 +27,26 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-21 — `nm/pipeline/ingest` — DONE
+
+**Scope:** Same Gmail thread + same teaser + same earnings is one deal. A digest thread alone still is not.  
+**Risk:** medium (harvest dedupe + Next import join)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/identity.ts` — `thread_title` match before the loose alias pass. Conflicting real states still block.
+- `web/lib/next/import.ts` — candidates include `gmail_thread_ids`, EBITDA, and SDE
+- `pipeline/ingest.py` + `pipeline/db.py` — title + earnings join when one side has no state
+
+### Do not touch
+- Thread-only matching (one digest, many shops)
+- Broker-only matching
+
+### Follow-ups
+- TLY-240 and TLY-271 are already two cards. The next harvest will not mint a third. Collapsing 271 into 240 is a separate merge.
+
+---
+
 ## 2026-09-21 — `nm/web/review` — DONE
 
 **Scope:** New teaser cards never show a CIM button. If a harvest thread exists, the footer shows Gmail instead.  
