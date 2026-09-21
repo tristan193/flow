@@ -29,6 +29,22 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ## 2026-09-21 — `nm/web/review` — DONE
 
+**Scope:** New teaser cards never show a CIM button. If a harvest thread exists, the footer shows Gmail instead.  
+**Risk:** low (Review footer only)  
+**Coords:** none
+
+### Changed
+- `web/components/next/review-client.tsx` + `web/components/next/deal-card.tsx` — drop always-on `/cim/TLY-XXX` link from New; render dirk@ Gmail when `gmail_thread_ids` is set
+- `web/app/next/page.tsx` — copy: View CIM lives on the CIM tab
+
+### Do not touch
+- CIM tab “View CIM” button
+- Deck membership (inbox stays New; stage CIM stays CIM)
+
+---
+
+## 2026-09-21 — `nm/web/review` — DONE
+
 **Scope:** Review New/CIM tab counts and “N of M” are this member’s remaining pile, not the shared inbound total.  
 **Risk:** low (UI count only)  
 **Coords:** none
