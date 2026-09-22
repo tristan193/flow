@@ -34,7 +34,7 @@ import {
 export { isHarvestExtId } from "./identity";
 
 /**
- * Next ingest. Identity is TLY number + source id + fingerprint.
+ * Next ingest. Identity hard-lock: listing URL → broker id → headline/alias → fingerprint.
  * Harvest `ext_id = format:gmail_msg:index` is ignored as a join key.
  *
  * Remint / attach-only: see `lib/next/remint.ts`. When `duplicateOf` or
@@ -172,7 +172,8 @@ function toTimestamp(value: unknown): string | null {
 async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
   const rows = await q<Record<string, unknown>>(
     `SELECT id, deal_number, source_deal_id, source_ids, fingerprint,
-            title, alias_names, broker_firm, city, state, region, nickname
+            title, alias_names, broker_firm, city, state, region, nickname,
+            source, url
        FROM deals_next`,
   );
   return rows.map((row) => ({
@@ -188,6 +189,8 @@ async function loadMatchCandidates(q: QueryFn): Promise<MatchCandidate[]> {
     state: row.state == null ? null : String(row.state),
     region: row.region == null ? null : String(row.region),
     nickname: row.nickname == null ? null : String(row.nickname),
+    source: row.source == null ? null : String(row.source),
+    url: row.url == null ? null : String(row.url),
   }));
 }
 
@@ -196,7 +199,9 @@ function incomingToIdentity(deal: IncomingNextDeal): IdentityInput {
     dealNumber: deal.dealNumber,
     title: deal.title,
     aliasNames: deal.aliasNames,
-    brokerFirm: deal.brokerFirm,
+    // Nickname/source stand in for broker so Axial/DealStream harvest rows
+    // can complete a fingerprint when the teaser never names a firm.
+    brokerFirm: deal.brokerFirm || deal.nickname || deal.source || null,
     city: deal.city,
     state: deal.state,
     region: deal.region,

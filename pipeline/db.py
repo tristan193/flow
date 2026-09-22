@@ -342,13 +342,26 @@ def _titles_match(a: str, b: str, threshold: float = 0.82) -> bool:
     shorter, longer = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
     return len(shorter) >= 12 and shorter in longer
 
+
+def _ext_id_msg_slice(ext_id: str | None) -> str | None:
+    """Return 'gmailMsgId:slice' from 'family:gmailMsgId:slice', else None."""
+    parts = (ext_id or "").split(":")
+    if len(parts) < 3:
+        return None
+    msg, idx = parts[-2], parts[-1]
+    if not msg or not idx.isdigit():
+        return None
+    return f"{msg}:{idx}"
+
+
 def upsert(con: sqlite3.Connection, l) -> tuple:
     """Returns (deal_id, 'new'|'merged'|'repeat').
 
-    Match order mirrors the in-memory deduper: exact URL, economic
-    fingerprint, then fuzzy title+state. Cross-RUN matching is why this
-    lives in SQL — a deal from Axial on Monday and a newsletter on Thursday
-    are the same deal, and only the database remembers Monday.
+    Hard-lock match order: exact listing URL, near-identical headline
+    (title+source / title+state), then economic fingerprint. Cross-RUN
+    matching is why this lives in SQL — a deal from Axial on Monday and a
+    newsletter on Thursday are the same deal, and only the database
+    remembers Monday.
 
     The fuzzy pass matters more here than in-memory: a BizAlert record is
     created with NO earnings at all (confirmed — real alerts never carry
@@ -365,9 +378,41 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     row = con.execute("SELECT id FROM deals WHERE ext_id=?", (l.ext_id,)).fetchone()
     same_email = row is not None
     mode = "repeat"
+    # Format-family prefix can flip (ahc → newsletter) on the same Gmail
+    # message. Join on *:msg_id:slice so we merge instead of reminting.
+    if not row:
+        suffix = _ext_id_msg_slice(l.ext_id)
+        if suffix:
+            hit = con.execute(
+                "SELECT id, ext_id FROM deals WHERE ext_id LIKE ?",
+                (f"%:{suffix}",),
+            ).fetchone()
+            if hit:
+                row = hit
+                mode = "merged"
+                same_email = True  # same underlying mail slice — safe to reparse
+    # Hard-lock shelf gate (Dirk/Tristan): URL → headline → fingerprint.
+    # Broker listing IDs live inside url_norm (BBS q=, Axial ;id=, …).
     if not row and un:
         row = con.execute("SELECT id FROM deals WHERE url_norm=? AND url_norm<>''", (un,)).fetchone()
         if row: mode = "merged"
+    # Headline identical / near-identical before economic fingerprint.
+    if not row and l.title and getattr(l, "source", None):
+        for cand in con.execute(
+            "SELECT id, title, source FROM deals WHERE source=?",
+            (l.source,),
+        ):
+            if _titles_match(l.title, cand["title"]):
+                row = cand
+                mode = "merged"
+                break
+    if not row and l.state:
+        for cand in con.execute("SELECT id, title FROM deals WHERE state=?", (l.state,)):
+            if _titles_match(l.title, cand["title"]):
+                row = cand
+                mode = "merged"
+                break
+    # Fingerprint confirm (numbers + geo) last.
     if not row and l.earnings and l.state:
         row = con.execute("SELECT id FROM deals WHERE fingerprint=? AND state=?", (fp, l.state)).fetchone()
         if row: mode = "merged"
@@ -380,12 +425,6 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
         except sqlite3.OperationalError:
             row = None
         if row: mode = "merged"
-    if not row and l.state:
-        for cand in con.execute("SELECT id, title FROM deals WHERE state=?", (l.state,)):
-            if _titles_match(l.title, cand["title"]):
-                row = cand
-                mode = "merged"
-                break
 
     if row:
         did = row["id"]

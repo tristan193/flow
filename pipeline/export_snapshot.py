@@ -119,6 +119,43 @@ def listing_url_for_row(con: sqlite3.Connection, deal_id: int, url_norm: str | N
     return url or None
 
 
+_AXIAL_SEMI_ID = re.compile(
+    r"(?:^|[;?&#/])id=([a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})",
+    re.I,
+)
+_AXIAL_PATH_ID = re.compile(
+    r"(?:opportunity|teaser-share|received-deals|teaser)/([a-f0-9]{8,}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9]{8,})",
+    re.I,
+)
+_BUILDOUT_SHARE = re.compile(
+    r"buildout\.com/share/([a-z0-9][a-z0-9-]{2,120})",
+    re.I,
+)
+_BBS_Q = re.compile(r"[?&]q=(\d{6,})", re.I)
+_REJIGG = re.compile(r"rejigg\.com/app/businesses/(\d+)", re.I)
+
+
+def listing_source_deal_id(url: str | None) -> str | None:
+    """Stable Flow join key derived from the listing URL (not harvest ext_id)."""
+    u = url or ""
+    if not u:
+        return None
+    m = _AXIAL_SEMI_ID.search(u) or _AXIAL_PATH_ID.search(u)
+    if m:
+        return f"axial:{m.group(1).lower()}"
+    m = _BUILDOUT_SHARE.search(u)
+    if m:
+        return f"buildout:{m.group(1).lower()}"
+    m = _BBS_Q.search(u)
+    if m:
+        return f"bbs:{m.group(1)}"
+    m = _REJIGG.search(u)
+    if m:
+        return f"rejigg:{m.group(1)}"
+    return None
+
+
+
 def export(db_path: str) -> dict:
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
@@ -151,6 +188,9 @@ def export(db_path: str) -> dict:
             ),
             "needsLlm": json.loads(r["needs_llm"] or "[]"),
             "url": listing_url_for_row(con, r["id"], r["url_norm"] or None),
+            "sourceDealId": listing_source_deal_id(
+                listing_url_for_row(con, r["id"], r["url_norm"] or None)
+            ),
             "gmailThreadIds": threads_by_deal.get(r["id"], []),
             "firstSeen": r["first_seen"],
             "lastSeen": r["last_seen"],

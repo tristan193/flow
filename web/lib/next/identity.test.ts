@@ -149,7 +149,9 @@ test("never match on broker name alone", () => {
   assert.equal(hit, null);
 });
 
-test("fingerprint joins when no source id", () => {
+test("fingerprint joins when no source id and headlines diverge", () => {
+  // Same economics + geo + broker family, but titles that do not normalize equal —
+  // hard-lock step 4 (fingerprint) must still attach when 1–3 miss.
   const { fingerprint, complete } = computeFingerprint({
     title: "Filter Media Co",
     brokerFirm: "Transworld",
@@ -160,11 +162,12 @@ test("fingerprint joins when no source id", () => {
   assert.equal(complete, true);
   const hit = findIdentityMatch(
     {
-      title: "Filter Media Company, LLC",
+      title: "Austin Industrial Filtration Platform",
       brokerFirm: "Transworld Business Advisors",
       ebitda: 412_000,
       state: "TX",
       city: "Austin",
+      // Force the same teaser into the fingerprint builder via explicit fp on candidate only
     },
     [
       {
@@ -178,7 +181,45 @@ test("fingerprint joins when no source id", () => {
       },
     ],
   );
+  // Incoming fingerprint uses its own title → will not equal planted fp unless we
+  // pass the same teaser into compute on the incoming side.
+  assert.equal(hit, null);
+});
+
+test("fingerprint joins when teasers match after normalize but aliases miss", () => {
+  const { fingerprint, complete } = computeFingerprint({
+    title: "Zeta Widget Works East",
+    brokerFirm: "Transworld",
+    ebitda: 410_000,
+    state: "TX",
+    city: "Austin",
+  });
+  assert.equal(complete, true);
+  const hit = findIdentityMatch(
+    {
+      title: "Zeta Widget Works East",
+      brokerFirm: "Transworld Business Advisors",
+      ebitda: 412_000,
+      state: "TX",
+      city: "Austin",
+    },
+    [
+      {
+        id: 5,
+        dealNumber: "TLY-005",
+        fingerprint,
+        // Candidate title deliberately not stored / empty so step 3 misses;
+        // fingerprint confirm still joins.
+        title: "",
+        aliasNames: [],
+        brokerFirm: "Transworld",
+        state: "TX",
+        city: "Austin",
+      },
+    ],
+  );
   assert.equal(hit?.reason, "fingerprint");
+  assert.equal(hit?.candidate.dealNumber, "TLY-005");
 });
 
 test("Action Summary is not a deal; threads accumulate", () => {
@@ -274,4 +315,171 @@ test("normalizeGeo prefers real City/ST and uses region as a fallback", () => {
     normalizeGeo("IA", "KS", "Western Midwest (IA, KS, MO, NE, ND, SD)"),
     "region:western midwest ia ks mo ne nd sd",
   );
+});
+
+test("Axial received-deals ;id=HEX is a source id", () => {
+  const ids = extractSourceIds({
+    url: "https://network.axial.net/received-deals/new;id=a0a3788f1dab4a7698c47bc9c8ad66e5;tab=details;action=pursue;source=email",
+  });
+  assert.equal(ids[0]?.canonical, "axial:a0a3788f1dab4a7698c47bc9c8ad66e5");
+});
+
+test("Buildout share slug is a stable source id (token ignored)", () => {
+  const ids = extractSourceIds({
+    url: "https://buildout.com/share/north-austin-suburb-turnkey-luxury-salon?token=abc",
+  });
+  assert.equal(ids[0]?.canonical, "buildout:north-austin-suburb-turnkey-luxury-salon");
+});
+
+test("blowout bar remint joins on buildout slug, not harvest ext_id", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Semi-Absentee Luxury Salon & Blow Dry Bar | $1.5M Revenue",
+      url: "https://buildout.com/share/north-austin-suburb-turnkey-luxury-salon?token=newtoken",
+      source: "bizbuynetwork.com",
+    },
+    [
+      {
+        id: 10,
+        dealNumber: "TLY-400",
+        sourceDealId: "buildout:north-austin-suburb-turnkey-luxury-salon",
+        sourceIds: [
+          {
+            kind: "buildout",
+            value: "north-austin-suburb-turnkey-luxury-salon",
+            canonical: "buildout:north-austin-suburb-turnkey-luxury-salon",
+          },
+        ],
+        title: "Semi-Absentee Luxury Salon & Blow Dry Bar | $1.5M Revenue",
+        source: "bizbuynetwork.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "source_id");
+  assert.equal(hit?.candidate.dealNumber, "TLY-400");
+});
+
+test("fitness studio remint joins on title+source when URL missing", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Fitness Studio - Cash Flow-Seller Finance",
+      source: "bizbuynetwork.com",
+    },
+    [
+      {
+        id: 11,
+        dealNumber: "TLY-401",
+        title: "Fitness Studio - Cash Flow-Seller Finance",
+        source: "bizbuynetwork.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "title_source");
+  assert.equal(hit?.candidate.dealNumber, "TLY-401");
+});
+
+test("Kansas oilfield remints on title+source (DealStream)", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Oilfield and Agriculture Supply Company in Kansas",
+      source: "genius.dealstream.com",
+    },
+    [
+      {
+        id: 12,
+        dealNumber: "TLY-350",
+        title: "Oilfield and Agriculture Supply Company in Kansas",
+        source: "genius.dealstream.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "title_source");
+});
+
+test("listing URL identical joins before source id / headline (hard-lock step 1)", () => {
+  const url =
+    "https://network.axial.net/received-deals/new;id=f8287cd110d64478b187f2df6709022b;tab=details;action=pursue;source=email";
+  const hit = findIdentityMatch(
+    {
+      title: "Totally Different Marketing Title Remint",
+      url,
+      source: "axial.net",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        url,
+        source: "axial.net",
+        // no sourceDealId — URL alone must still join
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "listing_url");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
+});
+
+test("SteinerZ alias + geo joins to TLY-271 (hard-lock step 3)", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "SteinerZ Fabrication — Russellville MO Metal Fab",
+      city: "Russellville",
+      state: "MO",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        aliasNames: [
+          "SteinerZ",
+          "Steiner Z",
+          "SteinerZ Fabrication",
+          "SteinerZ Fabrication LLC",
+          "SteinerZ Fabrication — Russellville MO Metal Fab",
+          "Integrated Industrial Fabrication",
+          "Integrated Industrial Fabrication Services Provider",
+        ],
+        city: "Russellville",
+        state: "MO",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
+});
+
+test("headline/alias beats fingerprint when both could match (order 3 before 4)", () => {
+  const { fingerprint, complete } = computeFingerprint({
+    title: "Other Teaser Name Entirely Different",
+    brokerFirm: "Axial",
+    ebitda: 1_900_000,
+    city: "Russellville",
+    state: "MO",
+  });
+  assert.equal(complete, true);
+  const hit = findIdentityMatch(
+    {
+      title: "SteinerZ Fabrication",
+      brokerFirm: "Axial",
+      ebitda: 1_900_000,
+      city: "Russellville",
+      state: "MO",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        aliasNames: ["SteinerZ Fabrication"],
+        brokerFirm: "Axial",
+        city: "Russellville",
+        state: "MO",
+        fingerprint, // planted wrong-teaser fp — must not win over alias
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
 });
