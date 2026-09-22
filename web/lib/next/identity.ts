@@ -1,18 +1,24 @@
 /**
  * Deal identity — join keys, fingerprints, aliases, thread lists.
  *
- * Matching order (never skip ahead to a weaker key):
- *   1. deal_number (TLY-001)
- *   2. source_deal_id / source_ids (Axial hex/;id=, BBS q=, Buildout slug, …)
- *   3. complete fingerprint = normalize(teaser) + broker_firm + round(EBITDA) + geo
- *   4. normalized title + same source domain (harvest remint gate)
- *   5. alias / title overlap AND (broker if both known) AND (geo if both known)
+ * Hard-lock ingest gate (Dirk / Tristan). Before minting ANY new TLY, check
+ * in this order and STOP at the first match → attach-only (never a new
+ * Review card). If unsure → orphan to Tristan/Dirk.
+ *
+ *   0. deal_number (TLY-001) when the payload already names a card
+ *   1. Listing URL identical (same listing link / BBS path / Axial pursue URL)
+ *   2. Broker deal ID (Axial hex/;id=, BBS q=, V-AID, Transworld, Buildout slug, …)
+ *   3. Headline identical or near-identical (normalize + alias_names),
+ *      including title+source-domain and alias/title overlap with shared geo|broker
+ *   4. Numbers + geo fingerprint confirm (teaser + broker + round(EBITDA|SDE) + geo)
  *
  * NEVER match on broker name alone.
  * NEVER assume one Gmail thread = one deal.
+ * Mid-pipeline / CIM / NDA / broker follow-up → attach-only with duplicateOf.
  */
 
 import { isRealState, looksLikeRegion, slugGeoToken } from "../geo";
+import { normalizeListingHref } from "../listing-url";
 
 export type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb" | "buildout";
 
@@ -207,7 +213,7 @@ export function computeFingerprint(input: {
 
 /**
  * Harvest leftover keys (`format:gmail_msg:index`). Never a Next join key.
- * Matching uses deal number → source id → fingerprint only.
+ * Matching uses the hard-lock gate (URL → id → headline → fingerprint).
  */
 export function isHarvestExtId(value: string | null | undefined): boolean {
   const v = (value || "").trim().toLowerCase();
@@ -437,10 +443,11 @@ export interface MatchCandidate {
 
 export type MatchReason =
   | "deal_number"
+  | "listing_url"
   | "source_id"
-  | "fingerprint"
   | "title_source"
   | "alias"
+  | "fingerprint"
   | null;
 
 function candidateSourceCanonicals(c: MatchCandidate): Set<string> {
@@ -472,8 +479,29 @@ function titlesOverlap(a: string | null | undefined, bList: string[]): boolean {
   return bList.some((t) => normalizeTeaserName(t) === na);
 }
 
+
+/** Compare key for hard-lock step 1 — identical listing URL. */
+export function listingUrlKey(url: string | null | undefined): string | null {
+  const href = normalizeListingHref(url);
+  if (!href) return null;
+  let u = href.trim().toLowerCase();
+  const hash = u.indexOf("#");
+  if (hash >= 0) u = u.slice(0, hash);
+  // Drop marketing UTMs / click ids; keep identity query (q=, recordId=, id=).
+  if (u.includes("?")) {
+    const [base, qs = ""] = u.split("?", 1);
+    const kept = qs
+      .split("&")
+      .filter(Boolean)
+      .filter((p) => !/^(utm_[^=]+|ref|referrer|fbclid|gclid|mc_cid|mc_eid)=/i.test(p));
+    u = base + (kept.length ? `?${kept.join("&")}` : "");
+  }
+  return u.replace(/\/$/, "") || null;
+}
+
 /**
  * First matching candidate wins. Broker-only and thread-only never match.
+ * Order is the hard-lock gate: URL → broker id → headline/alias → fingerprint.
  */
 export function findIdentityMatch(
   incoming: IdentityInput,
@@ -487,6 +515,17 @@ export function findIdentityMatch(
     if (hit) return { candidate: hit, reason: "deal_number" };
   }
 
+  // 1) Listing URL identical — easiest hard stop before minting.
+  const incomingUrl = listingUrlKey(incoming.url);
+  if (incomingUrl) {
+    const hit = candidates.find((c) => {
+      const theirs = listingUrlKey(c.url);
+      return Boolean(theirs && theirs === incomingUrl);
+    });
+    if (hit) return { candidate: hit, reason: "listing_url" };
+  }
+
+  // 2) Broker / platform deal ID (often extracted from the same URL).
   const incomingIds = new Set(ident.sourceIds.map((s) => s.canonical));
   if (incomingIds.size) {
     const hit = candidates.find((c) => {
@@ -497,18 +536,13 @@ export function findIdentityMatch(
     if (hit) return { candidate: hit, reason: "source_id" };
   }
 
-  if (ident.fingerprintComplete && ident.fingerprint) {
-    const hit = candidates.find((c) => c.fingerprint && c.fingerprint === ident.fingerprint);
-    if (hit) return { candidate: hit, reason: "fingerprint" };
-  }
-
   const incomingTitle = incoming.title || null;
   const incomingAliases = uniqueStrings([...(incoming.aliasNames || []), incomingTitle || ""]);
   const incomingBroker = normalizeBrokerFirm(incoming.brokerFirm);
   const incomingGeo = normalizeGeo(incoming.city, incoming.state, incoming.region);
   const incomingSource = normalizeSourceDomain(incoming.source || incoming.nickname);
 
-  // Title + source domain — harvest remint gate when listing URL/fp are weak.
+  // 3a) Headline + source domain — harvest remint gate when URL/id are weak.
   const incomingTeaser = normalizeTeaserName(incomingTitle);
   if (incomingTeaser && incomingTeaser.split(" ").length >= 3 && incomingSource) {
     const hit = candidates.find((c) => {
@@ -521,6 +555,7 @@ export function findIdentityMatch(
     if (hit) return { candidate: hit, reason: "title_source" };
   }
 
+  // 3b) Alias / title overlap with shared broker or geo (never broker-only).
   for (const c of candidates) {
     const theirNames = uniqueStrings([c.title || "", ...(c.aliasNames || [])]);
     const nameHit =
@@ -534,8 +569,6 @@ export function findIdentityMatch(
     const theirGeo = normalizeGeo(c.city, c.state, c.region);
     if (incomingGeo && theirGeo && incomingGeo !== theirGeo) continue;
 
-    // Name overlap alone is allowed only when at least one of broker or geo
-    // is shared — never broker-only, never a bare title against a different shop.
     const brokerShared = Boolean(incomingBroker && theirBroker && incomingBroker === theirBroker);
     const geoShared = Boolean(incomingGeo && theirGeo && incomingGeo === theirGeo);
     if (!brokerShared && !geoShared) continue;
@@ -543,8 +576,15 @@ export function findIdentityMatch(
     return { candidate: c, reason: "alias" };
   }
 
+  // 4) Fingerprint confirm — numbers + geo (+ teaser + broker) last.
+  if (ident.fingerprintComplete && ident.fingerprint) {
+    const hit = candidates.find((c) => c.fingerprint && c.fingerprint === ident.fingerprint);
+    if (hit) return { candidate: hit, reason: "fingerprint" };
+  }
+
   return null;
 }
+
 
 /** Marketing / work-queue mail that must not mint a deal. */
 export function isNonDealMail(input: {

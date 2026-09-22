@@ -34,7 +34,7 @@ import {
 export { isHarvestExtId } from "./identity";
 
 /**
- * Next ingest. Identity is TLY number + source id + fingerprint.
+ * Next ingest. Identity hard-lock: listing URL → broker id → headline/alias → fingerprint.
  * Harvest `ext_id = format:gmail_msg:index` is ignored as a join key.
  *
  * Remint / attach-only: see `lib/next/remint.ts`. When `duplicateOf` or

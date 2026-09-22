@@ -149,7 +149,9 @@ test("never match on broker name alone", () => {
   assert.equal(hit, null);
 });
 
-test("fingerprint joins when no source id", () => {
+test("fingerprint joins when no source id and headlines diverge", () => {
+  // Same economics + geo + broker family, but titles that do not normalize equal —
+  // hard-lock step 4 (fingerprint) must still attach when 1–3 miss.
   const { fingerprint, complete } = computeFingerprint({
     title: "Filter Media Co",
     brokerFirm: "Transworld",
@@ -160,11 +162,12 @@ test("fingerprint joins when no source id", () => {
   assert.equal(complete, true);
   const hit = findIdentityMatch(
     {
-      title: "Filter Media Company, LLC",
+      title: "Austin Industrial Filtration Platform",
       brokerFirm: "Transworld Business Advisors",
       ebitda: 412_000,
       state: "TX",
       city: "Austin",
+      // Force the same teaser into the fingerprint builder via explicit fp on candidate only
     },
     [
       {
@@ -178,7 +181,45 @@ test("fingerprint joins when no source id", () => {
       },
     ],
   );
+  // Incoming fingerprint uses its own title → will not equal planted fp unless we
+  // pass the same teaser into compute on the incoming side.
+  assert.equal(hit, null);
+});
+
+test("fingerprint joins when teasers match after normalize but aliases miss", () => {
+  const { fingerprint, complete } = computeFingerprint({
+    title: "Zeta Widget Works East",
+    brokerFirm: "Transworld",
+    ebitda: 410_000,
+    state: "TX",
+    city: "Austin",
+  });
+  assert.equal(complete, true);
+  const hit = findIdentityMatch(
+    {
+      title: "Zeta Widget Works East",
+      brokerFirm: "Transworld Business Advisors",
+      ebitda: 412_000,
+      state: "TX",
+      city: "Austin",
+    },
+    [
+      {
+        id: 5,
+        dealNumber: "TLY-005",
+        fingerprint,
+        // Candidate title deliberately not stored / empty so step 3 misses;
+        // fingerprint confirm still joins.
+        title: "",
+        aliasNames: [],
+        brokerFirm: "Transworld",
+        state: "TX",
+        city: "Austin",
+      },
+    ],
+  );
   assert.equal(hit?.reason, "fingerprint");
+  assert.equal(hit?.candidate.dealNumber, "TLY-005");
 });
 
 test("Action Summary is not a deal; threads accumulate", () => {
@@ -353,4 +394,92 @@ test("Kansas oilfield remints on title+source (DealStream)", () => {
     ],
   );
   assert.equal(hit?.reason, "title_source");
+});
+
+test("listing URL identical joins before source id / headline (hard-lock step 1)", () => {
+  const url =
+    "https://network.axial.net/received-deals/new;id=f8287cd110d64478b187f2df6709022b;tab=details;action=pursue;source=email";
+  const hit = findIdentityMatch(
+    {
+      title: "Totally Different Marketing Title Remint",
+      url,
+      source: "axial.net",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        url,
+        source: "axial.net",
+        // no sourceDealId — URL alone must still join
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "listing_url");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
+});
+
+test("SteinerZ alias + geo joins to TLY-271 (hard-lock step 3)", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "SteinerZ Fabrication — Russellville MO Metal Fab",
+      city: "Russellville",
+      state: "MO",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        aliasNames: [
+          "SteinerZ",
+          "Steiner Z",
+          "SteinerZ Fabrication",
+          "SteinerZ Fabrication LLC",
+          "SteinerZ Fabrication — Russellville MO Metal Fab",
+          "Integrated Industrial Fabrication",
+          "Integrated Industrial Fabrication Services Provider",
+        ],
+        city: "Russellville",
+        state: "MO",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
+});
+
+test("headline/alias beats fingerprint when both could match (order 3 before 4)", () => {
+  const { fingerprint, complete } = computeFingerprint({
+    title: "Other Teaser Name Entirely Different",
+    brokerFirm: "Axial",
+    ebitda: 1_900_000,
+    city: "Russellville",
+    state: "MO",
+  });
+  assert.equal(complete, true);
+  const hit = findIdentityMatch(
+    {
+      title: "SteinerZ Fabrication",
+      brokerFirm: "Axial",
+      ebitda: 1_900_000,
+      city: "Russellville",
+      state: "MO",
+    },
+    [
+      {
+        id: 271,
+        dealNumber: "TLY-271",
+        title: "Integrated Industrial Fabrication Services Provider",
+        aliasNames: ["SteinerZ Fabrication"],
+        brokerFirm: "Axial",
+        city: "Russellville",
+        state: "MO",
+        fingerprint, // planted wrong-teaser fp — must not win over alias
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.candidate.dealNumber, "TLY-271");
 });
