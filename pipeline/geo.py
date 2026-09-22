@@ -54,8 +54,9 @@ _REGION_RE = re.compile(
     r"[ \t]*\)"
 )
 
+# Blank lines often sit between "Geography" and the value in Axial HTML→text.
 _GEOGRAPHY_LINE = re.compile(
-    r"(?im)^[ \t]*Geography[ \t]*:?[ \t]*\n?[ \t]*(.+)$"
+    r"(?im)^[ \t]*Geography[ \t]*:?[ \t]*(?:\r?\n[ \t]*)*(.+)$"
 )
 
 _STATE_IN_LIST = re.compile(r"\b([A-Z]{2})\b")
@@ -137,3 +138,40 @@ def extract_region(text: str) -> Optional[str]:
 def region_key(text: Optional[str]) -> str:
     """Stable fingerprint token for a region string."""
     return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+# Pre-PR#45 extract_location filed the first two paren codes as City, ST.
+# When a teaser line-wrapped inside the list, finditer could land on DC, FL
+# instead of CT, DE for the same Middle Atlantic phrase. These prefixes map
+# back to the Axial Geography string — restore region, never invent City/ST.
+_MISFILE_PREFIX_TO_REGION = {
+    ("AK", "CA"): "Pacific (AK, CA, HI, OR, WA)",
+    ("AR", "LA"): "West South Central (AR, LA, NM, OK, TX)",
+    ("AZ", "CO"): "Mountain (AZ, CO, ID, MT, NV, NM, UT, WY)",
+    ("CT", "DE"): (
+        "Middle Atlantic (CT, DE, DC, FL, GA, MD, NC, NJ, NY, PA, RI, SC, VA, VT)"
+    ),
+    ("DC", "FL"): (
+        "Middle Atlantic (CT, DE, DC, FL, GA, MD, NC, NJ, NY, PA, RI, SC, VA, VT)"
+    ),
+    ("DE", "DC"): "South Atlantic (DE, DC, FL, GA, MD, NC, SC, VA, WV)",
+    ("IA", "KS"): "Western Midwest (IA, KS, MO, NE, ND, SD)",
+    ("AL", "KY"): "East South Central (AL, KY, MS, TN)",
+    ("IL", "IN"): "Eastern Midwest (IL, IN, MI, OH, WI)",
+    ("CT", "ME"): "New England (CT, ME, MA, NH, RI, VT)",
+}
+
+
+def recover_misfiled_region(
+    city: Optional[str], state: Optional[str]
+) -> Optional[str]:
+    """If city/state are a paren-list misfile (IA, KS), return the Axial region.
+
+    Returns None when city/state look like a real place (Georgetown, TX) or
+    an unknown pair — never invent geography from a lone state code.
+    """
+    c = (city or "").strip().upper()
+    s = (state or "").strip().upper()
+    if not (is_usps(c) and is_usps(s)):
+        return None
+    return _MISFILE_PREFIX_TO_REGION.get((c, s))

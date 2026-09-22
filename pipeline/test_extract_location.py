@@ -96,5 +96,23 @@ class RegionStatesTests(unittest.TestCase):
         self.assertIn("NM", truncated)
 
 
+class MisfileRecoverTests(unittest.TestCase):
+    def test_ak_ca_is_pacific(self):
+        from geo import recover_misfiled_region
+        self.assertEqual(
+            recover_misfiled_region("AK", "CA"),
+            "Pacific (AK, CA, HI, OR, WA)",
+        )
+
+    def test_dc_fl_is_middle_atlantic_wrap(self):
+        from geo import recover_misfiled_region
+        self.assertIn("Middle Atlantic", recover_misfiled_region("DC", "FL") or "")
+
+    def test_real_city_st_not_recovered(self):
+        from geo import recover_misfiled_region
+        self.assertIsNone(recover_misfiled_region("Georgetown", "TX"))
+
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -275,3 +275,82 @@ test("normalizeGeo prefers real City/ST and uses region as a fallback", () => {
     "region:western midwest ia ks mo ne nd sd",
   );
 });
+
+test("Axial received-deals ;id=HEX is a source id", () => {
+  const ids = extractSourceIds({
+    url: "https://network.axial.net/received-deals/new;id=a0a3788f1dab4a7698c47bc9c8ad66e5;tab=details;action=pursue;source=email",
+  });
+  assert.equal(ids[0]?.canonical, "axial:a0a3788f1dab4a7698c47bc9c8ad66e5");
+});
+
+test("Buildout share slug is a stable source id (token ignored)", () => {
+  const ids = extractSourceIds({
+    url: "https://buildout.com/share/north-austin-suburb-turnkey-luxury-salon?token=abc",
+  });
+  assert.equal(ids[0]?.canonical, "buildout:north-austin-suburb-turnkey-luxury-salon");
+});
+
+test("blowout bar remint joins on buildout slug, not harvest ext_id", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Semi-Absentee Luxury Salon & Blow Dry Bar | $1.5M Revenue",
+      url: "https://buildout.com/share/north-austin-suburb-turnkey-luxury-salon?token=newtoken",
+      source: "bizbuynetwork.com",
+    },
+    [
+      {
+        id: 10,
+        dealNumber: "TLY-400",
+        sourceDealId: "buildout:north-austin-suburb-turnkey-luxury-salon",
+        sourceIds: [
+          {
+            kind: "buildout",
+            value: "north-austin-suburb-turnkey-luxury-salon",
+            canonical: "buildout:north-austin-suburb-turnkey-luxury-salon",
+          },
+        ],
+        title: "Semi-Absentee Luxury Salon & Blow Dry Bar | $1.5M Revenue",
+        source: "bizbuynetwork.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "source_id");
+  assert.equal(hit?.candidate.dealNumber, "TLY-400");
+});
+
+test("fitness studio remint joins on title+source when URL missing", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Fitness Studio - Cash Flow-Seller Finance",
+      source: "bizbuynetwork.com",
+    },
+    [
+      {
+        id: 11,
+        dealNumber: "TLY-401",
+        title: "Fitness Studio - Cash Flow-Seller Finance",
+        source: "bizbuynetwork.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "title_source");
+  assert.equal(hit?.candidate.dealNumber, "TLY-401");
+});
+
+test("Kansas oilfield remints on title+source (DealStream)", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Oilfield and Agriculture Supply Company in Kansas",
+      source: "genius.dealstream.com",
+    },
+    [
+      {
+        id: 12,
+        dealNumber: "TLY-350",
+        title: "Oilfield and Agriculture Supply Company in Kansas",
+        source: "genius.dealstream.com",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "title_source");
+});

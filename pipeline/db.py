@@ -342,6 +342,18 @@ def _titles_match(a: str, b: str, threshold: float = 0.82) -> bool:
     shorter, longer = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
     return len(shorter) >= 12 and shorter in longer
 
+
+def _ext_id_msg_slice(ext_id: str | None) -> str | None:
+    """Return 'gmailMsgId:slice' from 'family:gmailMsgId:slice', else None."""
+    parts = (ext_id or "").split(":")
+    if len(parts) < 3:
+        return None
+    msg, idx = parts[-2], parts[-1]
+    if not msg or not idx.isdigit():
+        return None
+    return f"{msg}:{idx}"
+
+
 def upsert(con: sqlite3.Connection, l) -> tuple:
     """Returns (deal_id, 'new'|'merged'|'repeat').
 
@@ -365,6 +377,19 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
     row = con.execute("SELECT id FROM deals WHERE ext_id=?", (l.ext_id,)).fetchone()
     same_email = row is not None
     mode = "repeat"
+    # Format-family prefix can flip (ahc → newsletter) on the same Gmail
+    # message. Join on *:msg_id:slice so we merge instead of reminting.
+    if not row:
+        suffix = _ext_id_msg_slice(l.ext_id)
+        if suffix:
+            hit = con.execute(
+                "SELECT id, ext_id FROM deals WHERE ext_id LIKE ?",
+                (f"%:{suffix}",),
+            ).fetchone()
+            if hit:
+                row = hit
+                mode = "merged"
+                same_email = True  # same underlying mail slice — safe to reparse
     if not row and un:
         row = con.execute("SELECT id FROM deals WHERE url_norm=? AND url_norm<>''", (un,)).fetchone()
         if row: mode = "merged"
@@ -380,6 +405,16 @@ def upsert(con: sqlite3.Connection, l) -> tuple:
         except sqlite3.OperationalError:
             row = None
         if row: mode = "merged"
+    # Title + source domain when geo is missing (DealStream / newsletter remints).
+    if not row and l.title and getattr(l, "source", None):
+        for cand in con.execute(
+            "SELECT id, title, source FROM deals WHERE source=?",
+            (l.source,),
+        ):
+            if _titles_match(l.title, cand["title"]):
+                row = cand
+                mode = "merged"
+                break
     if not row and l.state:
         for cand in con.execute("SELECT id, title FROM deals WHERE state=?", (l.state,)):
             if _titles_match(l.title, cand["title"]):

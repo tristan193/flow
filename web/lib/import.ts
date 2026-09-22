@@ -14,6 +14,8 @@ import { normalizeAxialHref } from "./playbooks";
  */
 export interface IncomingDeal {
   extId: string;
+  /** Existing TLY when collapsing a remint card. */
+  dealNumber?: string | null;
   title: string;
   blurb?: string | null;
   /** Sender domain, e.g. bizbuysell.com */
@@ -36,6 +38,8 @@ export interface IncomingDeal {
   businessModelType?: string | null;
   needsLlm?: string[] | null;
   url?: string | null;
+  /** Stable listing id (axial:hex, buildout:slug, …). */
+  sourceDealId?: string | null;
   firstSeen?: string | null;
   lastSeen?: string | null;
   timesSeen?: number | null;
@@ -260,6 +264,7 @@ export function harvestFirstSeenIsNew(firstSeen: string | null | undefined, now 
 export function harvestDealToNext(deal: IncomingDeal): IncomingNextDeal {
   return {
     extId: deal.extId,
+    dealNumber: deal.dealNumber,
     title: deal.title,
     blurb: deal.blurb,
     source: deal.source,
@@ -277,6 +282,7 @@ export function harvestDealToNext(deal: IncomingDeal): IncomingNextDeal {
     businessModelType: deal.businessModelType,
     needsLlm: deal.needsLlm,
     url: deal.url,
+    sourceDealId: deal.sourceDealId,
     firstSeen: deal.firstSeen,
     lastSeen: deal.lastSeen,
     timesSeen: deal.timesSeen,

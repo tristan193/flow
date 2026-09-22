@@ -3,9 +3,10 @@
  *
  * Matching order (never skip ahead to a weaker key):
  *   1. deal_number (TLY-001)
- *   2. source_deal_id / source_ids (Axial hex, BBS q=, V-AID, Transworld, …)
+ *   2. source_deal_id / source_ids (Axial hex/;id=, BBS q=, Buildout slug, …)
  *   3. complete fingerprint = normalize(teaser) + broker_firm + round(EBITDA) + geo
- *   4. alias / title overlap AND (broker if both known) AND (geo if both known)
+ *   4. normalized title + same source domain (harvest remint gate)
+ *   5. alias / title overlap AND (broker if both known) AND (geo if both known)
  *
  * NEVER match on broker name alone.
  * NEVER assume one Gmail thread = one deal.
@@ -13,7 +14,7 @@
 
 import { isRealState, looksLikeRegion, slugGeoToken } from "../geo";
 
-export type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb";
+export type SourceKind = "axial" | "bbs" | "vaid" | "tw" | "rejigg" | "wc" | "smb" | "buildout";
 
 export interface SourceId {
   kind: SourceKind;
@@ -92,6 +93,12 @@ const AXIAL_PATH =
   /(?:opportunity|teaser-share|received-deals|teaser)\/([a-f0-9]{8,}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})/gi;
 const AXIAL_QP =
   /(?:opportunityid|dealid|teaserid|oid|opportunity_id)=([a-f0-9]{8,}(?:-[a-f0-9]{4,})*)/gi;
+/** Axial Pursue links use path;/id=HEX or ?id=HEX — not opportunityId=. */
+const AXIAL_SEMI_ID =
+  /(?:^|[;?&#/])id=([a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})/gi;
+/** Buildout share slug is the stable listing key (token is per-recipient). */
+const BUILDOUT_SHARE =
+  /buildout\.com\/share\/([a-z0-9][a-z0-9-]{2,120})/gi;
 const BBS_Q = /[?&]q=(\d{6,})/gi;
 const BBS_PATH = /bizbuysell\.com\/[^?\s"'<>]*?\/(\d{6,})\/?/gi;
 const REJIGG = /rejigg\.com\/app\/businesses\/(\d+)/gi;
@@ -128,6 +135,18 @@ export function normalizeTeaserName(raw: string | null | undefined): string | nu
     .split(" ")
     .filter((t) => t && !JUNK_NAME_TOKENS.has(t));
   return tokens.length ? tokens.join(" ") : null;
+}
+
+/** Domain-ish source key for title+source remint matching. */
+export function normalizeSourceDomain(raw: string | null | undefined): string | null {
+  const v = (raw || "").trim().toLowerCase();
+  if (!v) return null;
+  const email = v.match(/[a-z0-9._%+-]+@([a-z0-9.-]+\.[a-z]{2,})/);
+  if (email) return email[1].replace(/^www\./, "");
+  const dom = v.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/);
+  if (dom) return dom[1].replace(/^www\./, "");
+  const nick = v.replace(/[^a-z0-9]+/g, "");
+  return nick || null;
 }
 
 export function normalizeBrokerFirm(raw: string | null | undefined): string | null {
@@ -239,12 +258,20 @@ export function extractSourceIds(input: IdentityInput): SourceId[] {
   const urlHtml = haystack([input.url, input.html, input.body]);
   const subject = input.subject || "";
 
-  for (const re of [AXIAL_PATH, AXIAL_QP]) {
+  for (const re of [AXIAL_PATH, AXIAL_QP, AXIAL_SEMI_ID]) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(urlHtml))) {
       const raw = m[1];
       if (HEX_TOKEN.test(raw) || UUIDISH.test(raw)) addSource(out, "axial", raw);
+    }
+  }
+
+  BUILDOUT_SHARE.lastIndex = 0;
+  {
+    let m: RegExpExecArray | null;
+    while ((m = BUILDOUT_SHARE.exec(urlHtml))) {
+      addSource(out, "buildout", m[1].toLowerCase());
     }
   }
 
@@ -366,7 +393,7 @@ export function mergeThreadIds(
 }
 
 export function pickCanonicalSourceId(ids: SourceId[]): string | null {
-  const order: SourceKind[] = ["axial", "bbs", "vaid", "tw", "rejigg", "wc", "smb"];
+  const order: SourceKind[] = ["axial", "bbs", "buildout", "vaid", "tw", "rejigg", "wc", "smb"];
   for (const kind of order) {
     const hit = ids.find((s) => s.kind === kind);
     if (hit) return hit.canonical;
@@ -404,12 +431,15 @@ export interface MatchCandidate {
   state?: string | null;
   region?: string | null;
   nickname?: string | null;
+  source?: string | null;
+  url?: string | null;
 }
 
 export type MatchReason =
   | "deal_number"
   | "source_id"
   | "fingerprint"
+  | "title_source"
   | "alias"
   | null;
 
@@ -476,6 +506,20 @@ export function findIdentityMatch(
   const incomingAliases = uniqueStrings([...(incoming.aliasNames || []), incomingTitle || ""]);
   const incomingBroker = normalizeBrokerFirm(incoming.brokerFirm);
   const incomingGeo = normalizeGeo(incoming.city, incoming.state, incoming.region);
+  const incomingSource = normalizeSourceDomain(incoming.source || incoming.nickname);
+
+  // Title + source domain — harvest remint gate when listing URL/fp are weak.
+  const incomingTeaser = normalizeTeaserName(incomingTitle);
+  if (incomingTeaser && incomingTeaser.split(" ").length >= 3 && incomingSource) {
+    const hit = candidates.find((c) => {
+      const theirNames = uniqueStrings([c.title || "", ...(c.aliasNames || [])]);
+      const nameOk = theirNames.some((n) => normalizeTeaserName(n) === incomingTeaser);
+      if (!nameOk) return false;
+      const theirSource = normalizeSourceDomain(c.source || c.nickname);
+      return Boolean(theirSource && theirSource === incomingSource);
+    });
+    if (hit) return { candidate: hit, reason: "title_source" };
+  }
 
   for (const c of candidates) {
     const theirNames = uniqueStrings([c.title || "", ...(c.aliasNames || [])]);

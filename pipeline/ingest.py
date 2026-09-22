@@ -176,11 +176,19 @@ class Listing:
         slug so two shops in different regions with similar money do not
         collapse — we used to misfile the first two paren codes as City, ST
         and that accidental state was load-bearing here.
+
+        When geo and money are both empty, fold in a title slug so every
+        bare teaser does not share the same |-1|-1 hash (that collision
+        made DealStream/newsletter remints look identical on the shelf).
         """
         def band(v, step):
             return int(v / step) if v else -1
         geo = self.state or region_key(self.region) or ""
-        raw = f"{geo}|{band(self.revenue,250_000)}|{band(self.earnings,100_000)}"
+        rev_b, earn_b = band(self.revenue, 250_000), band(self.earnings, 100_000)
+        raw = f"{geo}|{rev_b}|{earn_b}"
+        if not geo and rev_b < 0 and earn_b < 0:
+            slug = re.sub(r"[^a-z0-9]+", " ", (self.title or "").lower()).strip()
+            raw = f"{raw}|{slug[:80]}"
         return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -988,6 +996,39 @@ def _smb_detail_cards(body: str) -> List[str]:
     return blocks
 
 
+
+_BUILDOUT_SHARE_ITEM = re.compile(
+    r"(?is)(?:^|\n)\s*([^\n<]{8,140})\s*\n\s*<https?://(?:www\.)?buildout\.com/share/([a-z0-9][a-z0-9-]{2,120})[^>]*>"
+)
+
+
+def _split_buildout_share_digest(body: str) -> List[str]:
+    """One card per buildout.com/share/slug — BizBuyNetwork digests list many
+    teasers in one mail. Blank-line split collapses the intro + first few into
+    a single block and remints on later harvests when slice indexes shift.
+    """
+    text = (body or "").replace("\r\n", "\n").replace("\r", "\n")
+    hits = list(_BUILDOUT_SHARE_ITEM.finditer(text))
+    if len(hits) < 2:
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for m in hits:
+        title = re.sub(r"\s+", " ", (m.group(1) or "").strip())
+        slug = (m.group(2) or "").lower()
+        if not title or slug in seen:
+            continue
+        # Skip greeting / boilerplate titles.
+        if re.match(r"(?i)^(good\s+(morning|afternoon|evening)|hi\b|hello\b|dear\b|thank)", title):
+            continue
+        if len(title) < 10:
+            continue
+        seen.add(slug)
+        url = f"https://buildout.com/share/{slug}"
+        out.append(f"{title}\n<{url}>")
+    return out if len(out) >= 2 else []
+
+
 def split_newsletter(body: str, sender: str = "") -> List[str]:
     """Newsletters are the wild west. Blank-line blocks, keeping only those
     that look like a deal — but a bare stat block has its headline in the
@@ -1003,6 +1044,10 @@ def split_newsletter(body: str, sender: str = "") -> List[str]:
         if digest_items:
             return digest_items
         return []
+
+    buildout_cards = _split_buildout_share_digest(body)
+    if buildout_cards:
+        return buildout_cards
 
     if _is_single_listing_teaser(body):
         primary = OTHER_LISTINGS_BOUNDARY.split(_strip_forward_chrome(body))[0]
@@ -1327,14 +1372,24 @@ def _closest_money_for_label(text: str, label_pat: str, markers: List[str],
     # example: "Profit (2025- both companies combined)" on the Pennsylvania
     # landscaping listing. 20 chars truncated that mid-parenthetical and
     # missed both Revenue and Profit on that email; 60 comfortably covers it.
-    for m in re.finditer(label_pat + r"[ \t]*(?:\([^)\n]{0,60}\))?[ \t]*\n(?:[ \t]*\n){0,2}[ \t]*" + MONEY,
-                          text, re.I):
+    # DealStream Search Genius (and similar HTML→text) puts "Cash Flow" on
+    # one line, then several " \r\n" spacer lines, then "$128,788". Allow
+    # up to 8 whitespace-only lines and optional \r so those figures bind.
+    for m in re.finditer(
+        label_pat
+        + r"[ \t]*(?:\([^)\n]{0,60}\))?[ \t]*(?:\r?\n[ \t]*){1,8}"
+        + MONEY,
+        text,
+        re.I,
+    ):
         # gap here is pure whitespace/newlines by construction (nothing to
-        # scan for a competing field name) — rank it behind any same-line
-        # match but ahead of no match at all.
+        # scan for a competing field name). Rank as a tight hit (5) so a
+        # labeled DealStream/businessexits grid ("Sales\n$2,094,078") beats
+        # prose like "approximately $2 million in … revenue" (gap often 4–20).
         val = parse_money(m.group(1), m.group(2))
-        if best is None:
-            best = (999, val)
+        gap_rank = 5
+        if best is None or gap_rank < best[0]:
+            best = (gap_rank, val)
     for m in re.finditer(MONEY + r"([^\n$]{0,%d}?)" % bwd_gap + label_pat, text, re.I):
         gap = m.group(3)
         if _crosses_other_field(gap, markers):
@@ -1351,6 +1406,7 @@ def extract_money_fields(text: str) -> Dict[str, float]:
 
     EBITDA and SDE are extracted independently. A listing publishing both
     populates both columns."""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     found: Dict[str, float] = {}
     for field_name, pats in FIELD_PATS:
         markers = OTHER_FIELD_MARKERS[field_name]
@@ -1391,6 +1447,11 @@ _STATE_NAME_PAT = re.compile(
     r"\b(" + "|".join(sorted(STATE_NAMES, key=len, reverse=True)) + r")\b", re.I
 )
 
+_NON_CITY_LABELS = {
+    "real estate", "new listing", "seller finance", "cash flow", "asking price",
+    "gross sales", "net sales", "add on", "platform", "opportunity",
+}
+
 def extract_location(text: str):
     """(city, state, county, region).
 
@@ -1407,8 +1468,9 @@ def extract_location(text: str):
     # ("Plumbing Company\nGeorgetown, TX" parsed city as "Plumbing Company").
     if not state:
         for m in re.finditer(r"(?:^|[^A-Za-z\n])([A-Z][A-Za-z.\-/']+(?:[ \t]+[A-Z][A-Za-z.\-/']+){0,2}),[ \t]*([A-Z]{2})\b", text, re.M):
-            if m.group(2) in STATES and not is_usps(m.group(1).strip()):
-                city, state = m.group(1).strip(), m.group(2)
+            cand_city = m.group(1).strip()
+            if m.group(2) in STATES and not is_usps(cand_city) and cand_city.lower() not in _NON_CITY_LABELS:
+                city, state = cand_city, m.group(2)
                 break
     region = extract_region(text)
     if not state and not region:
