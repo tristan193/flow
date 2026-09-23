@@ -1,11 +1,11 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 
-import { query } from "../db.ts";
+import { isUniqueViolation, query, withTransaction } from "../db.ts";
 import { createNextDealFromCim } from "./cim-create.ts";
 import { listNextBoardDeals, listNextInboxDeals } from "./deals.ts";
 import { applyNextVerdicts, upsertNextDeals } from "./import.ts";
-import { collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
+import { SOURCE_DEAL_ID_UNIQUE_SQL, collapseNextDuplicates, ensureNextSourceDealIdUnique } from "./merge.ts";
 import { applyAuthorizedNextStage } from "./stage-auth.ts";
 
 const AXIAL_HTML =
@@ -562,4 +562,203 @@ test("skipIfNew does not mint unmatched catalog but still updates a matched TLY"
     "SELECT COUNT(*)::text AS count FROM deals_next",
   );
   assert.equal(Number(count), 1);
+});
+
+const PCB_AXIAL_ID = "axial:88de30e9a6c7452b8213fdc741a0fefc";
+const LAND_AXIAL_ID = "axial:848b7f5e237c47e5b9c07dbb4895c3f0";
+const PCB_TITLE = "High-Frequency PCB Manufacturer With Diversified Customers";
+const PCB_URL =
+  "https://network.axial.net/received-deals/new;id=88de30e9a6c7452b8213fdc741a0fefc;tab=details;action=pursue";
+const PCB_URL_ENCODED =
+  "https://network.axial.net/received-deals/new%3Bid=88de30e9a6c7452b8213fdc741a0fefc%3Btab=details%3Baction=pursue";
+
+async function seedPcbTwin(opts: {
+  url?: string | null;
+  nickname?: string;
+  sourceIds?: unknown[];
+}) {
+  await resetNext();
+  await query(
+    `INSERT INTO deals_next (deal_number, title, source, nickname, url, source_ids, stage)
+     VALUES ('TLY-286', $1, 'axial.net', $2, $3, $4::jsonb, 'inbox')`,
+    [PCB_TITLE, opts.nickname ?? "Axial", opts.url ?? null, JSON.stringify(opts.sourceIds ?? [])],
+  );
+  await query(
+    `INSERT INTO deals_next (deal_number, source_deal_id, title, source, nickname, stage)
+     VALUES ('TLY-259', $1, 'PCB manufacturer — keeper', 'axial.net', 'Axial', 'shortlist')`,
+    [PCB_AXIAL_ID],
+  );
+  await query(SOURCE_DEAL_ID_UNIQUE_SQL);
+}
+
+async function importPcbBesideLandscaping(incoming: {
+  url?: string;
+  nickname?: string;
+  sourceDealId?: string | null;
+}) {
+  return upsertNextDeals([
+    {
+      title: PCB_TITLE,
+      source: "axial.net",
+      nickname: incoming.nickname ?? "Axial",
+      sourceDealId: "sourceDealId" in incoming ? incoming.sourceDealId : PCB_AXIAL_ID,
+      url: incoming.url,
+    },
+    {
+      title: "CT landscaping add-on",
+      source: "axial.net",
+      sourceDealId: LAND_AXIAL_ID,
+    },
+  ]);
+}
+
+async function assertKeeperAttached() {
+  const rows = await query<{
+    deal_number: string;
+    source_deal_id: string | null;
+    title: string;
+    stage: string;
+  }>("SELECT deal_number, source_deal_id, title, stage FROM deals_next ORDER BY deal_number");
+  const keeper = rows.find((r) => r.deal_number === "TLY-259");
+  const twin = rows.find((r) => r.deal_number === "TLY-286");
+  const land = rows.find((r) => r.source_deal_id === LAND_AXIAL_ID);
+  assert.ok(keeper);
+  assert.equal(keeper.source_deal_id, PCB_AXIAL_ID);
+  assert.equal(keeper.title, PCB_TITLE);
+  assert.equal(keeper.stage, "shortlist");
+  assert.ok(twin);
+  assert.equal(twin.source_deal_id, null);
+  assert.equal(twin.title, PCB_TITLE);
+  assert.ok(land);
+  assert.equal(rows.length, 3);
+}
+
+test("posted sourceDealId updates the column owner when a title twin has a null id", async () => {
+  await seedPcbTwin({});
+  const result = await importPcbBesideLandscaping({});
+  assert.equal(result.dealsUpdated, 1);
+  assert.equal(result.dealsNew, 1);
+  assert.equal(result.skipped, 0);
+  await assertKeeperAttached();
+});
+
+test("listing URL twin does not take a sourceDealId the keeper already owns", async () => {
+  await seedPcbTwin({ url: PCB_URL });
+  const result = await importPcbBesideLandscaping({ url: PCB_URL });
+  assert.equal(result.dealsUpdated, 1);
+  assert.equal(result.dealsNew, 1);
+  await assertKeeperAttached();
+});
+
+test("nickname-hex twin does not take a sourceDealId the keeper already owns", async () => {
+  await seedPcbTwin({ nickname: "88de30e9a6c7452b8213fdc741a0fefc" });
+  const result = await importPcbBesideLandscaping({
+    nickname: "88de30e9a6c7452b8213fdc741a0fefc",
+  });
+  assert.equal(result.dealsUpdated, 1);
+  assert.equal(result.dealsNew, 1);
+  await assertKeeperAttached();
+});
+
+test("source_ids jsonb twin does not take a sourceDealId the keeper already owns", async () => {
+  await seedPcbTwin({
+    sourceIds: [
+      {
+        kind: "axial",
+        value: "88de30e9a6c7452b8213fdc741a0fefc",
+        canonical: PCB_AXIAL_ID,
+      },
+    ],
+  });
+  const result = await importPcbBesideLandscaping({});
+  assert.equal(result.dealsUpdated, 1);
+  assert.equal(result.dealsNew, 1);
+  await assertKeeperAttached();
+});
+
+test("percent-encoded Axial URL attaches to the sourceDealId owner", async () => {
+  await seedPcbTwin({ url: PCB_URL });
+  const result = await importPcbBesideLandscaping({ url: PCB_URL_ENCODED, sourceDealId: PCB_AXIAL_ID });
+  assert.equal(result.dealsUpdated, 1);
+  assert.equal(result.dealsNew, 1);
+  await assertKeeperAttached();
+
+  await seedPcbTwin({ url: PCB_URL });
+  const fromUrlOnly = await importPcbBesideLandscaping({
+    url: PCB_URL_ENCODED,
+    sourceDealId: undefined,
+  });
+  assert.equal(fromUrlOnly.dealsUpdated, 1);
+  assert.equal(fromUrlOnly.dealsNew, 1);
+  await assertKeeperAttached();
+});
+
+test("isUniqueViolation sees wrapped 23505 and ignores an aborted-transaction error", () => {
+  assert.equal(isUniqueViolation({ code: "23505", message: "duplicate key" }), true);
+  assert.equal(
+    isUniqueViolation({
+      message: 'duplicate key value violates unique constraint "ux_deals_next_source_deal_id"',
+    }),
+    true,
+  );
+  assert.equal(
+    isUniqueViolation({
+      message: "failed query",
+      cause: { code: "23505", message: "duplicate key value violates unique constraint" },
+    }),
+    true,
+  );
+  assert.equal(
+    isUniqueViolation({
+      message: "failed query",
+      errors: [{ constraint_name: "ux_deals_next_source_deal_id", message: "duplicate key" }],
+    }),
+    true,
+  );
+  assert.equal(
+    isUniqueViolation({
+      code: "25P02",
+      message: "current transaction is aborted, commands ignored until end of transaction block",
+    }),
+    false,
+  );
+});
+
+test("savepoint rolls back a unique violation and still commits the rest of the transaction", async () => {
+  await resetNext();
+  await query(SOURCE_DEAL_ID_UNIQUE_SQL);
+  await withTransaction(async (q) => {
+    await q(
+      `INSERT INTO deals_next (deal_number, title, source_deal_id)
+       VALUES ('TLY-259', 'Keeper', $1)`,
+      [PCB_AXIAL_ID],
+    );
+    let caught = false;
+    try {
+      await q.savepoint(async (sp) => {
+        await sp(
+          `INSERT INTO deals_next (deal_number, title, source_deal_id)
+           VALUES ('TLY-286', 'Twin', $1)`,
+          [PCB_AXIAL_ID],
+        );
+      });
+    } catch (error) {
+      caught = isUniqueViolation(error);
+    }
+    assert.equal(caught, true);
+    await q(
+      `INSERT INTO deals_next (deal_number, title, source_deal_id)
+       VALUES ('TLY-300', 'CT landscaping add-on', $1)`,
+      [LAND_AXIAL_ID],
+    );
+  });
+  const rows = await query<{ deal_number: string; source_deal_id: string }>(
+    "SELECT deal_number, source_deal_id FROM deals_next ORDER BY deal_number",
+  );
+  assert.deepEqual(
+    rows.map((r) => r.deal_number),
+    ["TLY-259", "TLY-300"],
+  );
+  assert.equal(rows[0].source_deal_id, PCB_AXIAL_ID);
+  assert.equal(rows[1].source_deal_id, LAND_AXIAL_ID);
 });
