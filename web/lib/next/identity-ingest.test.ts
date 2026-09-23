@@ -94,3 +94,48 @@ test("same thread and teaser do not join when earnings disagree", () => {
   );
   assert.equal(hit, null);
 });
+
+
+test("posted sourceDealId joins even when URL is missing or percent-encoded", () => {
+  const owner = {
+    id: 10,
+    dealNumber: "TLY-410",
+    sourceDealId: "axial:88de30e9a6c7452b8213fdc741a0fefc",
+    title: "Old PCB name",
+    source: "axial.net",
+    nickname: "Axial",
+  };
+  const titleTwin = {
+    id: 11,
+    dealNumber: "TLY-411",
+    sourceDealId: null as string | null,
+    title: "High-Frequency PCB Manufacturer With Diversified Customers",
+    source: "axial.net",
+    nickname: "Axial",
+  };
+
+  const byPosted = findIdentityMatch(
+    {
+      title: titleTwin.title,
+      source: "axial.net",
+      nickname: "Axial",
+      sourceDealId: "axial:88de30e9a6c7452b8213fdc741a0fefc",
+    },
+    [titleTwin, owner],
+  );
+  assert.equal(byPosted?.reason, "source_id");
+  assert.equal(byPosted?.candidate.dealNumber, "TLY-410");
+
+  const encoded =
+    "https://network.axial.net/received-deals/new%3Bid=88de30e9a6c7452b8213fdc741a0fefc%3Btab=details";
+  const byEncodedUrl = findIdentityMatch(
+    {
+      title: titleTwin.title,
+      source: "axial.net",
+      url: encoded,
+    },
+    [titleTwin, owner],
+  );
+  assert.equal(byEncodedUrl?.reason, "source_id");
+  assert.equal(byEncodedUrl?.candidate.dealNumber, "TLY-410");
+});
