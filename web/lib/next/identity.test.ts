@@ -374,7 +374,7 @@ test("fitness studio remint joins on title+source when URL missing", () => {
       },
     ],
   );
-  assert.equal(hit?.reason, "title_source");
+  assert.equal(hit?.reason, "headline");
   assert.equal(hit?.candidate.dealNumber, "TLY-401");
 });
 
@@ -393,7 +393,7 @@ test("Kansas oilfield remints on title+source (DealStream)", () => {
       },
     ],
   );
-  assert.equal(hit?.reason, "title_source");
+  assert.equal(hit?.reason, "headline");
 });
 
 test("listing URL identical joins before source id / headline (hard-lock step 1)", () => {
@@ -418,6 +418,52 @@ test("listing URL identical joins before source id / headline (hard-lock step 1)
   );
   assert.equal(hit?.reason, "listing_url");
   assert.equal(hit?.candidate.dealNumber, "TLY-271");
+});
+
+test("whole URL matches before the cleaned pass", () => {
+  const url =
+    "https://www.bizbuysell.com/business-opportunity/hvac/123/?q=999&utm_source=email";
+  const hit = findIdentityMatch({ title: "Different campaign title", url }, [
+    { id: 4, dealNumber: "TLY-498", title: "Stored title", url },
+  ]);
+  assert.equal(hit?.reason, "listing_url");
+});
+
+test("cleaned URL joins the same listing across campaigns and keeps q=", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Campaign B",
+      url: "https://www.bizbuysell.com/business-opportunity/hvac/123/?q=999&utm_campaign=sept",
+    },
+    [
+      {
+        id: 4,
+        dealNumber: "TLY-498",
+        title: "Campaign A",
+        url: "https://www.bizbuysell.com/business-opportunity/hvac/123/?utm_source=email&q=999",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "listing_url_clean");
+  assert.equal(hit?.candidate.dealNumber, "TLY-498");
+});
+
+test("cleaned URL does not join two listings that differ by identity query", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Shop A",
+      url: "https://www.bizbuysell.com/business-opportunity/hvac/123/?q=111",
+    },
+    [
+      {
+        id: 5,
+        dealNumber: "TLY-499",
+        title: "Shop B",
+        url: "https://www.bizbuysell.com/business-opportunity/hvac/123/?q=222",
+      },
+    ],
+  );
+  assert.equal(hit, null);
 });
 
 test("SteinerZ alias + geo joins to TLY-271 (hard-lock step 3)", () => {
@@ -446,7 +492,7 @@ test("SteinerZ alias + geo joins to TLY-271 (hard-lock step 3)", () => {
       },
     ],
   );
-  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.reason, "headline");
   assert.equal(hit?.candidate.dealNumber, "TLY-271");
 });
 
@@ -480,6 +526,6 @@ test("headline/alias beats fingerprint when both could match (order 3 before 4)"
       },
     ],
   );
-  assert.equal(hit?.reason, "alias");
+  assert.equal(hit?.reason, "headline");
   assert.equal(hit?.candidate.dealNumber, "TLY-271");
 });

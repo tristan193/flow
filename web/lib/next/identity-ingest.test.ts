@@ -52,30 +52,27 @@ test("one Gmail thread is not treated as a deal identity", () => {
   assert.equal(hit, null);
 });
 
-test("same thread, same teaser, and same earnings join even without a broker", () => {
+test("identical headline alone does not join", () => {
   const hit = findIdentityMatch(
     {
       title: "Oilfield and Agriculture Supply Company in Kansas",
-      ebitda: 1_250_000,
-      region: "Heartland",
-      gmailThreadIds: ["1a0ac26af41f876c"],
+      ebitda: 400_000,
+      gmailThreadIds: ["other-thread"],
     },
     [
       {
         id: 240,
         dealNumber: "TLY-240",
         title: "Oilfield and Agriculture Supply Company in Kansas",
-        ebitda: 1_252_000,
-        state: "KS",
+        ebitda: 1_250_000,
         gmailThreadIds: ["1a0ac26af41f876c"],
       },
     ],
   );
-  assert.equal(hit?.reason, "thread_title");
-  assert.equal(hit?.candidate.dealNumber, "TLY-240");
+  assert.equal(hit, null);
 });
 
-test("same thread and teaser do not join when earnings disagree", () => {
+test("identical headline plus a shared Gmail thread joins", () => {
   const hit = findIdentityMatch(
     {
       title: "Oilfield and Agriculture Supply Company in Kansas",
@@ -92,7 +89,46 @@ test("same thread and teaser do not join when earnings disagree", () => {
       },
     ],
   );
-  assert.equal(hit, null);
+  assert.equal(hit?.reason, "headline");
+  assert.equal(hit?.candidate.dealNumber, "TLY-240");
+});
+
+test("identical headline plus the same state joins", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Commercial Landscape Maintenance Company",
+      state: "FL",
+    },
+    [
+      {
+        id: 473,
+        dealNumber: "TLY-473",
+        title: "Commercial Landscape Maintenance Company",
+        city: "Hollywood",
+        state: "FL",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "headline");
+});
+
+test("identical headline plus the same broker joins", () => {
+  const hit = findIdentityMatch(
+    {
+      title: "Commercial Landscape Maintenance Company",
+      brokerFirm: "Search Genius",
+    },
+    [
+      {
+        id: 473,
+        dealNumber: "TLY-473",
+        title: "Commercial Landscape Maintenance Company",
+        brokerFirm: "Search Genius",
+        state: "TX",
+      },
+    ],
+  );
+  assert.equal(hit?.reason, "headline");
 });
 
 

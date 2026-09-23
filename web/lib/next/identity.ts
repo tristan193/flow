@@ -6,13 +6,12 @@
  * Review card). If unsure → orphan to Tristan/Dirk.
  *
  *   0. deal_number (TLY-001) when the payload already names a card
- *   1. Listing URL identical (same listing link / BBS path / Axial pursue URL)
- *   2. Broker deal ID (Axial hex/;id=, BBS q=, V-AID, Transworld, Buildout slug, …)
- *   3. Same Gmail thread + same teaser + same rounded earnings
- *      (a digest thread alone is many shops; this trio is one shop with no URL)
- *   4. Headline identical or near-identical (normalize + alias_names),
- *      including title+source-domain and alias/title overlap with shared geo|broker
- *   5. Numbers + geo fingerprint confirm (teaser + broker + round(EBITDA|SDE) + geo)
+ *   1. Listing URL, whole string (the open link, character for character)
+ *   2. Listing URL, cleaned (campaign params dropped; identity query kept)
+ *   3. Broker deal ID (Axial hex/;id=, BBS q=, V-AID, Transworld, Buildout slug, …)
+ *   4. Identical headline plus one of: broker, Gmail thread, or location
+ *   5. Headline + source domain, then alias overlap with shared broker or geo
+ *   6. Numbers + geo fingerprint confirm (teaser + broker + round(EBITDA|SDE) + geo)
  *
  * NEVER match on broker name alone.
  * NEVER assume one Gmail thread = one deal.
@@ -476,33 +475,13 @@ export interface MatchCandidate {
 export type MatchReason =
   | "deal_number"
   | "listing_url"
+  | "listing_url_clean"
   | "source_id"
-  | "thread_title"
+  | "headline"
   | "title_source"
   | "alias"
   | "fingerprint"
   | null;
-
-function threadSet(ids: string[] | null | undefined): Set<string> {
-  return new Set((ids || []).map((id) => id.trim()).filter(Boolean));
-}
-
-function sharesThread(a: Set<string>, b: Set<string>): boolean {
-  for (const id of a) if (b.has(id)) return true;
-  return false;
-}
-
-/** Real states that disagree block a join. A region-only row does not. */
-function statesConflict(a: string | null, b: string | null): boolean {
-  if (!a || !b || a.startsWith("region:") || b.startsWith("region:")) return false;
-  const stateOf = (geo: string) => {
-    const tail = geo.split("|").pop() || "";
-    return /^[A-Z]{2}$/.test(tail) ? tail : null;
-  };
-  const sa = stateOf(a);
-  const sb = stateOf(b);
-  return Boolean(sa && sb && sa !== sb);
-}
 
 function candidateSourceCanonicals(c: MatchCandidate): Set<string> {
   const out = new Set<string>();
@@ -527,6 +506,60 @@ function candidateSourceCanonicals(c: MatchCandidate): Set<string> {
   return out;
 }
 
+function brokerAttribute(row: {
+  brokerFirm?: string | null;
+  source?: string | null;
+  nickname?: string | null;
+}): string | null {
+  const firm = normalizeBrokerFirm(row.brokerFirm);
+  if (firm) return firm;
+  return normalizeSourceDomain(row.source || row.nickname);
+}
+
+function sharesGmailThread(a?: string[] | null, b?: string[] | null): boolean {
+  const ids = new Set((a || []).map((id) => id.trim()).filter(Boolean));
+  if (!ids.size) return false;
+  return (b || []).some((id) => ids.has(id.trim()));
+}
+
+function placeToken(city?: string | null): string | null {
+  const raw = (city || "").trim();
+  if (!raw || looksLikeRegion(raw) || /^[A-Za-z]{2}$/.test(raw)) return null;
+  return slugGeoToken(raw) || null;
+}
+
+/** Same place. A missing side does not count. Conflicting cities or states do not agree. */
+function locationAgrees(
+  a: { city?: string | null; state?: string | null; region?: string | null },
+  b: { city?: string | null; state?: string | null; region?: string | null },
+): boolean {
+  const sa = isRealState(a.state, a.city) ? (a.state || "").trim().toUpperCase() : null;
+  const sb = isRealState(b.state, b.city) ? (b.state || "").trim().toUpperCase() : null;
+  if (sa && sb && sa !== sb) return false;
+  const ca = placeToken(a.city);
+  const cb = placeToken(b.city);
+  if (ca && cb && ca !== cb) return false;
+  if (sa && sb) return true;
+  if (ca && cb) return true;
+  const ra = slugGeoToken(a.region);
+  const rb = slugGeoToken(b.region);
+  return Boolean(ra && rb && ra === rb);
+}
+
+function sameHeadline(norm: string, candidate: MatchCandidate): boolean {
+  const theirNames = uniqueStrings([candidate.title || "", ...(candidate.aliasNames || [])]);
+  return theirNames.some((name) => normalizeTeaserName(name) === norm);
+}
+
+/** Headline plus broker, Gmail thread, or location. One is enough. */
+function headlineCorroborated(incoming: IdentityInput, candidate: MatchCandidate): boolean {
+  const broker = brokerAttribute(incoming);
+  const theirBroker = brokerAttribute(candidate);
+  if (broker && theirBroker && broker === theirBroker) return true;
+  if (sharesGmailThread(incoming.gmailThreadIds, candidate.gmailThreadIds)) return true;
+  return locationAgrees(incoming, candidate);
+}
+
 function titlesOverlap(a: string | null | undefined, bList: string[]): boolean {
   const na = normalizeTeaserName(a);
   if (!na) return false;
@@ -534,16 +567,26 @@ function titlesOverlap(a: string | null | undefined, bList: string[]): boolean {
 }
 
 
-/** Compare key for hard-lock step 1 — identical listing URL. */
+/** Pass 1 — the open link, trimmed. Campaign params and case still count. */
+export function listingUrlWhole(url: string | null | undefined): string | null {
+  if (url == null) return null;
+  const href = String(url).trim();
+  if (!href || /^(javascript|data|vbscript):/i.test(href)) return null;
+  return href;
+}
+
+/** Pass 2 — same listing sent through a different campaign. */
 export function listingUrlKey(url: string | null | undefined): string | null {
   const href = normalizeListingHref(url);
   if (!href) return null;
   let u = href.trim().toLowerCase();
   const hash = u.indexOf("#");
   if (hash >= 0) u = u.slice(0, hash);
-  // Drop marketing UTMs / click ids; keep identity query (q=, recordId=, id=).
-  if (u.includes("?")) {
-    const [base, qs = ""] = u.split("?", 1);
+  // Drop marketing UTMs / click ids; keep identity query (q=, recordId=, id=, token=).
+  const q = u.indexOf("?");
+  if (q >= 0) {
+    const base = u.slice(0, q);
+    const qs = u.slice(q + 1);
     const kept = qs
       .split("&")
       .filter(Boolean)
@@ -555,7 +598,7 @@ export function listingUrlKey(url: string | null | undefined): string | null {
 
 /**
  * First matching candidate wins. Broker-only and thread-only never match.
- * Order is the hard-lock gate: URL → broker id → thread+teaser+earnings → headline → fingerprint.
+ * Order is the hard-lock gate: whole URL → cleaned URL → broker id → identical headline → headline+source → fingerprint.
  */
 export function findIdentityMatch(
   incoming: IdentityInput,
@@ -569,14 +612,21 @@ export function findIdentityMatch(
     if (hit) return { candidate: hit, reason: "deal_number" };
   }
 
-  // 1) Listing URL identical — easiest hard stop before minting.
+  // 1) Whole listing URL. Character for character after trim.
+  const incomingWhole = listingUrlWhole(incoming.url);
+  if (incomingWhole) {
+    const hit = candidates.find((c) => listingUrlWhole(c.url) === incomingWhole);
+    if (hit) return { candidate: hit, reason: "listing_url" };
+  }
+
+  // 2) Cleaned listing URL. Campaign params (utm, gclid, …) differ; the listing does not.
   const incomingUrl = listingUrlKey(incoming.url);
   if (incomingUrl) {
     const hit = candidates.find((c) => {
       const theirs = listingUrlKey(c.url);
       return Boolean(theirs && theirs === incomingUrl);
     });
-    if (hit) return { candidate: hit, reason: "listing_url" };
+    if (hit) return { candidate: hit, reason: "listing_url_clean" };
   }
 
   // 2) Broker / platform deal ID (often extracted from the same URL).
@@ -590,24 +640,14 @@ export function findIdentityMatch(
     if (hit) return { candidate: hit, reason: "source_id" };
   }
 
-  // 2b) Same thread + same teaser + same earnings. URL still wins above.
-  // A digest thread with a different name does not match.
-  const incomingThreads = threadSet(ident.gmailThreadIds);
-  const incomingEarn = roundEbitda(incoming.ebitda ?? incoming.sde ?? null);
-  const incomingTitleNorm = ident.teaserNorm;
-  if (incomingThreads.size && incomingTitleNorm && incomingEarn != null) {
-    const incomingGeo = ident.geoNorm;
-    const hit = candidates.find((c) => {
-      if (!sharesThread(incomingThreads, threadSet(c.gmailThreadIds))) return false;
-      const theirNames = uniqueStrings([c.title || "", ...(c.aliasNames || [])]);
-      if (!titlesOverlap(incomingTitleNorm, theirNames)) return false;
-      const theirEarn = roundEbitda(c.ebitda ?? c.sde ?? null);
-      if (theirEarn == null || theirEarn !== incomingEarn) return false;
-      const theirGeo = normalizeGeo(c.city, c.state, c.region);
-      if (statesConflict(incomingGeo, theirGeo)) return false;
-      return true;
-    });
-    if (hit) return { candidate: hit, reason: "thread_title" };
+  // 4) Identical headline plus broker, Gmail thread, or location. One of the three.
+  const incomingHeadline = ident.teaserNorm;
+  const headlineWords = incomingHeadline ? incomingHeadline.split(" ").length : 0;
+  if (incomingHeadline && headlineWords >= 2) {
+    const hit = candidates.find(
+      (c) => sameHeadline(incomingHeadline, c) && headlineCorroborated(incoming, c),
+    );
+    if (hit) return { candidate: hit, reason: "headline" };
   }
 
   const incomingTitle = incoming.title || null;

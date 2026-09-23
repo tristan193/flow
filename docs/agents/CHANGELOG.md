@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-23 — `nm/web/identity` — DONE
+
+**Scope:** Import join order before a new TLY: named deal number, whole URL, cleaned URL, platform deal id, then identical headline plus broker or Gmail thread or location.  
+**Risk:** medium (harvest import join on `deals_next`)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/identity.ts` — whole URL matches character for character; cleaned URL drops campaign params and keeps identity query (`q=`, `recordId`, `id`, `token`). Identical headline joins only with a shared broker (source stands in when no firm is named), a shared Gmail thread, or an agreeing location.
+
+### Do not touch
+- The stored open link (`deals_next.url`). Cleaned keys are computed at compare time and not saved.
+- Gmail thread alone is not a deal. One digest can hold many shops.
+
+### Follow-ups
+- Existing duplicate TLYs are not collapsed. The next import attaches a repeat instead of minting another.
+- A new marketplace still needs a hand-written id pattern in `extractSourceIds`.
+
+---
+
 ## 2026-09-21 — `nm/pipeline/ingest` — DONE
 
 **Scope:** Same Gmail thread + same teaser + same earnings is one deal. A digest thread alone still is not.  
