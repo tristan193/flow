@@ -192,6 +192,10 @@ export async function ensureNextSourceDealIdUnique(): Promise<boolean> {
  * watches, keeps history by repointing the duplicate's deal_log rows at the
  * keeper (their deal_number stays the historical TLY), and repoints any
  * legacy stored CIM blobs.
+ *
+ * source_deal_id is not filled here. Identity is adopted in mergeRowInto,
+ * which nulls the twin before the keeper takes the id. COALESCE(keep, dup)
+ * while both rows exist hits ux_deals_next_source_deal_id (23505).
  */
 const MERGE_FILL_COLUMNS = [
   "tristan_verdict",
@@ -257,6 +261,21 @@ async function mergeRowInto(keep: MergeRow, dup: MergeRow, q: QueryFn, actor: st
   }
   const sourceDealId = keep.source_deal_id || dup.source_deal_id;
 
+  // Tombstone + full snapshot of the row being deleted. Nothing is ever
+  // unrecoverable: the whole dup row rides in patch.old. Capture it before
+  // source_deal_id is cleared below.
+  const snapshot = await q<Record<string, unknown>>(
+    "SELECT * FROM deals_next WHERE id = $1",
+    [dup.id],
+  );
+
+  // ux_deals_next_source_deal_id is unique while both rows exist. Remints
+  // leave the lower-TLY keeper null and the twin holding axial:/buildout:.
+  // Free the twin's id, then COALESCE copies it onto the keeper.
+  if (!keep.source_deal_id && dup.source_deal_id) {
+    await q("UPDATE deals_next SET source_deal_id = NULL WHERE id = $1", [dup.id]);
+  }
+
   await q(
     `UPDATE deals_next SET
        source_deal_id   = COALESCE(source_deal_id, $1),
@@ -282,13 +301,6 @@ async function mergeRowInto(keep: MergeRow, dup: MergeRow, q: QueryFn, actor: st
   keep.source_ids = mergedIds;
   keep.alias_names = aliases;
   keep.gmail_thread_ids = threads;
-
-  // Tombstone + full snapshot of the row being deleted. Nothing is ever
-  // unrecoverable: the whole dup row rides in patch.old.
-  const snapshot = await q<Record<string, unknown>>(
-    "SELECT * FROM deals_next WHERE id = $1",
-    [dup.id],
-  );
   await q(
     `INSERT INTO deal_log (deal_id, deal_number, actor, kind, patch, reason, channel)
      VALUES ($1, $2, $3, 'merge', $4::jsonb, $5, 'api:next/merge')`,

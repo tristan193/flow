@@ -172,6 +172,39 @@ test("merge keeps lowest TLY and deletes Axial hex duplicates", async () => {
   assert.equal(Number(count), 1);
 });
 
+test("merge folds a twin that owns source_deal_id into a null keeper", async () => {
+  await resetNext();
+  const axialId = "axial:aaaabbbbccccdddd";
+  const listingUrl = "https://network.axial.net/app/opportunity/aaaabbbbccccdddd";
+  await query(
+    `INSERT INTO deals_next (deal_number, source_deal_id, source_ids, title, nickname, url)
+     VALUES
+       ('TLY-010', NULL, $1::jsonb, 'Keeper shop', 'Axial', $2),
+       ('TLY-040', $3, $1::jsonb, 'Remint twin', 'Axial', $2)`,
+    [
+      JSON.stringify([
+        { kind: "axial", value: "aaaabbbbccccdddd", canonical: axialId },
+      ]),
+      listingUrl,
+      axialId,
+    ],
+  );
+  await query(SOURCE_DEAL_ID_UNIQUE_SQL);
+
+  const result = await collapseNextDuplicates({
+    pairs: [{ keep: "TLY-010", delete: ["TLY-040"] }],
+  });
+  assert.equal(result.deleted, 1);
+  assert.equal(result.groups[0]?.keep, "TLY-010");
+
+  const rows = await query<{ deal_number: string; source_deal_id: string | null }>(
+    "SELECT deal_number, source_deal_id FROM deals_next ORDER BY deal_number",
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].deal_number, "TLY-010");
+  assert.equal(rows[0].source_deal_id, axialId);
+});
+
 test("unique source_deal_id index is created when no duplicates remain", async () => {
   await resetNext();
   await upsertNextDeals([{ title: "Only one", html: AXIAL_HTML }]);
