@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { type QueryFn, isUniqueViolation, query, withTransaction } from "../db";
+import { type QueryFn, type TxQuery, isUniqueViolation, query, withTransaction } from "../db";
 import { normalizeAxialHref } from "../playbooks";
 import { logDealChange } from "./change-log";
 import { allocateDealNumber, bumpCounterToAtLeast } from "./deal-number";
@@ -600,30 +600,41 @@ function postedDealNumber(deal: IncomingNextDeal): string | null {
 }
 
 
-/** Prefer the live row that already owns this source_deal_id (unique index). */
-async function resolveBySourceDealId(
+/**
+ * Row that already owns this id in the `source_deal_id` column (the unique
+ * index). Nickname hex and `source_ids` jsonb do not own the index — a twin
+ * can match on those and still be the wrong write target.
+ */
+async function findSourceColumnOwner(
   q: QueryFn,
   ident: IdentityRecord,
-  matchInput: IdentityInput,
 ): Promise<MatchCandidate | null> {
-  const keys = new Set<string>();
-  if (ident.sourceDealId) keys.add(ident.sourceDealId);
-  for (const s of ident.sourceIds) keys.add(s.canonical);
-  for (const key of keys) {
-    const rows = await q<{ id: number }>(
-      "SELECT id FROM deals_next WHERE source_deal_id = $1 LIMIT 1",
-      [key],
-    );
-    if (rows[0]) {
-      const again = await loadMatchCandidates(q);
-      return again.find((c) => c.id === Number(rows[0].id)) ?? {
-        id: Number(rows[0].id),
-        sourceDealId: key,
-      };
-    }
-  }
+  const key = sanitizeSourceDealId(ident.sourceDealId);
+  if (!key) return null;
+  const rows = await q<{ id: number }>(
+    "SELECT id FROM deals_next WHERE source_deal_id = $1 LIMIT 1",
+    [key],
+  );
+  if (!rows[0]) return null;
+  const id = Number(rows[0].id);
   const again = await loadMatchCandidates(q);
-  return findIdentityMatch(matchInput, again)?.candidate ?? null;
+  return again.find((c) => c.id === id) ?? { id, sourceDealId: key };
+}
+
+async function recoverUniqueOwner(
+  q: TxQuery,
+  ident: IdentityRecord,
+  deal: IncomingNextDeal,
+  title: string,
+  avoidId: number | null,
+  error: unknown,
+): Promise<number> {
+  const owner = await findSourceColumnOwner(q, ident);
+  if (!owner || owner.id === avoidId) throw error;
+  await q.savepoint(async (sp) => {
+    await updateMatchedDeal(sp, owner.id, deal, ident, title);
+  });
+  return owner.id;
 }
 
 export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
@@ -656,108 +667,111 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
     const ident = prepareIdentity(deal);
     const matchInput = incomingToIdentity({ ...deal, dealNumber: ident.dealNumber });
 
-    const outcome = await withTransaction(async (q) => {
-      await lockIdentity(q, ident);
-      if (intent.duplicateOf) {
-        await q("SELECT pg_advisory_xact_lock(872011, hashtext($1))", [
-          `tly:${intent.duplicateOf}`,
-        ]);
-      }
-      const candidates = await loadMatchCandidates(q);
+    let outcome: { kind: "new" | "updated" | "skipped"; id: number | null };
+    try {
+      outcome = await withTransaction(async (q) => {
+        await lockIdentity(q, ident);
+        if (intent.duplicateOf) {
+          await q("SELECT pg_advisory_xact_lock(872011, hashtext($1))", [
+            `tly:${intent.duplicateOf}`,
+          ]);
+        }
+        const candidates = await loadMatchCandidates(q);
 
-      const targetByDupe = intent.duplicateOf
-        ? candidates.find((c) => formatDuplicateOf(c.dealNumber) === intent.duplicateOf) ?? null
-        : null;
-      const hit = findIdentityMatch(matchInput, candidates);
-      const attachTarget = targetByDupe ?? (intent.attachOnly && hit ? hit.candidate : null);
+        const targetByDupe = intent.duplicateOf
+          ? candidates.find((c) => formatDuplicateOf(c.dealNumber) === intent.duplicateOf) ?? null
+          : null;
+        const hit = findIdentityMatch(matchInput, candidates);
+        const attachTarget = targetByDupe ?? (intent.attachOnly && hit ? hit.candidate : null);
+        // COALESCE(source_deal_id, posted) fills a null column only. That is the
+        // write that hits ux_deals_next_source_deal_id. A row that already has a
+        // different id (explicit duplicateOf) does not take the posted key.
+        const columnOwner = ident.sourceDealId ? await findSourceColumnOwner(q, ident) : null;
+        const matched = attachTarget ?? hit?.candidate ?? null;
+        const matchedKey = sanitizeSourceDealId(matched?.sourceDealId);
+        const wouldFillNullColumn = Boolean(columnOwner && matched && matched.id !== columnOwner.id && !matchedKey);
 
-      if (attachTarget) {
-        await attachToCanonicalDeal(q, attachTarget.id, deal, ident, title);
-        const ownNumber = postedDealNumber(deal);
-        if (ownNumber && ownNumber !== attachTarget.dealNumber) {
-          const orphan = candidates.find((c) => formatDuplicateOf(c.dealNumber) === ownNumber);
-          if (orphan && orphan.id !== attachTarget.id) {
-            await stampClosedRemint(
-              q,
-              orphan.id,
-              intent.duplicateOf ?? formatDuplicateOf(attachTarget.dealNumber),
-              intent.disposition === "attached" ? "attached" : "remint",
+        if (columnOwner && (!matched || wouldFillNullColumn)) {
+          await q.savepoint(async (sp) => {
+            if (intent.attachOnly) {
+              await attachToCanonicalDeal(sp, columnOwner.id, deal, ident, title);
+            } else {
+              await updateMatchedDeal(sp, columnOwner.id, deal, ident, title);
+            }
+          });
+          return { kind: "updated" as const, id: columnOwner.id };
+        }
+
+        if (attachTarget) {
+          await q.savepoint(async (sp) => {
+            await attachToCanonicalDeal(sp, attachTarget.id, deal, ident, title);
+          });
+          const ownNumber = postedDealNumber(deal);
+          if (ownNumber && ownNumber !== attachTarget.dealNumber) {
+            const orphan = candidates.find((c) => formatDuplicateOf(c.dealNumber) === ownNumber);
+            if (orphan && orphan.id !== attachTarget.id) {
+              await stampClosedRemint(
+                q,
+                orphan.id,
+                intent.duplicateOf ?? formatDuplicateOf(attachTarget.dealNumber),
+                intent.disposition === "attached" ? "attached" : "remint",
+              );
+            }
+          }
+          return { kind: "updated" as const, id: attachTarget.id };
+        }
+
+        if (intent.attachOnly) {
+          try {
+            const id = await q.savepoint((sp) =>
+              insertNewDeal(sp, deal, ident, title, {
+                duplicateOf: intent.duplicateOf,
+                disposition: intent.disposition ?? "remint",
+                closed: true,
+              }),
             );
+            return { kind: "new" as const, id };
+          } catch (error) {
+            if (!isUniqueViolation(error)) throw error;
+            const ownerId = await recoverUniqueOwner(q, ident, deal, title, null, error);
+            return { kind: "updated" as const, id: ownerId };
           }
         }
-        return { kind: "updated" as const, id: attachTarget.id };
-      }
 
-      if (intent.attachOnly) {
+        if (hit) {
+          try {
+            await q.savepoint(async (sp) => {
+              await updateMatchedDeal(sp, hit.candidate.id, deal, ident, title);
+            });
+            return { kind: "updated" as const, id: hit.candidate.id };
+          } catch (error) {
+            if (!isUniqueViolation(error)) throw error;
+            const ownerId = await recoverUniqueOwner(q, ident, deal, title, hit.candidate.id, error);
+            return { kind: "updated" as const, id: ownerId };
+          }
+        }
+        if (deal.skipIfNew) {
+          return { kind: "skipped" as const, id: null };
+        }
         try {
-          await q("SAVEPOINT next_insert");
-          const id = await insertNewDeal(q, deal, ident, title, {
-            duplicateOf: intent.duplicateOf,
-            disposition: intent.disposition ?? "remint",
-            closed: true,
-          });
-          await q("RELEASE SAVEPOINT next_insert");
+          const id = await q.savepoint((sp) => insertNewDeal(sp, deal, ident, title));
           return { kind: "new" as const, id };
         } catch (error) {
-          try {
-            await q("ROLLBACK TO SAVEPOINT next_insert");
-          } catch {
-            // savepoint missing — transaction already failed
-          }
           if (!isUniqueViolation(error)) throw error;
-          const again = await loadMatchCandidates(q);
-          const retryTarget = intent.duplicateOf
-            ? again.find((c) => formatDuplicateOf(c.dealNumber) === intent.duplicateOf)
-            : null;
-          const retry = retryTarget
-            ? { candidate: retryTarget }
-            : findIdentityMatch(matchInput, again);
-          if (!retry) throw error;
-          await attachToCanonicalDeal(q, retry.candidate.id, deal, ident, title);
-          return { kind: "updated" as const, id: retry.candidate.id };
+          const ownerId = await recoverUniqueOwner(q, ident, deal, title, null, error);
+          return { kind: "updated" as const, id: ownerId };
         }
-      }
-
-      if (hit) {
-        try {
-          await q("SAVEPOINT next_update");
-          await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
-          await q("RELEASE SAVEPOINT next_update");
-          return { kind: "updated" as const, id: hit.candidate.id };
-        } catch (error) {
-          try {
-            await q("ROLLBACK TO SAVEPOINT next_update");
-          } catch {
-            // savepoint missing — transaction already failed
-          }
-          if (!isUniqueViolation(error)) throw error;
-          const owner = await resolveBySourceDealId(q, ident, matchInput);
-          if (!owner) throw error;
-          await updateMatchedDeal(q, owner.id, deal, ident, title);
-          return { kind: "updated" as const, id: owner.id };
-        }
-      }
-      if (deal.skipIfNew) {
-        return { kind: "skipped" as const, id: null };
-      }
-      try {
-        await q("SAVEPOINT next_insert");
-        const id = await insertNewDeal(q, deal, ident, title);
-        await q("RELEASE SAVEPOINT next_insert");
-        return { kind: "new" as const, id };
-      } catch (error) {
-        try {
-          await q("ROLLBACK TO SAVEPOINT next_insert");
-        } catch {
-          // savepoint missing — transaction already failed
-        }
-        if (!isUniqueViolation(error)) throw error;
-        const owner = await resolveBySourceDealId(q, ident, matchInput);
-        if (!owner) throw error;
-        await updateMatchedDeal(q, owner.id, deal, ident, title);
-        return { kind: "updated" as const, id: owner.id };
-      }
-    });
+      });
+    } catch (error) {
+      // One bad row must not 500 the rest of the harvest POST.
+      console.error("[import] skipped deal after write error", {
+        title,
+        sourceDealId: ident.sourceDealId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      skipped += 1;
+      continue;
+    }
 
     if (outcome.kind === "skipped" || outcome.id == null) {
       skipped += 1;

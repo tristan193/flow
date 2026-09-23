@@ -139,3 +139,41 @@ test("posted sourceDealId joins even when URL is missing or percent-encoded", ()
   assert.equal(byEncodedUrl?.reason, "source_id");
   assert.equal(byEncodedUrl?.candidate.dealNumber, "TLY-410");
 });
+
+test("URL or nickname hex still hits a null-column twin ahead of the column owner", () => {
+  const axialId = "axial:88de30e9a6c7452b8213fdc741a0fefc";
+  const title = "High-Frequency PCB Manufacturer With Diversified Customers";
+  const url =
+    "https://network.axial.net/received-deals/new;id=88de30e9a6c7452b8213fdc741a0fefc;tab=details;action=pursue";
+  const keeper = {
+    id: 2,
+    dealNumber: "TLY-259",
+    sourceDealId: axialId,
+    title: "PCB manufacturer — keeper",
+    source: "axial.net",
+    nickname: "Axial",
+  };
+  const byUrl = findIdentityMatch(
+    { title, url, source: "axial.net", sourceDealId: axialId },
+    [{ id: 1, dealNumber: "TLY-286", sourceDealId: null, title, url, source: "axial.net" }, keeper],
+  );
+  assert.equal(byUrl?.reason, "listing_url");
+  assert.equal(byUrl?.candidate.dealNumber, "TLY-286");
+
+  const byNick = findIdentityMatch(
+    { title, source: "axial.net", sourceDealId: axialId },
+    [
+      {
+        id: 1,
+        dealNumber: "TLY-286",
+        sourceDealId: null,
+        title,
+        source: "axial.net",
+        nickname: "88de30e9a6c7452b8213fdc741a0fefc",
+      },
+      keeper,
+    ],
+  );
+  assert.equal(byNick?.reason, "source_id");
+  assert.equal(byNick?.candidate.dealNumber, "TLY-286");
+});
