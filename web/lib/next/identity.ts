@@ -48,6 +48,8 @@ export interface IdentityInput {
   nickname?: string | null;
   gmailThreadIds?: string[] | null;
   sourceIds?: SourceId[] | null;
+  /** Posted join key (axial:hex, bbs:q, …). Must participate in matching. */
+  sourceDealId?: string | null;
 }
 
 export interface IdentityRecord {
@@ -250,6 +252,15 @@ function isVaidMailbox(input: IdentityInput): boolean {
   return blob.includes("vaid") || blob.includes("v-aid");
 }
 
+
+function safeDecode(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 /**
  * Pull platform listing IDs. Axial hex is taken from HTML/URL only — subjects
  * are marketing titles and must not be treated as IDs.
@@ -263,7 +274,23 @@ export function extractSourceIds(input: IdentityInput): SourceId[] {
     }
   }
 
-  const urlHtml = haystack([input.url, input.html, input.body]);
+  // Posted sourceDealId is a first-class join key (harvest export). Do not
+  // rely only on URL regex — encoded `;id=` or a missing url must still match.
+  const posted = sanitizeSourceDealId(input.sourceDealId);
+  if (posted) {
+    const colon = posted.indexOf(":");
+    if (colon > 0) {
+      addSource(out, posted.slice(0, colon) as SourceKind, posted.slice(colon + 1));
+    }
+  }
+
+  // Axial matrix params sometimes arrive percent-encoded (%3B for ;).
+  const urlHtml = haystack([
+    input.url,
+    input.url ? safeDecode(input.url) : null,
+    input.html,
+    input.body,
+  ]);
   const subject = input.subject || "";
 
   for (const re of [AXIAL_PATH, AXIAL_QP, AXIAL_SEMI_ID]) {

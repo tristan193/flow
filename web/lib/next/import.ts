@@ -219,6 +219,7 @@ function incomingToIdentity(deal: IncomingNextDeal): IdentityInput {
     nickname: deal.nickname,
     gmailThreadIds: deal.gmailThreadIds,
     sourceIds: deal.sourceIds,
+    sourceDealId: deal.sourceDealId,
   };
 }
 
@@ -598,6 +599,33 @@ function postedDealNumber(deal: IncomingNextDeal): string | null {
   return n ? formatDealNumber(n) : null;
 }
 
+
+/** Prefer the live row that already owns this source_deal_id (unique index). */
+async function resolveBySourceDealId(
+  q: QueryFn,
+  ident: IdentityRecord,
+  matchInput: IdentityInput,
+): Promise<MatchCandidate | null> {
+  const keys = new Set<string>();
+  if (ident.sourceDealId) keys.add(ident.sourceDealId);
+  for (const s of ident.sourceIds) keys.add(s.canonical);
+  for (const key of keys) {
+    const rows = await q<{ id: number }>(
+      "SELECT id FROM deals_next WHERE source_deal_id = $1 LIMIT 1",
+      [key],
+    );
+    if (rows[0]) {
+      const again = await loadMatchCandidates(q);
+      return again.find((c) => c.id === Number(rows[0].id)) ?? {
+        id: Number(rows[0].id),
+        sourceDealId: key,
+      };
+    }
+  }
+  const again = await loadMatchCandidates(q);
+  return findIdentityMatch(matchInput, again)?.candidate ?? null;
+}
+
 export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
   dealsNew: number;
   dealsUpdated: number;
@@ -691,8 +719,23 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
       }
 
       if (hit) {
-        await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
-        return { kind: "updated" as const, id: hit.candidate.id };
+        try {
+          await q("SAVEPOINT next_update");
+          await updateMatchedDeal(q, hit.candidate.id, deal, ident, title);
+          await q("RELEASE SAVEPOINT next_update");
+          return { kind: "updated" as const, id: hit.candidate.id };
+        } catch (error) {
+          try {
+            await q("ROLLBACK TO SAVEPOINT next_update");
+          } catch {
+            // savepoint missing — transaction already failed
+          }
+          if (!isUniqueViolation(error)) throw error;
+          const owner = await resolveBySourceDealId(q, ident, matchInput);
+          if (!owner) throw error;
+          await updateMatchedDeal(q, owner.id, deal, ident, title);
+          return { kind: "updated" as const, id: owner.id };
+        }
       }
       if (deal.skipIfNew) {
         return { kind: "skipped" as const, id: null };
@@ -709,11 +752,10 @@ export async function upsertNextDeals(deals: IncomingNextDeal[]): Promise<{
           // savepoint missing — transaction already failed
         }
         if (!isUniqueViolation(error)) throw error;
-        const again = await loadMatchCandidates(q);
-        const retry = findIdentityMatch(matchInput, again);
-        if (!retry) throw error;
-        await updateMatchedDeal(q, retry.candidate.id, deal, ident, title);
-        return { kind: "updated" as const, id: retry.candidate.id };
+        const owner = await resolveBySourceDealId(q, ident, matchInput);
+        if (!owner) throw error;
+        await updateMatchedDeal(q, owner.id, deal, ident, title);
+        return { kind: "updated" as const, id: owner.id };
       }
     });
 
