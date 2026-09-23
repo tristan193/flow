@@ -187,40 +187,103 @@ export async function ensureNextSourceDealIdUnique(): Promise<boolean> {
 }
 
 /**
- * Two-table world: votes/notes/watches live on the deal row. Merge fills the
- * keeper's null columns from the duplicate, concatenates notes, unions
- * watches, keeps history by repointing the duplicate's deal_log rows at the
- * keeper (their deal_number stays the historical TLY), and repoints any
- * legacy stored CIM blobs.
+ * Two-table world: votes/notes/watches live on the deal row. Merge fills a
+ * blank keeper column from the duplicate, concatenates notes, unions watches,
+ * keeps history by repointing the duplicate's deal_log rows at the keeper
+ * (their deal_number stays the historical TLY), and repoints any legacy
+ * stored CIM blobs.
  *
- * source_deal_id is not filled here. Identity is adopted in mergeRowInto,
- * which nulls the twin before the keeper takes the id. COALESCE(keep, dup)
- * while both rows exist hits ux_deals_next_source_deal_id (23505).
+ * Blank means NULL, or for text a string that trims to empty. When both sides
+ * are non-empty the keeper wins — a later twin must not clobber a real stage,
+ * title, or number already on the earlier TLY.
+ *
+ * source_deal_id is not in these lists. Identity is adopted in mergeRowInto,
+ * which nulls the twin before the keeper takes the id. A blind COALESCE while
+ * both rows still hold the id hits ux_deals_next_source_deal_id (23505).
+ *
+ * Also not blank-filled here:
+ * - source_ids, alias_names, alias_numbers, gmail_thread_ids — unioned in mergeRowInto
+ * - tristan_notes / jim_notes — concatenated below
+ * - watches — jsonb union below
+ * - duplicate_of / ingest_disposition — remint stamps on the twin; copying them
+ *   would mark the live TLY as a remint
+ * - id, deal_number, is_demo, first_seen, last_seen, times_seen, created_at —
+ *   row identity and observation counters. updated_at is stamped now().
  */
-const MERGE_FILL_COLUMNS = [
+const MERGE_FILL_TEXT = [
+  "url",
+  "title",
+  "blurb",
+  "cim_name",
+  "source",
+  "sub_source",
+  "nickname",
+  "sources",
+  "city",
+  "state",
+  "county",
+  "region",
+  "broker_firm",
+  "fingerprint",
+  "next_action",
+  "business_model_type",
+  "stage",
+  "stage_changed_by",
+  "super_liked_by",
   "tristan_verdict",
   "tristan_verdict_reason",
   "tristan_verdict_note",
-  "tristan_verdict_at",
   "jim_verdict",
   "jim_verdict_reason",
   "jim_verdict_note",
-  "jim_verdict_at",
   "tristan_cim_verdict",
   "tristan_cim_verdict_note",
-  "tristan_cim_verdict_at",
   "jim_cim_verdict",
   "jim_cim_verdict_note",
-  "jim_cim_verdict_at",
   "cim_url",
   "cim_access_note",
   "nda_url",
 ] as const;
 
+/** NULL is blank. 0 and a real timestamp are data, so plain COALESCE. */
+const MERGE_FILL_SCALAR = [
+  "tristan_verdict_at",
+  "jim_verdict_at",
+  "tristan_cim_verdict_at",
+  "jim_cim_verdict_at",
+  "stage_changed_at",
+  "super_liked_at",
+  "revenue",
+  "ebitda",
+  "sde",
+  "asking",
+  "margin",
+] as const;
+
+/** Empty jsonb array is blank. A non-empty keeper list is kept, not unioned. */
+const MERGE_FILL_JSON_LISTS = ["needs_llm", "source_domains"] as const;
+
+function mergeFillAssignments(): string {
+  const text = MERGE_FILL_TEXT.map(
+    (col) => `${col} = CASE
+         WHEN NULLIF(btrim(keep.${col}), '') IS NOT NULL THEN keep.${col}
+         WHEN NULLIF(btrim(dup.${col}), '') IS NOT NULL THEN dup.${col}
+         ELSE keep.${col}
+       END`,
+  );
+  const scalar = MERGE_FILL_SCALAR.map((col) => `${col} = COALESCE(keep.${col}, dup.${col})`);
+  const lists = MERGE_FILL_JSON_LISTS.map(
+    (col) => `${col} = CASE
+         WHEN keep.${col} IS NOT NULL AND keep.${col} <> '[]'::jsonb THEN keep.${col}
+         WHEN dup.${col} IS NOT NULL AND dup.${col} <> '[]'::jsonb THEN dup.${col}
+         ELSE keep.${col}
+       END`,
+  );
+  return [...text, ...scalar, ...lists].join(",\n       ");
+}
+
 async function reassignChildren(keepId: number, dupId: number, q: QueryFn): Promise<void> {
-  const fills = MERGE_FILL_COLUMNS.map(
-    (col) => `${col} = COALESCE(keep.${col}, dup.${col})`,
-  ).join(",\n       ");
+  const fills = mergeFillAssignments();
   await q(
     `UPDATE deals_next AS keep SET
        ${fills},

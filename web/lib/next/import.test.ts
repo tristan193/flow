@@ -205,6 +205,102 @@ test("merge folds a twin that owns source_deal_id into a null keeper", async () 
   assert.equal(rows[0].source_deal_id, axialId);
 });
 
+test("merge fills blank keeper url, title, and financials from the twin and keeps the lower TLY", async () => {
+  await resetNext();
+  const axialId = "axial:aaaabbbbccccdddd";
+  const listingUrl = "https://www.bizbuysell.com/business-opportunity/twin-shop/240010/";
+  await query(
+    `INSERT INTO deals_next (
+       deal_number, source_deal_id, source_ids, title, nickname, url,
+       revenue, ebitda, sde, asking, margin, city, state, county, region,
+       blurb, cim_name, broker_firm, business_model_type, needs_llm, source_domains,
+       stage, next_action, duplicate_of, ingest_disposition, tristan_notes
+     ) VALUES
+       ('TLY-010', NULL, $1::jsonb, '', 'Axial', '',
+        NULL, 800000, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        'Keep the teaser', NULL, NULL, '', '[]'::jsonb, '[]'::jsonb,
+        'shortlist', NULL, NULL, NULL, 'keeper note'),
+       ('TLY-040', $2, $1::jsonb, 'Twin Shop', 'Remint nickname', $3,
+        2500000, 100, 400000, 9000000, 0.25, 'Dallas', 'TX', 'Dallas', 'South',
+        'Twin teaser', 'Project Twin', 'Twin Broker', 'RECURRING', '["revenue"]'::jsonb, '["bizbuysell.com"]'::jsonb,
+        'closed', 'Review CIM', 'TLY-010', 'remint', 'twin note')`,
+    [
+      JSON.stringify([
+        { kind: "axial", value: "aaaabbbbccccdddd", canonical: axialId },
+      ]),
+      axialId,
+      listingUrl,
+    ],
+  );
+  await query(SOURCE_DEAL_ID_UNIQUE_SQL);
+
+  const result = await collapseNextDuplicates();
+  assert.equal(result.deleted, 1);
+  assert.equal(result.groups[0]?.keep, "TLY-010");
+
+  const rows = await query<{
+    deal_number: string;
+    source_deal_id: string | null;
+    title: string;
+    url: string | null;
+    revenue: number | null;
+    ebitda: number | null;
+    sde: number | null;
+    asking: number | null;
+    margin: number | null;
+    city: string | null;
+    state: string | null;
+    county: string | null;
+    region: string | null;
+    blurb: string | null;
+    cim_name: string | null;
+    nickname: string | null;
+    broker_firm: string | null;
+    business_model_type: string | null;
+    needs_llm: unknown;
+    source_domains: unknown;
+    stage: string;
+    next_action: string | null;
+    duplicate_of: string | null;
+    ingest_disposition: string | null;
+    tristan_notes: string | null;
+  }>(
+    `SELECT deal_number, source_deal_id, title, url, revenue, ebitda, sde, asking, margin,
+            city, state, county, region, blurb, cim_name, nickname, broker_firm,
+            business_model_type, needs_llm, source_domains, stage, next_action,
+            duplicate_of, ingest_disposition, tristan_notes
+       FROM deals_next`,
+  );
+  assert.equal(rows.length, 1);
+  const kept = rows[0];
+  assert.equal(kept.deal_number, "TLY-010");
+  assert.equal(kept.source_deal_id, axialId);
+  assert.equal(kept.title, "Twin Shop");
+  assert.equal(kept.url, listingUrl);
+  assert.equal(kept.revenue, 2500000);
+  assert.equal(kept.ebitda, 800000);
+  assert.equal(kept.sde, 400000);
+  assert.equal(kept.asking, 9000000);
+  assert.equal(kept.margin, 0.25);
+  assert.equal(kept.city, "Dallas");
+  assert.equal(kept.state, "TX");
+  assert.equal(kept.county, "Dallas");
+  assert.equal(kept.region, "South");
+  assert.equal(kept.blurb, "Keep the teaser");
+  assert.equal(kept.cim_name, "Project Twin");
+  assert.equal(kept.nickname, "Axial");
+  assert.equal(kept.broker_firm, "Twin Broker");
+  assert.equal(kept.business_model_type, "RECURRING");
+  assert.deepEqual(kept.needs_llm, ["revenue"]);
+  assert.deepEqual(kept.source_domains, ["bizbuysell.com"]);
+  assert.equal(kept.stage, "shortlist");
+  assert.equal(kept.next_action, "Review CIM");
+  assert.equal(kept.duplicate_of, null);
+  assert.equal(kept.ingest_disposition, null);
+  assert.match(kept.tristan_notes ?? "", /keeper note/);
+  assert.match(kept.tristan_notes ?? "", /twin note/);
+});
+
 test("unique source_deal_id index is created when no duplicates remain", async () => {
   await resetNext();
   await upsertNextDeals([{ title: "Only one", html: AXIAL_HTML }]);
