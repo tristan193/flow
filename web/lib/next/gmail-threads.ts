@@ -28,7 +28,7 @@ export type AuthorizedGmailThreadsResult =
 
 /** Dedupe case-insensitively, drop blanks, keep first-seen order. */
 export function normalizeGmailThreadIds(ids: readonly string[]): string[] {
-  return uniqueStrings(ids);
+  return uniqueStrings([...ids]);
 }
 
 /**
