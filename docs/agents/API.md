@@ -49,6 +49,7 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 | POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
 | POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage**; + `deal_log` |
 | POST | `/api/next/merge` | Dirk / ops | collapse duplicate TLY rows + `deal_log` |
+| POST | `/api/next/gmail-threads` | Dirk | replace / prepend / append `gmail_thread_ids` on an existing TLY + `deal_log` |
 | POST | `/api/import` | harvest only | `deals_next` (skipIfNew on unmatched catalog older than 4 days) |
 | POST | `/api/crm/pursuit` | harvest | NDA / thread attach on classic+Next match |
 | GET/POST | `/api/cron/harvest` | Vercel Cron | dispatches GitHub Actions |
@@ -193,6 +194,30 @@ Prefer intake over posting a CIM as a new deal. Prefer intake over `/api/next/ci
 ```
 
 Token only. Keeps the lowest TLY when collapsing twins. Do not run this casually.
+
+---
+
+## Gmail threads — `POST /api/next/gmail-threads`
+
+Import and merge only **union** `gmail_thread_ids`. This is how Dirk removes a wrong id or puts the correct thread first (daily move links use `[0]`).
+
+```json
+{ "dealNumber": "TLY-096", "mode": "replace", "gmailThreadIds": ["1a086a480b0fbc7e"] }
+```
+
+```bash
+curl -sS -X POST "$BASE/api/next/gmail-threads" \
+  -H "Authorization: Bearer $FLOW_IMPORT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dealNumber":"TLY-096","mode":"replace","gmailThreadIds":["1a086a480b0fbc7e"]}'
+```
+
+- `mode: "replace"` sets `deals_next.gmail_thread_ids` to that ordered JSON array. Dedupe keeps first occurrence. `[]` clears the column.
+- `mode: "prepend"` puts the new ids first, then ids already on the card.
+- `mode: "append"` is the same union import already does.
+- A mail URL is stored as its thread id. `404` if the TLY is missing. `400` on a bad body.
+- Response: `{ "ok": true, "dealNumber": "TLY-096", "gmailThreadIds": ["1a086a480b0fbc7e"] }`.
+- Does not change `source_deal_id`, blank-fill, or stage.
 
 ---
 
