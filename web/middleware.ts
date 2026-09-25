@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   "/api/import",
   "/api/next/import", // Dirk ingest — same dealbook as harvest `/api/import`
   "/api/next/merge",
+  "/api/next/gmail-threads", // token-only replace of gmail_thread_ids
   "/api/next/stage", // token or member session — checked in the route
   "/api/next/cim-url", // token-only stamp of https pack URL
   "/api/next/cim-financials", // token-only stamp of pack numbers

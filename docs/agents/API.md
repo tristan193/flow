@@ -49,6 +49,7 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 | POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
 | POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage**; + `deal_log` |
 | POST | `/api/next/merge` | Dirk / ops | collapse duplicate TLY rows + `deal_log` |
+| POST | `/api/next/gmail-threads` | Dirk | replace `gmail_thread_ids` on an existing TLY + `deal_log` |
 | POST | `/api/import` | harvest only | `deals_next` (skipIfNew on unmatched catalog older than 4 days) |
 | POST | `/api/crm/pursuit` | harvest | NDA / thread attach on classic+Next match |
 | GET/POST | `/api/cron/harvest` | Vercel Cron | dispatches GitHub Actions |
@@ -181,6 +182,29 @@ Prefer intake over posting a CIM as a new deal. Prefer intake over `/api/next/ci
 | `/api/next/cim-financials` | Numbers only; **does not** change stage |
 
 `GET /cim/TLY-XXX` is a **page** (session). It redirects to the stamped URL or says “CIM not in yet.” Agents do not need it.
+
+---
+
+## Gmail threads — `POST /api/next/gmail-threads`
+
+Overwrite the ordered `deals_next.gmail_thread_ids` array on a card that already exists. Import and merge still **append** thread ids; this route is how Dirk removes a wrong digest id or puts the correct one first. Daily move-mail links use `gmail_thread_ids[0]`.
+
+```json
+{ "dealNumber": "TLY-096", "mode": "replace", "gmailThreadIds": ["1a086a480b0fbc7e"] }
+```
+
+```bash
+curl -sS -X POST "$BASE/api/next/gmail-threads" \
+  -H "Authorization: Bearer $FLOW_IMPORT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dealNumber":"TLY-096","mode":"replace","gmailThreadIds":["1a086a480b0fbc7e"]}'
+```
+
+- `mode`: `replace` (required behavior), or `append` / `prepend`
+- `replace` sets the column to that array: deduped, order kept, `[]` clears
+- `404` if that TLY is missing; `400` on a bad body
+- Response: `{ "ok": true, "dealNumber": "TLY-096", "gmailThreadIds": ["1a086a480b0fbc7e"] }`
+- Does not change `source_deal_id` or import blank-fill
 
 ---
 

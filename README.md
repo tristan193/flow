@@ -48,6 +48,7 @@ Review (`/next`), CIM Review, Pipeline (`/next/pipeline`), and `/db` all read **
 | Dirk poll | `GET /api/next/dirk` |
 | Stage move | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
 | Merge dups | `POST /api/next/merge` (import token) |
+| Gmail threads | `POST /api/next/gmail-threads` `{ dealNumber, mode: "replace", gmailThreadIds }` (import token; replace overwrites) |
 | Identity | `TLY-001` + source ID + fingerprint (harvest `ext_id` is not a join key) |
 
 Next deal numbers mint `TLY-001` on first touch. Join order: deal number → source ID (Axial hex from Pursue/Pass HTML, BBS `q=`, V-AID, Transworld) → fingerprint (teaser + broker + round(EBITDA) + geo). Aliases and `gmail_thread_ids[]` accumulate. Never broker-only. Never one Gmail thread = one deal.
@@ -110,7 +111,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `FLOW_PASSCODE_TRISTAN` | Tristan Tully's passcode |
 | `FLOW_PASSCODE_PARTNER` | Jim Evans's passcode (same `/login` — own Review deck) |
 | `FLOW_MEMBER_PARTNER_LABEL` | Optional UI label (default **Jim Evans**; id stays `partner`) |
-| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `POST /api/next/cim-intake` / `GET /api/next/dirk` |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `POST /api/next/gmail-threads` / `POST /api/next/cim-intake` / `GET /api/next/dirk` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 
 ## Manual push (dev / one-off)

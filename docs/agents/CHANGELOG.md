@@ -27,6 +27,24 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-25 — `nm/web/gmail-threads` — DONE
+
+**Scope:** Dirk can replace `deals_next.gmail_thread_ids` on an existing TLY. Import and merge still append.  
+**Risk:** low (one token route; does not change join or blank-fill)  
+**Coords:** none
+
+### Changed
+- `POST /api/next/gmail-threads` — Bearer `FLOW_IMPORT_TOKEN` (same machine-token check as `/api/next/merge`). `mode: "replace"` overwrites the JSON array (deduped, order kept, `[]` clears). Optional `append` / `prepend`.
+- `web/middleware.ts` — path on `PUBLIC_PATHS` so the bearer call is not redirected to `/login`.
+
+### Do not touch
+- Import / merge union of `gmail_thread_ids`, `source_deal_id`, and blank-fill.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-09-23 — `nm/web/identity` — DONE
 
 **Scope:** Import join order before a new TLY: named deal number, whole URL, cleaned URL, platform deal id, then identical headline plus broker or Gmail thread or location.  
