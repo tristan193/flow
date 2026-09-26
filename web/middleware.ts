@@ -21,6 +21,7 @@ const PUBLIC_PATHS = [
   "/api/next/cim-financials", // token-only stamp of pack numbers
   "/api/next/cim-intake", // token-only filename + https pack URL + optional pack numbers → existing TLY
   "/api/next/dirk",
+  "/api/next/stats", // token-only read of live deal counts
   "/api/cron",
   "/api/crm/pursuit", // machine harvest token; /api/crm/attention stays session-gated
 ];

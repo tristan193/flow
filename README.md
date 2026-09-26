@@ -46,6 +46,7 @@ Review (`/next`), CIM Review, Pipeline (`/next/pipeline`), and `/db` all read **
 | Harvest | `POST /api/import` → `deals_next` (skipIfNew on old unmatched catalog) |
 | Dirk ingest | `POST /api/next/import` |
 | Dirk poll | `GET /api/next/dirk` |
+| Dirk counts | `GET /api/next/stats` |
 | Stage move | **Dirk token** `POST /api/next/stage` `{ dealNumber, stage }` (session still works) |
 | Merge dups | `POST /api/next/merge` (import token) |
 | Gmail threads | `POST /api/next/gmail-threads` (import token; `mode: replace` sets `gmail_thread_ids`) |
@@ -111,7 +112,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `FLOW_PASSCODE_TRISTAN` | Tristan Tully's passcode |
 | `FLOW_PASSCODE_PARTNER` | Jim Evans's passcode (same `/login` — own Review deck) |
 | `FLOW_MEMBER_PARTNER_LABEL` | Optional UI label (default **Jim Evans**; id stays `partner`) |
-| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `POST /api/next/gmail-threads` / `POST /api/next/cim-intake` / `GET /api/next/dirk` |
+| `FLOW_IMPORT_TOKEN` | Bearer for `POST /api/import` and `POST /api/next/import` / `POST /api/next/merge` / `POST /api/next/gmail-threads` / `POST /api/next/cim-intake` / `GET /api/next/dirk` / `GET /api/next/stats` |
 | `DATABASE_URL` | Neon / hosted Postgres |
 
 ## Manual push (dev / one-off)
