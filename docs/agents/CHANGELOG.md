@@ -27,6 +27,25 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-09-26 — `nm/web/stats` — DONE
+
+**Scope:** Token-only read of live deal counts for Dirk.  
+**Risk:** low (read-only `COUNT` on `deals_next`)  
+**Coords:** none
+
+### Changed
+- `web/app/api/next/stats/route.ts` — `GET /api/next/stats` returns `{ ok, totalTly, austinTx, byStage }`
+- `web/middleware.ts` — same public-path exemption as `/api/next/dirk`
+- Auth is `resolveMachineActor` on `Authorization: Bearer` (`FLOW_IMPORT_TOKEN` and the other machine tokens). No session.
+
+### Do not touch
+- Deal bodies, stage writes, and the Dirk poll payload.
+
+### Follow-ups
+- None.
+
+---
+
 ## 2026-09-23 — `nm/web/identity` — DONE
 
 **Scope:** Import join order before a new TLY: named deal number, whole URL, cleaned URL, platform deal id, then identical headline plus broker or Gmail thread or location.  

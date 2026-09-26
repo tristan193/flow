@@ -44,6 +44,7 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 |--------|------|-----|--------|
 | POST | `/api/next/import` | Dirk / Harve | `deals_next` + `deal_log` (mint or join TLY) |
 | GET | `/api/next/dirk` | Dirk | none (poll) |
+| GET | `/api/next/stats` | Dirk | none (counts) |
 | POST | `/api/next/stage` | Dirk | stage on an existing TLY + `deal_log` |
 | POST | `/api/next/cim-intake` | **Simon** | pack URL on existing TLY + `deal_log` |
 | POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
@@ -121,6 +122,27 @@ GET /api/next/dirk?section=followups
 Read-only. Use this to see what needs a stage move or a CIM stamp. Do not scrape the Review HTML.
 
 `followups` is the punch-list: live Shortlisted / NDA / CIM / Pursuing first (with `gmailLinks`), then open watches on those stages. Closed / walked / passed / dead watches are excluded and cannot starve the list.
+
+---
+
+## Deal counts — `GET /api/next/stats`
+
+```
+GET /api/next/stats
+```
+
+Read-only. Same bearer as the Dirk poll. Counts rows in `deals_next` (one row per TLY). Does not return deal bodies.
+
+```json
+{
+  "ok": true,
+  "totalTly": 0,
+  "austinTx": 0,
+  "byStage": { "inbox": 0 }
+}
+```
+
+`austinTx` is city or region `ILIKE '%austin%'`, and state null or `ILIKE '%tx%'` / `'%texas%'`. `byStage` maps each stored stage to its row count.
 
 ---
 
