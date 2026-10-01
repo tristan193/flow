@@ -25,6 +25,7 @@ const schema = z
     member: z.string().optional(),
     note: z.string().optional(),
     reason: z.string().optional(),
+    nextAction: z.string().max(240).optional(),
   })
   .refine((value) => value.dealId != null || Boolean(value.dealNumber?.trim()), {
     message: "dealId or dealNumber required",
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
     member: parsed.data.member,
     note: parsed.data.note,
     reason: parsed.data.reason,
+    nextAction: parsed.data.nextAction,
   });
 
   if (!result.ok) {

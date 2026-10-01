@@ -10,6 +10,7 @@ import {
   isNextReviewStage,
   mapNextStage,
   nextActionAfterCimPack,
+  stageMoveNextAction,
   nextFollowupKind,
   nextStageLabel,
   resolveNextAction,
@@ -90,6 +91,11 @@ test("a stamped CIM pack never shows Await CIM / data room", () => {
   assert.equal(nextActionAfterCimPack("cim", "Await CIM / data room"), "Review CIM against buy box");
   assert.equal(nextActionAfterCimPack("cim", "Sign the NDA"), "Review CIM against buy box");
   assert.equal(nextActionAfterCimPack("cim", "Follow up with broker"), "Follow up with broker");
+  assert.equal(stageMoveNextAction("nda", "Request NDA"), "Request NDA");
+  assert.equal(
+    stageMoveNextAction("nda", "Request NDA", "Waiting to hear from the broker"),
+    "Waiting to hear from the broker",
+  );
 });
 
 test("stamping a pack advances live deals to CIM; closed and pursuing stay put", () => {

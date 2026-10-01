@@ -16,6 +16,7 @@ export interface AuthorizedStageInput {
   member?: string | null;
   note?: string | null;
   reason?: string | null;
+  nextAction?: string | null;
 }
 
 export type AuthorizedStageResult =
@@ -100,6 +101,7 @@ export async function applyAuthorizedNextStage(
   await moveNextStage(ref.id, who.actor, stage, {
     channel: "api:next/stage",
     onBehalfOf: who.onBehalfOf,
+    ...(input.nextAction !== undefined ? { nextAction: input.nextAction } : {}),
   });
   const extra = noteBody(input);
   if (extra) {

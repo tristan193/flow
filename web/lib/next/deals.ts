@@ -15,10 +15,9 @@ import {
   coerceNextStage,
   combineNextCim,
   combineNextReview,
-  defaultNextAction,
   isMemberId,
   isNextCimReviewCard,
-  nextActionAfterCimPack,
+  stageMoveNextAction,
   nextFollowupKind,
   resolveNextAction,
   sanitizeNextAction,
@@ -524,7 +523,12 @@ export async function moveNextStage(
   dealId: number,
   member: string,
   stage: NextStageId,
-  options: { onlyFrom?: NextStageId; channel?: string; onBehalfOf?: string | null } = {},
+  options: {
+    onlyFrom?: NextStageId;
+    channel?: string;
+    onBehalfOf?: string | null;
+    nextAction?: string | null;
+  } = {},
 ): Promise<void> {
   const current = await queryOne<{
     stage: string;
@@ -539,6 +543,13 @@ export async function moveNextStage(
     await clearNextSuperLike(dealId, member);
   }
 
+  const hasRequested = Object.prototype.hasOwnProperty.call(options, "nextAction");
+  const nextAction = stageMoveNextAction(
+    stage,
+    current.next_action,
+    hasRequested ? options.nextAction : undefined,
+  );
+
   if (from === stage) {
     if (current.stage !== stage) {
       await query(`UPDATE deals_next SET stage = $1, updated_at = now() WHERE id = $2`, [
@@ -546,10 +557,23 @@ export async function moveNextStage(
         dealId,
       ]);
     }
+    if (hasRequested && nextAction !== current.next_action) {
+      await query(`UPDATE deals_next SET next_action = $1, updated_at = now() WHERE id = $2`, [
+        nextAction,
+        dealId,
+      ]);
+      await logDealChange({
+        dealId,
+        dealNumber: current.deal_number,
+        actor: member,
+        onBehalfOf: options.onBehalfOf ?? null,
+        kind: "update",
+        patch: { next_action: { old: current.next_action, new: nextAction } },
+        channel: options.channel ?? "app",
+      });
+    }
     return;
   }
-
-  const nextAction = nextActionAfterCimPack(stage, current.next_action) ?? defaultNextAction(stage);
 
   await query(
     `UPDATE deals_next
@@ -567,7 +591,12 @@ export async function moveNextStage(
     actor: member,
     onBehalfOf: options.onBehalfOf ?? null,
     kind: "stage",
-    patch: { stage: { old: from, new: stage } },
+    patch: {
+      stage: { old: from, new: stage },
+      ...(nextAction !== current.next_action
+        ? { next_action: { old: current.next_action, new: nextAction } }
+        : {}),
+    },
     channel: options.channel ?? "app",
   });
 

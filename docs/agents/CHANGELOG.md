@@ -64,6 +64,24 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-10-01 — `nm/web/review` — DONE
+
+**Scope:** A stage move can set the board's next line when Tristan reports the step.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `web/app/api/next/stage/route.ts` — optional `nextAction` on the stage body.
+- `web/lib/next/deals.ts` — that string replaces the stored next line, including when the stage is already the target.
+
+### Do not touch
+- CIM uploads. Appending a CIM still moves the stage on its own.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-09-26 — `nm/web/stats` — DONE
 
 **Scope:** Token-only read of live deal counts for Dirk.  

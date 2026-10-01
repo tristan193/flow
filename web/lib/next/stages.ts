@@ -159,6 +159,20 @@ export function resolveNextAction(
   return cleaned ?? defaultNextAction(stage);
 }
 
+/**
+ * Next line written by a stage move. An explicit report ("waiting on the
+ * broker") wins. Otherwise a CIM pack clears stale NDA copy, and every other
+ * move keeps the stored line.
+ */
+export function stageMoveNextAction(
+  stage: NextStageId,
+  stored: unknown,
+  requested?: string | null,
+): string | null {
+  if (requested !== undefined) return sanitizeNextAction(requested);
+  return nextActionAfterCimPack(stage, stored) ?? defaultNextAction(stage);
+}
+
 /** When moving to CIM because a pack arrived, drop stale pre-CIM defaults. */
 export function nextActionAfterCimPack(
   stage: NextStageId,
