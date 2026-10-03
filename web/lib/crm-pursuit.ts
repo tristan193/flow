@@ -158,7 +158,9 @@ async function listArmedDealIds(): Promise<Set<number>> {
   const rows = await query<{ id: number }>(
     `SELECT DISTINCT d.id
        FROM deals_next d,
-            jsonb_array_elements(d.watches) AS w(value)
+            jsonb_array_elements(
+              CASE WHEN jsonb_typeof(d.watches) = 'array' THEN d.watches ELSE '[]'::jsonb END
+            ) AS w(value)
       WHERE w.value->>'status' = 'open'
         AND d.stage = ANY($1::text[])
         AND d.duplicate_of IS NULL`,

@@ -482,7 +482,9 @@ async function applyIntakeRow(
             SET watches = watches || $2::jsonb, updated_at = now()
           WHERE id = $1
             AND NOT EXISTS (
-              SELECT 1 FROM jsonb_array_elements(watches) AS w(value)
+              SELECT 1 FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(watches) = 'array' THEN watches ELSE '[]'::jsonb END
+              ) AS w(value)
                WHERE w.value->>'kind' = $3 AND w.value->>'status' = 'open'
             )`,
         [
