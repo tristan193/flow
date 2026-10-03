@@ -58,6 +58,38 @@ test("Dirk API gmailLinks and Next hrefs force dirk@ on stored thread ids", asyn
   assert.equal(isDirkForcedGmailHref(gmailAllHref("18f0abc")), true);
 });
 
+test("listDirkFollowups tolerates non-array watches on deals_next rows", async () => {
+  await resetNext();
+  await query(
+    `INSERT INTO deals_next (deal_number, title, stage, watches, gmail_thread_ids)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb),
+            ($6, $7, $8, $9::jsonb, $10::jsonb)`,
+    [
+      "TLY-401",
+      "Empty object watches",
+      "shortlist",
+      JSON.stringify({}),
+      JSON.stringify(["obj-watch-thread"]),
+      "TLY-402",
+      "Scalar watches",
+      "nda",
+      JSON.stringify("not-an-array"),
+      JSON.stringify(["scalar-watch-thread"]),
+    ],
+  );
+
+  const followups = await listDirkFollowups();
+  const objectWatches = followups.find((row) => row.dealNumber === "TLY-401");
+  assert.ok(objectWatches, "staged shortlist row with object watches must appear");
+  assert.equal(objectWatches.gmailLinks.length, 1);
+  assert.match(objectWatches.gmailLinks[0], /#all\/obj-watch-thread$/);
+
+  const scalarWatches = followups.find((row) => row.dealNumber === "TLY-402");
+  assert.ok(scalarWatches, "staged nda row with scalar watches must appear");
+  assert.equal(scalarWatches.gmailLinks.length, 1);
+  assert.match(scalarWatches.gmailLinks[0], /#all\/scalar-watch-thread$/);
+});
+
 test("listDirkFollowups keeps live SL/NDA/CIM/Pursuing when closed watches overflow LIMIT 80", async () => {
   await resetNext();
 

@@ -191,7 +191,9 @@ export async function listDirkFollowups(limit = 80): Promise<DirkFollowup[]> {
             d.gmail_thread_ids, w.value->>'kind' AS kind, w.value->>'due_at' AS due_at,
             w.value->>'armed_at' AS armed_at
        FROM deals_next d,
-            jsonb_array_elements(d.watches) AS w(value)
+            jsonb_array_elements(
+              CASE WHEN jsonb_typeof(d.watches) = 'array' THEN d.watches ELSE '[]'::jsonb END
+            ) AS w(value)
       WHERE w.value->>'status' = 'open'
         AND d.stage IN ${LIVE_PIPELINE_STAGES_SQL}
         AND d.stage NOT IN ${CLOSED_LIKE_STAGES_SQL}
