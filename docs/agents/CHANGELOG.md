@@ -4,7 +4,26 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
-## Entry template
+## 2026-10-03 — `nm/web/api` — DONE
+
+**Scope:** Production 500 on `GET /api/next/dirk` (`section=followups` and full feed) and CRM pursuit armed-deal lookup when `deals_next.watches` is not a JSON array.  
+**Risk:** low (read-path SQL guard only)  
+**Coords:** none
+
+### Changed
+- `web/lib/next/dirk.ts` — guard `jsonb_array_elements(watches)` with `jsonb_typeof` = `array`
+- `web/lib/crm-pursuit.ts` — same guard in `listArmedDealIds`
+- `web/lib/next/cim-intake.ts` — same guard on watch dedupe subquery
+- `web/lib/next/dirk-gmail.test.ts` — regression for object/scalar `watches`
+
+### Do not touch
+- API response shapes (unchanged)
+
+### Follow-ups
+- Optional data cleanup: normalize bad `watches` scalars in Neon to `[]`
+
+---
+
 
 ```markdown
 ## YYYY-MM-DD — `nm/<domain>/<role>` — STATUS
