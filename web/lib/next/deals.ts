@@ -285,6 +285,8 @@ export async function getNextDealByRouteParam(raw: string): Promise<NextDeal | n
 
 interface WriteMeta {
   channel?: string;
+  /** Machine credential. When set, deal_log.actor is this handle, not the member. */
+  actor?: string | null;
   onBehalfOf?: string | null;
   reason?: string | null;
   sourceRef?: string | null;
@@ -447,18 +449,19 @@ export async function setNextCimVerdict(
   await applyNextCimOutcome(dealId, member);
 }
 
+/** Null one member's CIM vote. Returns false when there was nothing to clear. */
 export async function clearNextCimVerdict(
   dealId: number,
   member: MemberId,
   meta: WriteMeta = {},
-): Promise<void> {
-  if (!isMemberId(member)) return;
+): Promise<boolean> {
+  if (!isMemberId(member)) return false;
   const prefix = MEMBER_PREFIX[member];
   const before = await queryOne<Record<string, unknown>>(
     `SELECT deal_number, ${prefix}_cim_verdict AS old_action FROM deals_next WHERE id = $1`,
     [dealId],
   );
-  if (!before || before.old_action == null) return;
+  if (!before || before.old_action == null) return false;
   await query(
     `UPDATE deals_next
         SET ${prefix}_cim_verdict = NULL,
@@ -468,14 +471,18 @@ export async function clearNextCimVerdict(
       WHERE id = $1`,
     [dealId],
   );
+  const machineActor = meta.actor?.trim() || "";
   await logDealChange({
     dealId,
     dealNumber: String(before.deal_number ?? ""),
-    actor: member,
+    actor: machineActor || member,
+    onBehalfOf: meta.onBehalfOf ?? (machineActor ? member : null),
     kind: "cim_verdict",
     patch: { [`${prefix}_cim_verdict`]: { old: before.old_action, new: null } },
+    reason: meta.reason ?? null,
     channel: meta.channel ?? "ui:cim-review",
   });
+  return true;
 }
 
 /** CIM stays put until both partners agree (Pass→Closed, Pursue→Pursuing). Notes never call this. */

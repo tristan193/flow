@@ -17,6 +17,7 @@ const PUBLIC_PATHS = [
   "/api/next/merge",
   "/api/next/gmail-threads", // token-only replace / prepend / append of gmail_thread_ids
   "/api/next/stage", // token or member session — checked in the route
+  "/api/next/cim-verdicts", // token-only clear of both CIM votes; does not write stage
   "/api/next/cim-url", // token-only stamp of https pack URL
   "/api/next/cim-financials", // token-only stamp of pack numbers
   "/api/next/cim-intake", // token-only filename + https pack URL + optional pack numbers → existing TLY
