@@ -46,6 +46,7 @@ Python helpers (cwd `pipeline/`): `cim_intake.py`, `export_snapshot.py --post`, 
 | GET | `/api/next/dirk` | Dirk | none (poll) |
 | GET | `/api/next/stats` | Dirk | none (counts) |
 | POST | `/api/next/stage` | Dirk | stage on an existing TLY + `deal_log` |
+| POST | `/api/next/cim-verdicts` | Dirk | clear both CIM votes; **no stage** |
 | POST | `/api/next/cim-intake` | **Simon** | pack URL on existing TLY + `deal_log` |
 | POST | `/api/next/cim-url` | Dirk | pack URL only + stage CIM + `deal_log` |
 | POST | `/api/next/cim-financials` | Dirk / Simon | pack numbers only; **no stage**; + `deal_log` |
@@ -156,6 +157,46 @@ Canonical stages: `inbox` | `shortlist` | `nda` | `cim` | `pursuing` | `closed`.
 Aliases: `dead`/`pass` → `closed`; `shortlisted` → `shortlist`.
 
 Token **or** a member session. Dirk uses the token. Optional `note` / `reason`.
+
+Moving a card **to CIM** re-applies Dual Pursue. If `tristan_cim_verdict` and `jim_cim_verdict` are both still Pursue (`short`), the card returns to Pursuing. Clear those votes first (`POST /api/next/cim-verdicts`), then stage.
+
+---
+
+## Clear CIM votes — `POST /api/next/cim-verdicts`
+
+```json
+{ "dealNumber": "TLY-168", "mode": "clear" }
+```
+
+```bash
+curl -sS -X POST "$BASE/api/next/cim-verdicts" \
+  -H "Authorization: Bearer $FLOW_IMPORT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dealNumber":"TLY-168","mode":"clear"}'
+```
+
+Token only (same machine actors as stage; `FLOW_IMPORT_TOKEN` is Dirk). A browser session is not enough. `dealId` works in place of `dealNumber`. `mode` must be `"clear"`.
+
+Nulls `tristan_cim_verdict`, `tristan_cim_verdict_note`, `tristan_cim_verdict_at`, `jim_cim_verdict`, `jim_cim_verdict_note`, and `jim_cim_verdict_at`. Does not touch Review votes (`tristan_verdict` / `jim_verdict`) and does not change stage. Each vote that was set writes a `deal_log` row (`kind: cim_verdict`, actor = the token, `on_behalf_of` = `tristan` or `partner`, channel `api:next/cim-verdicts`). A vote that is already empty is left alone. A second clear is `{ "ok": true, "cleared": [] }`.
+
+```json
+{ "ok": true, "dealId": 1, "dealNumber": "TLY-168", "stage": "pursuing", "cleared": ["tristan", "jim"] }
+```
+
+`stage` is the stage after the call (unchanged). `cleared` lists whose CIM vote was removed (`jim` is Jim Evans).
+
+`401` without a machine token. `400` on a bad body or `mode`. `404` if the TLY is missing.
+
+To leave TLY-168 on CIM after a Dual Pursue bounce, clear, then stage:
+
+```bash
+curl -sS -X POST "$BASE/api/next/stage" \
+  -H "Authorization: Bearer $FLOW_IMPORT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dealNumber":"TLY-168","stage":"cim"}'
+```
+
+Casting or clearing one member's own CIM vote stays session-only: `POST /api/next/cim/verdict`.
 
 ---
 
@@ -280,7 +321,7 @@ Nothing is queued on the server. If the POST never happens, Review does not see 
 These exist for the live app. They require Tristan/Jim’s cookie. Agents impersonating a member is forbidden.
 
 - `POST /api/next/verdict` — New swipe
-- `POST /api/next/cim/verdict` — CIM Pass / Hold / Pursue
+- `POST /api/next/cim/verdict` — CIM Pass / Hold / Pursue (one member). Both-vote clear is `POST /api/next/cim-verdicts`
 - `POST /api/next/super-like`
 - `POST /api/next/notes`
 - `POST /api/next/cim` — browser attach (URL; leftover file upload still exists on prod UI)
@@ -293,7 +334,7 @@ These exist for the live app. They require Tristan/Jim’s cookie. Agents impers
 
 ## Hard rules
 
-1. **Agents never vote.** Votes are columns on `deals_next` (`tristan_verdict` / `jim_verdict` / CIM pair). Optional ingest `verdicts` park as `needs_review` on `deal_log` for a human to confirm on `/db`. Do not POST `/api/next/verdict`.
+1. **Agents never vote.** Votes are columns on `deals_next` (`tristan_verdict` / `jim_verdict` / CIM pair). Optional ingest `verdicts` park as `needs_review` on `deal_log` for a human to confirm on `/db`. Do not POST `/api/next/verdict` or `/api/next/cim/verdict`. Clearing both CIM votes (not casting them) is `POST /api/next/cim-verdicts` with `{ "mode": "clear" }`.
 2. **Do not insert deals from CIM intake.** Stamp the existing TLY.
 3. **Do not call Google from Vercel.** Simon creates the Drive/Canva file, then POSTs the URL.
 4. **Do not flush** unless Tristan said so. Flush is `FLOW_IMPORT_TOKEN` only — Dirk/Simon/pipeline tokens cannot flush.
