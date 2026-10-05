@@ -4,6 +4,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-05 — `nm/web/board` — DONE
+
+**Scope:** Token read of the pipeline board in board order.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `web/app/api/next/board/route.ts` — `GET /api/next/board` returns the same columns as `/next/pipeline`: pinned, then earnings, CIM name as the headline
+- `web/middleware.ts` — public path so the bearer is not redirected to login
+
+### Do not touch
+- `GET /api/next/dirk?section=followups` stays the punch list (newest stage change, teaser title). It is not the board.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-03 — `nm/web/api` — DONE
 
 **Scope:** Production 500 on `GET /api/next/dirk` (`section=followups` and full feed) and CRM pursuit armed-deal lookup when `deals_next.watches` is not a JSON array.  
