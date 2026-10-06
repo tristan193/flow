@@ -109,7 +109,10 @@ export type NextReviewOutcome = "inbox" | "shortlist" | "closed";
  * - Either Like (`short`) or Super Like → Shortlisted immediately
  * - Both Discuss (`?`) → Shortlisted
  * - Both finished, otherwise (Pass/Pass, Pass/?) → Closed
- * - Only one Pass or ? so far → stay inbox so the other deck still has it
+ * - Only one Pass or ? so far → stay inbound
+ *
+ * Stage is not New membership. A later Pass or ? on an already
+ * Shortlisted card does not move the stage back. See nextInboxDeck.
  */
 export function combineNextReview(input: {
   tristan?: VerdictAction | null;
@@ -195,18 +198,39 @@ export function isNextCimReviewCard(deal: {
   return isCimPackUrl(deal.cim_url);
 }
 
-/** Inbound cards this member has not voted on yet. Partner votes do not hide them. */
+/**
+ * This member still owes a New verdict.
+ * New is a personal queue: inbound, or Shortlisted by the other person,
+ * until this member votes or Super Likes. A partner vote does not hide it.
+ * NDA, CIM, Pursuing, Closed, and remints never belong.
+ */
+export function memberOwesNewVerdict(
+  deal: {
+    stage: string;
+    verdicts: Partial<Record<MemberId, { action: VerdictAction } | null>>;
+    super_liked_by?: string | null;
+    duplicate_of?: string | null;
+    ingest_disposition?: string | null;
+  },
+  member: MemberId,
+): boolean {
+  if (!isNextReviewStage(deal.stage) || isNextRemintCard(deal)) return false;
+  if (deal.verdicts[member]) return false;
+  if (deal.super_liked_by === member) return false;
+  return true;
+}
+
+/** Cards still in this member's New pile. */
 export function nextInboxDeck<
   T extends {
     stage: string;
-    verdicts: Partial<Record<MemberId, { action: VerdictAction }>>;
+    verdicts: Partial<Record<MemberId, { action: VerdictAction } | null>>;
+    super_liked_by?: string | null;
     duplicate_of?: string | null;
     ingest_disposition?: string | null;
   },
 >(deals: T[], member: MemberId): T[] {
-  return deals.filter(
-    (deal) => deal.stage === "inbox" && !deal.verdicts[member] && !isNextRemintCard(deal),
-  );
+  return deals.filter((deal) => memberOwesNewVerdict(deal, member));
 }
 
 /**

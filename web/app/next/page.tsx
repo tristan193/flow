@@ -47,7 +47,9 @@ export default async function NextReviewPage() {
             {" · "}
             CIM · {myCim.length} to review
             {cimDeals.length !== myCim.length ? ` · ${cimDeals.length} at CIM` : ""}
-            {" · "}a Pass on New stays in {memberLabel(otherMember(member))}&apos;s deck
+            {" · "}your vote leaves your deck and stays in{" "}
+            {memberLabel(otherMember(member))}&apos;s until{" "}
+            {memberLabel(otherMember(member))} votes
           </p>
         </div>
 
@@ -59,7 +61,8 @@ export default async function NextReviewPage() {
         />
 
         <p className="text-ink-faint mt-6 text-[11.5px] leading-relaxed">
-          New is inbound teasers — swipe only; Gmail opens the harvest thread.
+          New is your unvoted pile. One shortlist moves the deal to Shortlisted,
+          and it stays here until you vote. Gmail opens the harvest thread.
           CIM is every deal at stage CIM (same <code>deals_next</code> row the
           intake stamps). View CIM lives on that tab, not New. Pipeline only
           shows progress. Super Like stays on the far right of New.

@@ -93,7 +93,9 @@ test("Super Like pins and shortlists immediately without writing a verdict", asy
   const at = await setNextSuperLike(before.id, true, "partner");
   assert.ok(at);
 
-  assert.equal((await listNextInboxDeals()).length, 0);
+  const pile = await listNextInboxDeals();
+  assert.equal(pile.length, 1);
+  assert.equal(pile[0].title, "Pinned HVAC");
   const board = await listNextBoardDeals();
   assert.equal(board[0].title, "Pinned HVAC");
   assert.equal(board[0].stage, "shortlist");
@@ -127,8 +129,10 @@ test("multiple Super Likes: newest sits first on Shortlisted", async () => {
   await setNextSuperLike(newer.id, true);
 
   const remaining = await listNextInboxDeals();
-  assert.equal(remaining.length, 1);
-  assert.equal(remaining[0].title, "Unpinned better fit");
+  assert.equal(remaining.length, 3);
+  const tristanStillOwes = remaining.filter((row) => !row.super_liked_by);
+  assert.equal(tristanStillOwes.length, 1);
+  assert.equal(tristanStillOwes[0].title, "Unpinned better fit");
 
   const shortlisted = (await listNextBoardDeals()).filter((row) => row.stage === "shortlist");
   assert.equal(shortlisted[0].title, "Newer pin");

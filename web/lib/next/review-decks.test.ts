@@ -58,26 +58,52 @@ test("Tristan Pass leaves the card in Jim's inbound deck", async () => {
   );
 });
 
-test("either Like shortlists immediately and leaves both decks", async () => {
+test("either Like shortlists immediately and stays in the other New pile", async () => {
   await resetNext();
   const deal = await seedInbox("Like wins");
 
   await setNextVerdict(deal.id, "partner", "short", null);
 
-  assert.equal((await listNextInboxDeals()).length, 0);
+  const pile = await listNextInboxDeals();
+  assert.equal(pile.length, 1);
+  assert.equal(pile[0].stage, "shortlist");
+  assert.deepEqual(
+    nextInboxDeck(pile, "partner").map((row) => row.id),
+    [],
+  );
+  assert.deepEqual(
+    nextInboxDeck(pile, "tristan").map((row) => row.id),
+    [deal.id],
+  );
   const board = await listNextBoardDeals();
   assert.equal(board[0].id, deal.id);
   assert.equal(board[0].stage, "shortlist");
+
+  await setNextVerdict(deal.id, "tristan", "pass", null);
+  assert.equal((await listNextInboxDeals()).length, 0);
+  const after = await listNextBoardDeals();
+  assert.equal(after[0].stage, "shortlist");
+  assert.equal(after[0].verdicts.tristan?.action, "pass");
 });
 
-test("either Super Like shortlists immediately and keeps the pin", async () => {
+test("either Super Like shortlists immediately and stays in the other New pile", async () => {
   await resetNext();
   const deal = await seedInbox("Super Like wins");
 
   const at = await setNextSuperLike(deal.id, true, "tristan");
   assert.ok(at);
 
-  assert.equal((await listNextInboxDeals()).length, 0);
+  const pile = await listNextInboxDeals();
+  assert.equal(pile.length, 1);
+  assert.equal(pile[0].stage, "shortlist");
+  assert.deepEqual(
+    nextInboxDeck(pile, "tristan").map((row) => row.id),
+    [],
+  );
+  assert.deepEqual(
+    nextInboxDeck(pile, "partner").map((row) => row.id),
+    [deal.id],
+  );
   const board = await listNextBoardDeals();
   assert.equal(board[0].id, deal.id);
   assert.equal(board[0].stage, "shortlist");

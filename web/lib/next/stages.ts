@@ -72,11 +72,14 @@ export function coerceNextStage(value: unknown): NextStageId {
 }
 
 /**
- * Next Review swipe is inbound only. Shortlisted / NDA / CIM / Pursuing /
- * Closed live on the board — a missing verdict must not pull them back.
+ * Stages that can still sit in someone's New pile.
+ * Inbound belongs. Shortlisted belongs too: one Like already moved the
+ * board, and the other person still owes a look.
+ * NDA, CIM, Pursuing, and Closed stay on the board.
  */
 export function isNextReviewStage(value: unknown): boolean {
-  return coerceNextStage(value) === "inbox";
+  const stage = coerceNextStage(value);
+  return stage === "inbox" || stage === "shortlist";
 }
 
 export function isNextStageId(value: unknown): value is NextStageId {

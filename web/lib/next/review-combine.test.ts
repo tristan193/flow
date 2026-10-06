@@ -186,6 +186,23 @@ test("nextInboxDeck is per-member — partner Pass does not hide Tristan's card"
       stage: "shortlist",
       verdicts: { tristan: { action: "short" as const } },
     },
+    {
+      id: 4,
+      stage: "shortlist",
+      verdicts: {
+        tristan: { action: "short" as const },
+        partner: { action: "pass" as const },
+      },
+    },
+    {
+      id: 5,
+      stage: "shortlist",
+      verdicts: {},
+      super_liked_by: "tristan",
+    },
+    { id: 6, stage: "nda", verdicts: {} },
+    { id: 7, stage: "cim", verdicts: {} },
+    { id: 8, stage: "closed", verdicts: {} },
   ];
   assert.deepEqual(
     nextInboxDeck(deals, "tristan").map((row) => row.id),
@@ -193,7 +210,7 @@ test("nextInboxDeck is per-member — partner Pass does not hide Tristan's card"
   );
   assert.deepEqual(
     nextInboxDeck(deals, "partner").map((row) => row.id),
-    [2],
+    [2, 3, 5],
   );
 });
 

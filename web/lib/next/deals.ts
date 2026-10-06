@@ -17,13 +17,14 @@ import {
   combineNextReview,
   isMemberId,
   isNextCimReviewCard,
+  memberOwesNewVerdict,
   stageMoveNextAction,
   nextFollowupKind,
   resolveNextAction,
   sanitizeNextAction,
   shouldAdvanceToCimOnPack,
 } from "./model";
-import { formatDuplicateOf, isNextRemintCard, parseIngestDisposition } from "./remint";
+import { formatDuplicateOf, parseIngestDisposition } from "./remint";
 
 /**
  * Storage is the two-table model: deals_next holds current state (votes and
@@ -207,10 +208,16 @@ export async function listNextDeals(): Promise<NextDeal[]> {
   return rows.map(buildNextDeal);
 }
 
-/** Inbound queue for `/next` Review → New. Board stages and remints never belong here. */
+/**
+ * Pool for `/next` Review → New. A row belongs while either member still
+ * owes a look: inbound, or Shortlisted and not yet voted by someone.
+ * NDA, CIM, Pursuing, Closed, and remints stay out.
+ */
 export async function listNextInboxDeals(): Promise<NextDeal[]> {
   const deals = await listNextDeals();
-  return deals.filter((deal) => deal.stage === "inbox" && !isNextRemintCard(deal));
+  return deals.filter(
+    (deal) => memberOwesNewVerdict(deal, "tristan") || memberOwesNewVerdict(deal, "partner"),
+  );
 }
 
 /** CIM Review swipe. Same deals_next rows as intake — every stage CIM card. */
@@ -401,7 +408,10 @@ export async function setNextSuperLike(
   return at;
 }
 
-/** Apply Tristan/Jim combine rules. Only moves inbound cards forward. */
+/**
+ * Apply Tristan/Jim combine rules. Only an inbound card moves.
+ * A Pass or ? after the other person already shortlisted stays Shortlisted.
+ */
 export async function applyNextReviewOutcome(dealId: number, actor: string): Promise<void> {
   const deal = await getNextDeal(dealId);
   if (!deal || deal.stage !== "inbox") return;

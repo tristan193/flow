@@ -64,6 +64,44 @@ STATUS: `IN PROGRESS` | `DONE` | `BLOCKED` | `HANDED OFF`
 
 ---
 
+## 2026-10-06 — `nm/web/review` — DONE
+
+**Scope:** New Review is each member's unvoted pile. One shortlist still advances the board.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `web/lib/next/model.ts` — `memberOwesNewVerdict` / `nextInboxDeck` keep a Shortlisted card in the other member's New pile until that member votes or Super Likes. NDA, CIM, Pursuing, Closed, and remints stay out.
+- `web/lib/next/deals.ts` — `listNextInboxDeals` uses that pile. `applyNextReviewOutcome` still moves only inbound cards, so a later Pass or `?` does not pull a shortlist back.
+- `web/components/next/review-client.tsx`, `web/app/next/page.tsx` — the New tab follows the same rule. CIM Review is unchanged.
+
+### Do not touch
+- CIM deck membership and `combineNextCim`.
+
+### Follow-ups
+- Existing Shortlisted rows the other person never voted on reappear in that person's New pile.
+
+---
+
+## 2026-10-05 — `nm/web/board` — DONE
+
+**Scope:** Local read/write of live deal stages without the browser or `DATABASE_URL`.
+**Risk:** high (production secret)
+**Coords:** none
+
+### Changed
+- Production `DIRK_TOKEN` (Secret) plus the same value in gitignored `web/.env.local`. Existing `FLOW_IMPORT_TOKEN` was not replaced.
+- Redeployed the current production deployment so the new token is live. No local commit was shipped.
+- `web/scripts/board-status.mjs` lists the live pipeline and posts stage changes. Verified list: 12 Pursuing, 7 NDA, 16 Shortlisted, 2 CIM.
+
+### Do not touch
+- Do not print `DIRK_TOKEN`. Do not send the local dummy `FLOW_IMPORT_TOKEN` to production.
+
+### Follow-ups
+- Feed order is last stage change, not earnings. City is not on this endpoint.
+
+---
+
 ## 2026-10-01 — `nm/web/review` — DONE
 
 **Scope:** A stage move can set the board's next line when Tristan reports the step.

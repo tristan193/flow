@@ -11,8 +11,7 @@ import {
   type MemberId,
   type NextDeal,
   type NextNoteRow,
-  isNextRemintCard,
-  isNextReviewStage,
+  memberOwesNewVerdict,
   nextCimDeck,
   type VerdictAction,
 } from "@/lib/next/model";
@@ -84,18 +83,6 @@ export function NextReviewClient({
         }))
         .filter((deal) => deal.fit.surfaced),
     [deals, pins],
-  );
-
-  const verdictOf = useCallback(
-    (deal: NextDeal): Override | null => {
-      const override = overrides[deal.id];
-      if (override !== undefined) return override.action === null ? null : override;
-      const stored = deal.verdicts[member];
-      return stored
-        ? { action: stored.action, reason: stored.reason, note: stored.note }
-        : null;
-    },
-    [overrides, member],
   );
 
   const send = useCallback(
@@ -207,32 +194,38 @@ export function NextReviewClient({
     [notePrompt, scored, apply],
   );
 
-  // This member's inbound deck only. A partner Pass/Discuss must not drop the
-  // card here — the server keeps those inbox until this member votes too.
+  const owesLocally = useCallback(
+    (deal: NextDeal) => {
+      const override = overrides[deal.id];
+      const voted = override ? override.action != null : Boolean(deal.verdicts[member]);
+      const pinnedByMe = Object.prototype.hasOwnProperty.call(pins, deal.id)
+        ? Boolean(pins[deal.id])
+        : deal.super_liked_by === member;
+      return memberOwesNewVerdict(
+        {
+          ...deal,
+          verdicts: voted ? { [member]: { action: "pass" } } : {},
+          super_liked_by: pinnedByMe ? member : null,
+        },
+        member,
+      );
+    },
+    [overrides, pins, member],
+  );
+
+  // This member's unvoted pile. A partner Pass, ?, or shortlist stays here
+  // until this member votes. Their own vote or Super Like removes it.
   const queue = useMemo(
     () =>
       scored
-        .filter(
-          (deal) =>
-            isNextReviewStage(deal.stage) &&
-            !isNextRemintCard(deal) &&
-            !verdictOf(deal) &&
-            !skipped.includes(deal.id),
-        )
+        .filter((deal) => owesLocally(deal) && !skipped.includes(deal.id))
         .sort(byPinnedThenFit),
-    [scored, verdictOf, skipped],
+    [scored, owesLocally, skipped],
   );
 
-  // Personal inbound pile (server votes only). Tab + "N of M" use this, not
-  // the shared inbox — a partner Pass must not inflate the other member's count.
+  // Server pile, before this session's swipes. The meter uses the gap.
   const myPile = useMemo(
-    () =>
-      scored.filter(
-        (deal) =>
-          isNextReviewStage(deal.stage) &&
-          !isNextRemintCard(deal) &&
-          !deal.verdicts[member],
-      ).length,
+    () => scored.filter((deal) => memberOwesNewVerdict(deal, member)).length,
     [scored, member],
   );
   const myCimPile = useMemo(

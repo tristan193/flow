@@ -115,10 +115,10 @@ test("follow-ups arm on NDA, CIM, and Pursuing only", () => {
   assert.equal(nextFollowupKind("closed"), null);
 });
 
-test("Review swipe is inbound only — board stages stay off the deck", () => {
+test("New includes inbound and Shortlisted; later board stages stay off", () => {
   assert.equal(isNextReviewStage("inbox"), true);
   assert.equal(isNextReviewStage("inbound"), true);
-  assert.equal(isNextReviewStage("shortlist"), false);
+  assert.equal(isNextReviewStage("shortlist"), true);
   assert.equal(isNextReviewStage("nda"), false);
   assert.equal(isNextReviewStage("cim"), false);
   assert.equal(isNextReviewStage("pursuing"), false);
