@@ -6,6 +6,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 ## 2026-10-08 — `nm/bbs/enrich` — DONE
 
+**Scope:** BizBuySell lookup runs on GitHub Actions, not Tristan's PC.
+**Risk:** low (one Apify run per dispatch)
+**Coords:** none
+
+### Changed
+- `.github/workflows/bbs-lookup.yml` — workflow **BizBuySell lookup** takes `ids` and prints JSON. Uses the existing `APIFY_TOKEN` secret.
+- `docs/agents/MAILMAN.md` — Mailman dispatches that workflow. He does not get the token.
+
+### Do not touch
+- Do not fold this into `mailman.py`. Do not give Mailman `APIFY_TOKEN`.
+
+### Follow-ups
+- none
+
+---
+
+## 2026-10-08 — `nm/bbs/enrich` — DONE
+
 **Scope:** Mailman can look up BizBuySell page numbers without changing how he labels mail.
 **Risk:** low (one Apify run per call he makes)
 **Coords:** none

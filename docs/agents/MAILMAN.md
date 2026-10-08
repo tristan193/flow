@@ -176,13 +176,15 @@ These seven were `unknown` because repertoire missed. Labels below are the opera
 
 ## BizBuySell page lookup (optional)
 
-Labeling does not change. When a BizBuySell card has `q=` and is missing earnings or a description, run this from `pipeline/` and copy the JSON onto that deal. Do not call Apify yourself. Do not open the listing page.
+Labeling does not change. This does not run on Tristan's PC. `bbs_lookup.py` is on `tristan193/flow` `main`. It needs `APIFY_TOKEN`. That secret is already on the GitHub repo. You do not receive the token, and you do not store it on your computer.
+
+When a BizBuySell card has `q=` and is missing earnings or a description, dispatch **BizBuySell lookup** and copy the JSON from that run's log onto the deal. Do not call Apify yourself. Do not open the listing page.
 
 ```
-python bbs_lookup.py 2483522 2562233
+gh workflow run "BizBuySell lookup" --ref main -f ids="2483522 2562233"
 ```
 
-Also accepts `q=2483522` or the listing URL. Stdout is JSON. Copy `asking`, `sde`, `ebitda`, `revenue`, `city`, `state`, and `blurb`. Leave a null field alone. Progress is on stderr.
+`q=2483522` or a listing URL is fine inside `ids`. Copy `asking`, `sde`, `ebitda`, `revenue`, `city`, `state`, and `blurb`. Leave a null field alone.
 
 ## House rules
 

@@ -1,0 +1,41 @@
+# BizBuySell page numbers for Mailman. Cloud runner, not Tristan's PC.
+# Uses the existing APIFY_TOKEN secret. Do not print that secret.
+# Stdout of the lookup step is the JSON to copy onto the deal.
+
+name: BizBuySell lookup
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: "Space-separated BizBuySell q ids or listing URLs"
+        required: true
+        type: string
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Lookup
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          BBS_IDS: ${{ inputs.ids }}
+        run: |
+          set -euo pipefail
+          python -c "import os, shlex, bbs_lookup; raise SystemExit(bbs_lookup.main(shlex.split(os.environ['BBS_IDS'])))" | tee "$GITHUB_STEP_SUMMARY"
