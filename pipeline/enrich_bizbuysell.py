@@ -198,6 +198,18 @@ def slugify_title(title: str) -> str:
     return (s[:90] or "listing")
 
 
+def normalize_state(raw: Any) -> Optional[str]:
+    """Keep a US state. A category name such as 'Banking and Loans' is not a state."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if len(text) == 2 and text.isalpha():
+        return text.upper()
+    return _STATE_ABBR.get(text.lower())
+
+
 def canonical_bbs_url(url: str) -> str:
     """Strip email trackers; keep Profile/?q=<id> for storage/display."""
     lid = listing_id_from_url(url)
@@ -375,12 +387,7 @@ def enrichment_from_apify_item(
         final_url=url or fallback_url,
         ok=True,
     )
-    if e.state and len(str(e.state)) > 2:
-        e.state = _STATE_ABBR.get(str(e.state).lower(), None) or (
-            e.state[:2].upper() if len(str(e.state)) == 2 else e.state
-        )
-    elif e.state:
-        e.state = str(e.state).upper()
+    e.state = normalize_state(e.state)
     # A result with no money fields still counts as ok — page may be Not Disclosed.
     return e
 

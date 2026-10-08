@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       ids:
-        description: "Space-separated BizBuySell q ids or listing URLs"
+        description: "One listing per line: q id, a pipe, then the headline. Bare ids come back empty."
         required: true
         type: string
 
@@ -38,4 +38,4 @@ jobs:
           BBS_IDS: ${{ inputs.ids }}
         run: |
           set -euo pipefail
-          python -c "import os, shlex, bbs_lookup; raise SystemExit(bbs_lookup.main(shlex.split(os.environ['BBS_IDS'])))" | tee "$GITHUB_STEP_SUMMARY"
+          python -c "import os, bbs_lookup; raise SystemExit(bbs_lookup.main(bbs_lookup.split_queries(os.environ['BBS_IDS'])))" | tee "$GITHUB_STEP_SUMMARY"

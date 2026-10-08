@@ -4,9 +4,11 @@ Look up BizBuySell listing pages and print the fields to copy onto a deal.
 Does not label mail, does not write the database, and does not POST.
 Mailman (or anyone) passes q= ids or listing URLs. Stdout is one JSON object.
 
-  python bbs_lookup.py 2483522 2562233
-  python bbs_lookup.py q=2483522
-  python bbs_lookup.py "https://www.bizbuysell.com/listings/Profile/?q=2483522"
+  python bbs_lookup.py "2483522 | Successful, Growing Landscape Company in North Texas!"
+  python bbs_lookup.py "https://www.bizbuysell.com/business-opportunity/thriving-water-and-fire-damage-restoration-company/2560996/"
+
+A bare q= id is not enough. The actor URL needs the headline as the slug.
+Without it the path is /business-opportunity/listing/{id}/ and the dataset comes back empty.
 
 Copy asking, sde, ebitda, revenue, city, state, and blurb onto the deal.
 Leave a field alone when it is null. Progress lines go to stderr.
@@ -20,26 +22,48 @@ import sys
 import enrich_bizbuysell as bbs
 
 
-def listing_query(raw: str) -> tuple[str, str]:
-    """Return (q, profile URL) from a q id, q= id, or BizBuySell URL."""
+def split_queries(raw: str) -> list[str]:
+    """One listing per line, or several on one line separated by ' ;; '."""
+    text = (raw or "").replace(" ;; ", "\n")
+    return [part.strip() for part in text.splitlines() if part.strip()]
+
+
+def listing_query(raw: str) -> tuple[str, str, str]:
+    """Return (q, url, title). Title is required unless the URL already has a slug."""
     text = (raw or "").strip()
     if not text:
         raise ValueError("empty listing")
+    title = ""
+    if "|" in text and not text.lower().startswith("http"):
+        left, right = text.split("|", 1)
+        text = left.strip()
+        title = right.strip()
     match = re.search(r"(\d{6,})", text)
     if not match:
         raise ValueError(f"no BizBuySell listing id in {raw!r}")
     q = match.group(1)
     if text.lower().startswith("http"):
-        return q, text
-    return q, f"https://www.bizbuysell.com/listings/Profile/?q={q}"
+        path = text.lower()
+        if "/business-opportunity/" not in path and not title:
+            raise ValueError(
+                f"{q} needs a headline. Pass `{q} | the listing title`"
+            )
+        return q, text, title
+    if not title:
+        raise ValueError(
+            f"{q} needs a headline. Pass `{q} | the listing title`. "
+            "A bare id is fetched as /business-opportunity/listing/{id}/ and comes back empty."
+        )
+    return q, f"https://www.bizbuysell.com/listings/Profile/?q={q}", title
 
 
 def lookup_payload(queries: list[str], token: str = "") -> dict:
     parsed = [listing_query(q) for q in queries]
-    urls = [url for _q, url in parsed]
-    rows = bbs.listing_details(urls, token=token, quiet=True)
+    urls = [url for _q, url, _title in parsed]
+    titles = {url: title for _q, url, title in parsed if title}
+    rows = bbs.listing_details(urls, titles=titles, token=token, quiet=True)
     listings = []
-    for (q, _url), row in zip(parsed, rows):
+    for (q, _url, _title), row in zip(parsed, rows):
         listings.append(
             {
                 "q": q,

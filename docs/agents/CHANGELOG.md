@@ -6,6 +6,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 ## 2026-10-08 — `nm/bbs/enrich` — DONE
 
+**Scope:** BizBuySell lookup needs the listing headline. A bare id returns an empty dataset.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `pipeline/bbs_lookup.py` — pass `q | headline`. The actor URL uses that headline as the slug.
+- `pipeline/enrich_bizbuysell.py` — a category name is not stored as a state.
+
+### Do not touch
+- Do not turn off the buy-box skip. It does not run on this lookup. It still skips restaurants, retail, and franchises before harvest spend.
+
+### Follow-ups
+- none
+
+---
+
+## 2026-10-08 — `nm/bbs/enrich` — DONE
+
 **Scope:** BizBuySell lookup runs on GitHub Actions, not Tristan's PC.
 **Risk:** low (one Apify run per dispatch)
 **Coords:** none
