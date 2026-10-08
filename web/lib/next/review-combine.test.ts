@@ -112,6 +112,7 @@ test("CIM deck includes every stage CIM row; stamped URL still pulls open board 
     true,
   );
   assert.equal(isNextCimReviewCard({ stage: "inbox", cim_url: file }), false);
+  assert.equal(isNextCimReviewCard({ stage: "loi", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "pursuing", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "closed", cim_url: file }), false);
   assert.equal(isNextCimReviewCard({ stage: "shortlist", cim_url: null }), false);
@@ -247,7 +248,7 @@ test("cimStagePartnerNotes shows partner notes only at CIM and never Simon", () 
     false,
   );
 
-  for (const stage of ["inbox", "shortlist", "nda", "pursuing", "closed"]) {
+  for (const stage of ["inbox", "shortlist", "nda", "loi", "pursuing", "closed"]) {
     assert.deepEqual(cimStagePartnerNotes({ stage }, notes), []);
   }
   assert.deepEqual(cimStagePartnerNotes({ stage: "cim" }, []), []);
@@ -288,7 +289,7 @@ test("empty CIM card still exposes Tristan notes and Jim notes fields", () => {
     false,
   );
 
-  for (const stage of ["inbox", "shortlist", "nda", "pursuing", "closed"]) {
+  for (const stage of ["inbox", "shortlist", "nda", "loi", "pursuing", "closed"]) {
     assert.equal(cimPartnerNoteFields({ stage }, [{ member: "tristan", body: "early" }]), null);
   }
 });

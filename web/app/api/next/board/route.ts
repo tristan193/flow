@@ -13,7 +13,7 @@ import { NEXT_BOARD_STAGES } from "@/lib/next/stages";
  *
  *   GET /api/next/board
  *
- * Columns follow the board: Shortlisted, NDA, CIM, Pursuing, Closed.
+ * Columns follow the board: Shortlisted, NDA, CIM, LOI, Pursuing, Closed.
  * Inside a column: pinned first, then earnings. Headline is the CIM name
  * when one is set. This is not the Dirk follow-up feed.
  */

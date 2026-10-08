@@ -25,6 +25,7 @@ const STAGE_TONE: Record<string, string> = {
   shortlist: "text-short",
   nda: "text-discuss",
   cim: "text-flag",
+  loi: "text-flag",
   pursuing: "text-discuss",
   closed: "text-ink-faint",
 };

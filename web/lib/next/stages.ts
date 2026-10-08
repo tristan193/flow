@@ -11,6 +11,7 @@ export const NEXT_STAGES = [
   { id: "shortlist", label: "Shortlisted", hint: "Worth pursuing", board: true },
   { id: "nda", label: "NDA", hint: "NDA requested or signed", board: true },
   { id: "cim", label: "CIM", hint: "Reviewing materials", board: true },
+  { id: "loi", label: "LOI", hint: "Letter of intent out", board: true },
   { id: "pursuing", label: "Pursuing", hint: "Live work past CIM", board: true },
   { id: "closed", label: "Closed", hint: "Passed, dead, or walked", board: true },
 ] as const;
@@ -19,7 +20,7 @@ export type NextStageId = (typeof NEXT_STAGES)[number]["id"];
 
 export const NEXT_BOARD_STAGES = NEXT_STAGES.filter((s) => s.board);
 
-/** Retired /next ids (and aliases) folded onto the five-column board. */
+/** Retired /next ids (and aliases) folded onto the board. */
 const NEXT_STAGE_ALIASES: Record<string, NextStageId> = {
   inbox: "inbox",
   inbound: "inbox",
@@ -33,6 +34,8 @@ const NEXT_STAGE_ALIASES: Record<string, NextStageId> = {
   cim: "cim",
   data_room: "cim",
   cim_data_room: "cim",
+  loi: "loi",
+  letter_of_intent: "loi",
   pursuing: "pursuing",
   pursue: "pursuing",
   awaiting_reply: "pursuing",
@@ -75,7 +78,7 @@ export function coerceNextStage(value: unknown): NextStageId {
  * Stages that can still sit in someone's New pile.
  * Inbound belongs. Shortlisted belongs too: one Like already moved the
  * board, and the other person still owes a look.
- * NDA, CIM, Pursuing, and Closed stay on the board.
+ * NDA, CIM, LOI, Pursuing, and Closed stay on the board.
  */
 export function isNextReviewStage(value: unknown): boolean {
   const stage = coerceNextStage(value);
@@ -120,6 +123,8 @@ export function defaultNextAction(stage: NextStageId): string | null {
       return "Sign the NDA";
     case "cim":
       return "Review CIM against buy box";
+    case "loi":
+      return "Send the LOI";
     case "pursuing":
       return "Continue pursuit";
     case "closed":
@@ -137,11 +142,11 @@ export function isAwaitCimAction(value: unknown): boolean {
 }
 
 /**
- * Closed stays closed when a pack is stamped. Pursuing is already past CIM —
- * do not pull it back. Every other live stage advances to CIM.
+ * Closed stays closed when a pack is stamped. LOI and Pursuing are already
+ * past CIM — do not pull them back. Every other live stage advances to CIM.
  */
 export function shouldAdvanceToCimOnPack(stage: NextStageId): boolean {
-  return stage !== "closed" && stage !== "pursuing";
+  return stage !== "closed" && stage !== "loi" && stage !== "pursuing";
 }
 
 /**
@@ -155,6 +160,7 @@ export function resolveNextAction(
   const cleaned = sanitizeNextAction(stored);
   const hasPack = Boolean(cimUrl && String(cimUrl).trim());
   if (hasPack && isAwaitCimAction(cleaned)) {
+    if (stage === "loi") return defaultNextAction("loi");
     if (stage === "pursuing") return defaultNextAction("pursuing");
     if (stage === "closed") return defaultNextAction("closed");
     return defaultNextAction("cim");

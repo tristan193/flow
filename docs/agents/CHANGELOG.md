@@ -4,6 +4,25 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-08 — `nm/web/board` — DONE
+
+**Scope:** LOI is a pipeline column between CIM and Pursuing.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `web/lib/next/stages.ts` — board order is Shortlisted → NDA → CIM → LOI → Pursuing → Closed. `loi` and `letter of intent` map to LOI. Default next line is "Send the LOI". A CIM pack does not pull an LOI row back to CIM.
+- `web/lib/next/model.ts` — an LOI row stays out of CIM Review.
+- `web/lib/next/dirk.ts`, `web/lib/crm-pursuit.ts` — LOI stays on the live punch list and in CRM matching.
+
+### Do not touch
+- CIM Review combine rules. Both Pursue still moves a card to Pursuing, not LOI.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-05 — `nm/web/board` — DONE
 
 **Scope:** Token read of the pipeline board in board order.

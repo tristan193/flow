@@ -10,12 +10,13 @@ import {
 
 /**
  * Live punch-list stages. Same allowlist as the staged followup query —
- * board columns plus leftover aliases that coerce onto shortlist/nda/cim/pursuing.
+ * board columns plus leftover aliases that coerce onto shortlist/nda/cim/loi/pursuing.
  */
 const LIVE_PIPELINE_STAGES_SQL = `(
   'shortlist', 'pof', 'shortlisted',
   'nda', 'nda_to_sign', 'nda_signed',
   'cim',
+  'loi', 'letter_of_intent',
   'pursuing', 'awaiting_reply', 'active'
 )`;
 

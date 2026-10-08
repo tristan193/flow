@@ -186,7 +186,7 @@ export function cimCombineHint(
  * intake and /api/next/stage both make the card available immediately.
  * A stamped pack URL (Drive file or other https) on a still-open board
  * row (NDA / Shortlist) also belongs so a pack is reviewable before the
- * stage catch-up. Inbound stays in New; Pursuing / Closed already left.
+ * stage catch-up. Inbound stays in New. LOI, Pursuing, and Closed already left.
  */
 export function isNextCimReviewCard(deal: {
   stage: string;
@@ -194,7 +194,9 @@ export function isNextCimReviewCard(deal: {
 }): boolean {
   const stage = coerceNextStage(deal.stage);
   if (stage === "cim") return true;
-  if (stage === "inbox" || stage === "closed" || stage === "pursuing") return false;
+  if (stage === "inbox" || stage === "closed" || stage === "loi" || stage === "pursuing") {
+    return false;
+  }
   return isCimPackUrl(deal.cim_url);
 }
 

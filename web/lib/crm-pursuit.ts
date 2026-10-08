@@ -60,7 +60,7 @@ export type PursuitCandidate = {
 const CRM_ACTOR = "dirk";
 const CRM_CHANNEL = "api:crm/pursuit";
 
-const LIVE_STAGES: NextStageId[] = ["inbox", "shortlist", "nda", "cim", "pursuing"];
+const LIVE_STAGES: NextStageId[] = ["inbox", "shortlist", "nda", "cim", "loi", "pursuing"];
 
 function norm(s: string): string {
   return s

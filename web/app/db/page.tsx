@@ -242,7 +242,7 @@ export default async function DbPage({
         </div>
 
         <section className="flex flex-wrap gap-2">
-          {["inbox", "shortlist", "nda", "cim", "pursuing", "closed"].map((stage) => (
+          {["inbox", "shortlist", "nda", "cim", "loi", "pursuing", "closed"].map((stage) => (
             <div key={stage} className="border-line bg-surface rounded-xl border px-3 py-2">
               <p className="text-base font-semibold">{byStage.get(stage) ?? 0}</p>
               <p className="text-ink-faint text-[11px] font-bold tracking-wide uppercase">

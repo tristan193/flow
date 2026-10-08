@@ -18,18 +18,18 @@ import {
   shouldAdvanceToCimOnPack,
 } from "./stages.ts";
 
-test("board is exactly Shortlisted, NDA, CIM, Pursuing, Closed", () => {
+test("board is Shortlisted, NDA, CIM, LOI, Pursuing, Closed", () => {
   assert.deepEqual(
     NEXT_BOARD_STAGES.map((s) => s.id),
-    ["shortlist", "nda", "cim", "pursuing", "closed"],
+    ["shortlist", "nda", "cim", "loi", "pursuing", "closed"],
   );
   assert.deepEqual(
     NEXT_BOARD_STAGES.map((s) => s.label),
-    ["Shortlisted", "NDA", "CIM", "Pursuing", "Closed"],
+    ["Shortlisted", "NDA", "CIM", "LOI", "Pursuing", "Closed"],
   );
 });
 
-test("legacy stages map onto the five columns", () => {
+test("legacy stages map onto the board columns", () => {
   const cases: [unknown, string][] = [
     ["pof", "nda"],
     ["proof of funds", "nda"],
@@ -45,6 +45,8 @@ test("legacy stages map onto the five columns", () => {
     ["awaiting_reply", "pursuing"],
     ["active", "pursuing"],
     ["pursuing", "pursuing"],
+    ["loi", "loi"],
+    ["letter of intent", "loi"],
     ["dead", "closed"],
     ["pass", "closed"],
     ["passed", "closed"],
@@ -67,11 +69,13 @@ test("unknown stage strings coerce to inbox instead of throwing", () => {
   assert.equal(nextStageLabel("pof"), "NDA");
   assert.equal(nextStageLabel("dead"), "Closed");
   assert.equal(nextStageLabel("awaiting_reply"), "Pursuing");
+  assert.equal(nextStageLabel("letter of intent"), "LOI");
 });
 
 test("next-action copy has no POF", () => {
   assert.equal(defaultNextAction("shortlist"), "Request NDA");
   assert.equal(defaultNextAction("nda"), "Sign the NDA");
+  assert.equal(defaultNextAction("loi"), "Send the LOI");
   assert.equal(defaultNextAction("pursuing"), "Continue pursuit");
   assert.equal(defaultNextAction("closed"), null);
   assert.equal(sanitizeNextAction("Request NDA or send POF"), "Request NDA");
@@ -86,6 +90,7 @@ test("a stamped CIM pack never shows Await CIM / data room", () => {
   assert.equal(isAwaitCimAction("Review CIM against buy box"), false);
   assert.equal(resolveNextAction("nda", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Review CIM against buy box");
   assert.equal(resolveNextAction("nda", "Await CIM / data room", null), "Await CIM / data room");
+  assert.equal(resolveNextAction("loi", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Send the LOI");
   assert.equal(resolveNextAction("pursuing", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), "Continue pursuit");
   assert.equal(resolveNextAction("closed", "Await CIM / data room", "https://drive.google.com/file/d/x/view"), null);
   assert.equal(nextActionAfterCimPack("cim", "Await CIM / data room"), "Review CIM against buy box");
@@ -98,11 +103,12 @@ test("a stamped CIM pack never shows Await CIM / data room", () => {
   );
 });
 
-test("stamping a pack advances live deals to CIM; closed and pursuing stay put", () => {
+test("stamping a pack advances live deals to CIM; LOI, pursuing, and closed stay put", () => {
   assert.equal(shouldAdvanceToCimOnPack("inbox"), true);
   assert.equal(shouldAdvanceToCimOnPack("shortlist"), true);
   assert.equal(shouldAdvanceToCimOnPack("nda"), true);
   assert.equal(shouldAdvanceToCimOnPack("cim"), true);
+  assert.equal(shouldAdvanceToCimOnPack("loi"), false);
   assert.equal(shouldAdvanceToCimOnPack("pursuing"), false);
   assert.equal(shouldAdvanceToCimOnPack("closed"), false);
 });
@@ -111,6 +117,7 @@ test("follow-ups arm on NDA, CIM, and Pursuing only", () => {
   assert.equal(nextFollowupKind("nda"), "nda");
   assert.equal(nextFollowupKind("cim"), "cim");
   assert.equal(nextFollowupKind("pursuing"), "broker_reply");
+  assert.equal(nextFollowupKind("loi"), null);
   assert.equal(nextFollowupKind("shortlist"), null);
   assert.equal(nextFollowupKind("closed"), null);
 });
@@ -121,6 +128,7 @@ test("New includes inbound and Shortlisted; later board stages stay off", () => 
   assert.equal(isNextReviewStage("shortlist"), true);
   assert.equal(isNextReviewStage("nda"), false);
   assert.equal(isNextReviewStage("cim"), false);
+  assert.equal(isNextReviewStage("loi"), false);
   assert.equal(isNextReviewStage("pursuing"), false);
   assert.equal(isNextReviewStage("closed"), false);
   assert.equal(isNextReviewStage("dead"), false);
