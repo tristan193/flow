@@ -581,9 +581,15 @@ def listing_details(
     urls: list[str],
     titles: Optional[dict[str, str]] = None,
     token: str = "",
+    quiet: bool = False,
 ) -> list[dict]:
     """Fetch BizBuySell listing pages. Callers pass URLs; this owns Apify."""
-    fetched = fetch_with_apify(urls, token=token or apify_token(), titles=titles or {})
+    fetched = fetch_with_apify(
+        urls,
+        token=token or apify_token(),
+        titles=titles or {},
+        quiet=quiet,
+    )
     return [enrichment_dict(url, fetched.get(url)) for url in urls]
 
 
@@ -658,12 +664,17 @@ def enrichments_from_apify_items(items: list[dict]) -> dict[str, Enrichment]:
     return by_id
 
 
+def _log(msg: str, quiet: bool) -> None:
+    print(msg, file=sys.stderr if quiet else sys.stdout)
+
+
 def fetch_with_apify(
     urls: list[str],
     token: str,
     actor_id: str = DEFAULT_APIFY_ACTOR,
     wait_secs: int = 900,
     titles: Optional[dict[str, str]] = None,
+    quiet: bool = False,
 ) -> dict[str, Enrichment]:
     """Fetch listing pages via Apify; return enrichment keyed by input url_norm."""
     if not token:
@@ -679,9 +690,9 @@ def fetch_with_apify(
         fetch_urls = [canonical_bbs_url(u) for u in urls]
     run_input = _apify_run_input(actor_id, fetch_urls)
 
-    print(f"apify actor={actor_id} urls={len(fetch_urls)}")
+    _log(f"apify actor={actor_id} urls={len(fetch_urls)}", quiet)
     for fu in fetch_urls:
-        print(f"  fetch {fu}")
+        _log(f"  fetch {fu}", quiet)
     started = _apify_request(
         "POST",
         f"/acts/{actor_id}/runs",
@@ -704,7 +715,7 @@ def fetch_with_apify(
         polled = _apify_request("GET", f"/actor-runs/{run_id}", token, timeout=60)
         pdata = polled.get("data") or polled
         status = pdata.get("status") or status
-        print(f"  apify run={run_id} status={status}")
+        _log(f"  apify run={run_id} status={status}", quiet)
 
     if status != "SUCCEEDED":
         raise RuntimeError(f"Apify run {run_id} ended with status={status}")
@@ -720,7 +731,7 @@ def fetch_with_apify(
         timeout=120,
     )
     items = items_resp if isinstance(items_resp, list) else (items_resp.get("data") or [])
-    print(f"  apify dataset items={len(items)}")
+    _log(f"  apify dataset items={len(items)}", quiet)
 
     by_id = enrichments_from_apify_items(items)
 
@@ -730,19 +741,20 @@ def fetch_with_apify(
         e = by_id.get(lid)
         if e and e.ok:
             results[url] = e
-            print(
+            _log(
                 f"  ok id={lid} sde={e.sde} ebitda={e.ebitda} rev={e.revenue} "
-                f"ask={e.asking} blurb={len(e.blurb or '')} {e.city},{e.state}"
+                f"ask={e.asking} blurb={len(e.blurb or '')} {e.city},{e.state}",
+                quiet,
             )
         elif e:
             results[url] = e
-            print(f"  fail id={lid}: {e.error}")
+            _log(f"  fail id={lid}: {e.error}", quiet)
         else:
             results[url] = Enrichment(
                 listing_id=lid,
                 error="not in Apify dataset (blocked, gone, or actor miss)",
             )
-            print(f"  miss id={lid} url={bbs_actor_url(url, titles.get(url, ''))}")
+            _log(f"  miss id={lid} url={bbs_actor_url(url, titles.get(url, ''))}", quiet)
     return results
 
 

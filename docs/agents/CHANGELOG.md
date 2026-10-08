@@ -6,6 +6,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 ## 2026-10-08 — `nm/bbs/enrich` — DONE
 
+**Scope:** Mailman can look up BizBuySell page numbers without changing how he labels mail.
+**Risk:** low (one Apify run per call he makes)
+**Coords:** none
+
+### Changed
+- `pipeline/bbs_lookup.py` — `python bbs_lookup.py 2483522` prints asking, SDE, EBITDA, revenue, city, state, and blurb as JSON. Progress stays on stderr.
+- `docs/agents/MAILMAN.md` — optional lookup. Labeling is unchanged.
+
+### Do not touch
+- Do not fold this into `mailman.py`. Do not have Mailman call Apify or open listing pages.
+
+### Follow-ups
+- none
+
+---
+
+## 2026-10-08 — `nm/bbs/enrich` — DONE
+
 **Scope:** BizBuySell page details stay inside harvest. Bots do not drive Apify.
 **Risk:** medium (Apify spend on each full harvest; retries on failure)
 **Coords:** none

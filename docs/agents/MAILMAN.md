@@ -174,6 +174,16 @@ These seven were `unknown` because repertoire missed. Labels below are the opera
 
 ---
 
+## BizBuySell page lookup (optional)
+
+Labeling does not change. When a BizBuySell card has `q=` and is missing earnings or a description, run this from `pipeline/` and copy the JSON onto that deal. Do not call Apify yourself. Do not open the listing page.
+
+```
+python bbs_lookup.py 2483522 2562233
+```
+
+Also accepts `q=2483522` or the listing URL. Stdout is JSON. Copy `asking`, `sde`, `ebitda`, `revenue`, `city`, `state`, and `blurb`. Leave a null field alone. Progress is on stderr.
+
 ## House rules
 
 1. Persist everything. Idempotent on `gmail_id`. `unknown` means unsorted, not discarded. Sort it, or leave it only while you are still unsure.
