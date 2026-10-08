@@ -6,6 +6,23 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 ## 2026-10-08 — `nm/web/board` — DONE
 
+**Scope:** LOI sits after Pursuing, before Closed.
+**Risk:** low
+**Coords:** none
+
+### Changed
+- `web/lib/next/stages.ts` — board order is Shortlisted → NDA → CIM → Pursuing → LOI → Closed.
+
+### Do not touch
+- LOI still stays out of CIM Review, and a CIM pack still does not pull it back.
+
+### Follow-ups
+- none
+
+---
+
+## 2026-10-08 — `nm/web/board` — DONE
+
 **Scope:** LOI is a pipeline column between CIM and Pursuing.
 **Risk:** low
 **Coords:** none

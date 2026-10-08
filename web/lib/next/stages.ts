@@ -11,8 +11,8 @@ export const NEXT_STAGES = [
   { id: "shortlist", label: "Shortlisted", hint: "Worth pursuing", board: true },
   { id: "nda", label: "NDA", hint: "NDA requested or signed", board: true },
   { id: "cim", label: "CIM", hint: "Reviewing materials", board: true },
-  { id: "loi", label: "LOI", hint: "Letter of intent out", board: true },
   { id: "pursuing", label: "Pursuing", hint: "Live work past CIM", board: true },
+  { id: "loi", label: "LOI", hint: "Letter of intent out", board: true },
   { id: "closed", label: "Closed", hint: "Passed, dead, or walked", board: true },
 ] as const;
 

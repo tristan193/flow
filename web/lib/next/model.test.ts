@@ -18,14 +18,14 @@ import {
   shouldAdvanceToCimOnPack,
 } from "./stages.ts";
 
-test("board is Shortlisted, NDA, CIM, LOI, Pursuing, Closed", () => {
+test("board is Shortlisted, NDA, CIM, Pursuing, LOI, Closed", () => {
   assert.deepEqual(
     NEXT_BOARD_STAGES.map((s) => s.id),
-    ["shortlist", "nda", "cim", "loi", "pursuing", "closed"],
+    ["shortlist", "nda", "cim", "pursuing", "loi", "closed"],
   );
   assert.deepEqual(
     NEXT_BOARD_STAGES.map((s) => s.label),
-    ["Shortlisted", "NDA", "CIM", "LOI", "Pursuing", "Closed"],
+    ["Shortlisted", "NDA", "CIM", "Pursuing", "LOI", "Closed"],
   );
 });
 
