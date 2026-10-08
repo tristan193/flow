@@ -78,7 +78,8 @@ if [[ -n "${BBS_ENRICH_LIMIT:-}" && "${BBS_ENRICH_LIMIT}" != "0" ]]; then
   LIMIT_ARGS=(--limit "$BBS_ENRICH_LIMIT")
 fi
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) enriching BizBuySell via Apify ${LIMIT_ARGS[*]:-all}"
-python enrich_bizbuysell.py --backend apify --newest "${LIMIT_ARGS[@]}"
+# Automatic. No actor flag. The script owns the Apify call.
+run_with_retries bbs_enrich python enrich_bizbuysell.py --newest "${LIMIT_ARGS[@]}"
 
 # Dated CSV snapshot (artifact backup — Flow App is the live review surface)
 python <<'PY'

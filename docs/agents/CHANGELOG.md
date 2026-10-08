@@ -4,6 +4,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-08 — `nm/bbs/enrich` — DONE
+
+**Scope:** BizBuySell page details stay inside harvest. Bots do not drive Apify.
+**Risk:** medium (Apify spend on each full harvest; retries on failure)
+**Coords:** none
+
+### Changed
+- `pipeline/enrich_bizbuysell.py` — default backend is Apify. Playwright exits. `--urls` prints asking, SDE, EBITDA, revenue, and blurb. Profile URLs are rewritten to `/business-opportunity/{slug}/{id}/`.
+- `pipeline/run_daily_harvest.sh` — enrich runs after ingest with retries. No actor flag.
+
+### Do not touch
+- Do not make Apify optional. Do not crawl BizBuySell with Playwright.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-08 — `nm/web/board` — DONE
 
 **Scope:** LOI sits after Pursuing, before Closed.

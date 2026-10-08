@@ -7,6 +7,9 @@ stays email-only; this is a second pass that fills money fields (and thin /
 missing blurbs) from the listing URL we already stored (deals.url_norm —
 tracking params stripped).
 
+This file is the only Apify caller. Daily harvest runs it after ingest.
+Do not open api.apify.com, pick an actor, or crawl with Playwright.
+
 Primary fetch path: Apify `abotapi/bizbuysell-scraper` with
 `/business-opportunity/{slug}/{id}/` URLs (Profile/?q= returns empty; generic
 Playwright+residential gets Akamai Access Denied). Slug is derived from the
@@ -543,8 +546,49 @@ def _apify_request(
         raise RuntimeError(f"Apify HTTP {exc.code}: {detail}") from exc
 
 
+def enrichment_dict(url: str, e: Optional[Enrichment]) -> dict:
+    """Plain record for harvest and for `--urls --json`. No Apify fields."""
+    if e is None:
+        return {
+            "url": url,
+            "listingId": listing_id_from_url(url),
+            "asking": None,
+            "sde": None,
+            "ebitda": None,
+            "revenue": None,
+            "city": None,
+            "state": None,
+            "blurb": None,
+            "ok": False,
+            "error": "not fetched",
+        }
+    return {
+        "url": url,
+        "listingId": e.listing_id or listing_id_from_url(url),
+        "asking": e.asking,
+        "sde": e.sde,
+        "ebitda": e.ebitda,
+        "revenue": e.revenue,
+        "city": e.city,
+        "state": e.state,
+        "blurb": e.blurb,
+        "ok": bool(e.ok),
+        "error": e.error or "",
+    }
+
+
+def listing_details(
+    urls: list[str],
+    titles: Optional[dict[str, str]] = None,
+    token: str = "",
+) -> list[dict]:
+    """Fetch BizBuySell listing pages. Callers pass URLs; this owns Apify."""
+    fetched = fetch_with_apify(urls, token=token or apify_token(), titles=titles or {})
+    return [enrichment_dict(url, fetched.get(url)) for url in urls]
+
+
 def _apify_run_input(actor_id: str, fetch_urls: list[str]) -> dict:
-    """Build actor input. Playwright scraper is the reliable path for Profile/?q=."""
+    """Build actor input. The store actor wants slug URLs, not Profile/?q=."""
     proxy = {
         "useApifyProxy": True,
         "apifyProxyGroups": ["RESIDENTIAL"],
@@ -765,8 +809,8 @@ def main() -> None:
     ap.add_argument(
         "--backend",
         choices=("apify", "playwright", "auto"),
-        default=os.environ.get("BBS_ENRICH_BACKEND", "auto"),
-        help="apify (default when APIFY_TOKEN set), playwright, or auto",
+        default=os.environ.get("BBS_ENRICH_BACKEND", "apify"),
+        help="apify (the only supported path). playwright is blocked.",
     )
     ap.add_argument(
         "--actor",
@@ -788,7 +832,28 @@ def main() -> None:
         default="",
         help="Parse a saved page text/HTML file instead of fetching (dev)",
     )
+    ap.add_argument(
+        "--urls",
+        nargs="*",
+        default=None,
+        help="Fetch these listing URLs and print JSON. Does not scan the db.",
+    )
+    ap.add_argument(
+        "--json",
+        action="store_true",
+        help="With --urls, print the JSON records (this is already the default).",
+    )
     args = ap.parse_args()
+
+    if args.backend == "auto":
+        args.backend = "apify"
+    if args.backend == "playwright" and os.environ.get("BBS_ALLOW_PLAYWRIGHT") != "1":
+        print(
+            "FATAL: Playwright is blocked (Akamai). BizBuySell details run through "
+            "enrich_bizbuysell.py on Apify. Do not crawl the site yourself.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     if args.parse_file:
         text = open(args.parse_file, encoding="utf-8", errors="replace").read()
@@ -801,6 +866,19 @@ def main() -> None:
         e = parse_listing_text(text)
         print(json.dumps(e.__dict__, indent=2))
         return
+
+    if args.urls is not None:
+        token = apify_token()
+        if not token:
+            print(
+                "FATAL: apify path requires APIFY_TOKEN or pipeline/credentials/apify_token.txt",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        details = listing_details(list(args.urls), token=token)
+        print(json.dumps(details, indent=2))
+        failed = [row for row in details if not row["ok"]]
+        sys.exit(1 if failed else 0)
 
     if not os.path.exists(args.db):
         print(f"FATAL: db not found: {args.db}", file=sys.stderr)

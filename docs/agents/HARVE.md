@@ -47,11 +47,19 @@ If Mailman left a real listing as `unknown`, that is his gap — tell Tristan. D
 
 **2. Format / enrich** — finish what email does not carry
 
-BizBuySell teasers are usually title, asking, location, URL. Almost never SDE. Run:
+BizBuySell teasers are usually title, asking, location, URL. Almost never SDE. Daily harvest fills those fields itself after ingest:
 
 ```
-python enrich_bizbuysell.py --backend apify --newest
+python enrich_bizbuysell.py --newest
 ```
+
+Do not call api.apify.com. Do not pass `--backend`. Do not open the listing in a browser. One URL, when you are not in the harvest job:
+
+```
+python enrich_bizbuysell.py --urls https://www.bizbuysell.com/listings/Profile/?q=123456 --json
+```
+
+`--json` is the same as the default print for `--urls`. The script rewrites that URL to `/business-opportunity/{slug}/{id}/` before Apify.
 
 Skip buy-box-excluded headlines. Do not invent earnings. Axial: store Pursue, never Pass. Rejigg: subject is not the title. WebsiteClosers: ignore mailchi / buyers-club links.
 

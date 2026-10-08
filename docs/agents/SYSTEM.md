@@ -21,7 +21,7 @@ Tristan tests on the **live** app, not a local-only stack (see `.cursor/rules/sh
 │  1. Restore artifact nm-deals-db-v2 → nm_deals.db           │
 │  2. mailman.py --days 2  (dirk@ via Mailman token → mail table) │
 │  3. ingest_mail.py       (listing labels → nm_deals.db)     │
-│  4. enrich_bizbuysell.py --backend apify --newest           │
+│  4. enrich_bizbuysell.py --newest                          │
 │  5. CSV snapshot artifact                                   │
 │  6. export_snapshot.py --post $FLOW_APP_URL /api/import     │
 │     bearer PIPELINE_TOKEN else FLOW_IMPORT_TOKEN            │
@@ -167,8 +167,8 @@ Local: `npm run dev` in `web/` with `.env.local` (passcodes + session secret). R
 cd pipeline && python mailman.py --days 2 && python ingest_mail.py --days 2
 
 # Enrich (local)
-python enrich_bizbuysell.py --backend apify --newest --limit 5
-python enrich_bizbuysell.py --backend apify --newest --dry-run
+python enrich_bizbuysell.py --newest --limit 5
+python enrich_bizbuysell.py --newest --dry-run
 
 # Export seed for local app
 python export_snapshot.py --db nm_deals.db --out ../web/db/seed-data.json
