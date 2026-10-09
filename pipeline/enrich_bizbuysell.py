@@ -675,6 +675,12 @@ def _log(msg: str, quiet: bool) -> None:
     print(msg, file=sys.stderr if quiet else sys.stdout)
 
 
+def chunk_urls(urls: list[str], size: int) -> list[list[str]]:
+    """One listing per actor run. A blocked page makes the actor drop the rest."""
+    step = max(1, size)
+    return [urls[i : i + step] for i in range(0, len(urls), step)]
+
+
 def fetch_with_apify(
     urls: list[str],
     token: str,
@@ -683,9 +689,70 @@ def fetch_with_apify(
     titles: Optional[dict[str, str]] = None,
     quiet: bool = False,
 ) -> dict[str, Enrichment]:
-    """Fetch listing pages via Apify; return enrichment keyed by input url_norm."""
+    """Fetch listing pages via Apify; return enrichment keyed by input url_norm.
+
+    One blocked page makes the actor stop that run and discard every URL it has
+    not opened yet. Default is one listing per run, then retry the misses.
+    """
     if not token:
         raise RuntimeError("APIFY_TOKEN is empty")
+    if not urls:
+        return {}
+
+    titles = titles or {}
+    batch = max(1, int(os.environ.get("BBS_APIFY_BATCH", "1")))
+    rounds = max(1, int(os.environ.get("BBS_APIFY_ROUNDS", "3")))
+    pending = list(urls)
+    results: dict[str, Enrichment] = {}
+    for round_i in range(rounds):
+        if not pending:
+            break
+        gained = 0
+        still: list[str] = []
+        chunks = chunk_urls(pending, batch)
+        for n, chunk in enumerate(chunks, start=1):
+            _log(
+                f"apify round {round_i + 1}/{rounds} batch {n}/{len(chunks)} urls={len(chunk)}",
+                quiet,
+            )
+            got = _apify_fetch_once(
+                chunk,
+                token,
+                actor_id=actor_id,
+                wait_secs=wait_secs,
+                titles=titles,
+                quiet=quiet,
+            )
+            for url in chunk:
+                e = got.get(url)
+                if e and e.ok:
+                    results[url] = e
+                    gained += 1
+                else:
+                    still.append(url)
+        pending = still
+        if gained == 0:
+            break
+    for url in urls:
+        if url not in results:
+            lid = listing_id_from_url(url)
+            results[url] = Enrichment(
+                listing_id=lid,
+                error="not in Apify dataset (blocked, gone, or actor miss)",
+            )
+            _log(f"  miss id={lid} url={bbs_actor_url(url, titles.get(url, ''))}", quiet)
+    return results
+
+
+def _apify_fetch_once(
+    urls: list[str],
+    token: str,
+    actor_id: str = DEFAULT_APIFY_ACTOR,
+    wait_secs: int = 900,
+    titles: Optional[dict[str, str]] = None,
+    quiet: bool = False,
+) -> dict[str, Enrichment]:
+    """One actor run. A proxy block ends the run early and omits the rest."""
     if not urls:
         return {}
 

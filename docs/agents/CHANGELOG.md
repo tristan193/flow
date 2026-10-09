@@ -4,6 +4,24 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-09 — `nm/bbs/enrich` — DONE
+
+**Scope:** A blocked BizBuySell page no longer drops the rest of a lookup.
+**Risk:** medium (one Apify run per listing, plus retries)
+**Coords:** none
+
+### Changed
+- `pipeline/enrich_bizbuysell.py` — one listing per actor run (`BBS_APIFY_BATCH` default 1). Misses retry (`BBS_APIFY_ROUNDS` default 3). The morning run of 29 stopped after two because the third page blocked the proxy and the actor discarded the rest.
+- `pipeline/bbs_lookup.py` — a partial result still exits 0 when at least one listing came back.
+
+### Do not touch
+- Do not turn off the buy-box skip. Do not send a long URL list in one actor run.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-08 — `nm/bbs/enrich` — DONE
 
 **Scope:** BizBuySell lookup needs the listing headline. A bare id returns an empty dataset.

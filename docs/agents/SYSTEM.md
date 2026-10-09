@@ -106,7 +106,7 @@ Fuzzy title match never auto-applies unless an expectation is open (and even the
 3. Else build actor URL:  
    `https://www.bizbuysell.com/business-opportunity/{slugify(title)}/{listingId}/`  
    (Not `Profile/?q=` — that returns empty dataset on the store actor.)
-4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`).
+4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`). A blocked page makes that actor stop the run and drop every URL it has not opened. Calls go out one listing at a time (`BBS_APIFY_BATCH`, default 1) and misses are retried (`BBS_APIFY_ROUNDS`, default 3).
 5. Map: `cashFlow`→`sde`, `ebitda`→`ebitda`, `grossRevenue`→`revenue`, fill nulls;
    `fullDescription`/`shortDescription`→`blurb` when the stored blurb is thin; clear `needs_llm` earnings when page checked.
 

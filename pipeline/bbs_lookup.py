@@ -96,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
-    return 0 if payload["ok"] else 1
+    if not payload["listings"]:
+        return 1
+    return 0 if any(row["ok"] for row in payload["listings"]) else 1
 
 
 if __name__ == "__main__":
