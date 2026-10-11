@@ -35,6 +35,7 @@ jobs:
       - name: Lookup
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          BBS_APIFY_BATCH: "10"
           BBS_IDS: ${{ inputs.ids }}
         run: |
           set -euo pipefail
