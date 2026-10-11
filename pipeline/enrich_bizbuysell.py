@@ -22,8 +22,10 @@ missing earnings is enriched unless the email headline hits a buy-box exclusion
   set APIFY_TOKEN=...   # Apify → Settings → Integrations → API tokens
   python enrich_bizbuysell.py --db nm_deals.db --backend apify --limit 5 --dry-run
   python enrich_bizbuysell.py --db nm_deals.db --backend apify
+  python enrich_bizbuysell.py --db nm_deals.db --backend apify --batch 10
 
 Requires Apify Starter (or higher) — Free plan has no residential proxy.
+Default BBS_APIFY_BATCH=10 (several listings per actor run); retries shrink.
 """
 from __future__ import annotations
 
@@ -589,6 +591,7 @@ def listing_details(
     titles: Optional[dict[str, str]] = None,
     token: str = "",
     quiet: bool = False,
+    batch: Optional[int] = None,
 ) -> list[dict]:
     """Fetch BizBuySell listing pages. Callers pass URLs; this owns Apify."""
     fetched = fetch_with_apify(
@@ -596,6 +599,7 @@ def listing_details(
         token=token or apify_token(),
         titles=titles or {},
         quiet=quiet,
+        batch=batch,
     )
     return [enrichment_dict(url, fetched.get(url)) for url in urls]
 
@@ -676,9 +680,22 @@ def _log(msg: str, quiet: bool) -> None:
 
 
 def chunk_urls(urls: list[str], size: int) -> list[list[str]]:
-    """One listing per actor run. A blocked page makes the actor drop the rest."""
+    """Split URLs into actor-run batches of at most `size`."""
     step = max(1, size)
     return [urls[i : i + step] for i in range(0, len(urls), step)]
+
+
+def batch_size_for_round(base: int, round_i: int) -> int:
+    """Start large to cut Apify run overhead; shrink so blocked pages isolate.
+
+    Round 0 uses `base` (default 10). Later rounds divide by 3 each time and
+    floor at 1, so a mid-batch Akamai block only forces a cheap retry of the
+    remaining URLs instead of one billed run per listing from the start.
+    """
+    size = max(1, int(base))
+    for _ in range(max(0, round_i)):
+        size = max(1, size // 3)
+    return size
 
 
 def fetch_with_apify(
@@ -688,11 +705,14 @@ def fetch_with_apify(
     wait_secs: int = 900,
     titles: Optional[dict[str, str]] = None,
     quiet: bool = False,
+    batch: Optional[int] = None,
+    rounds: Optional[int] = None,
 ) -> dict[str, Enrichment]:
     """Fetch listing pages via Apify; return enrichment keyed by input url_norm.
 
-    One blocked page makes the actor stop that run and discard every URL it has
-    not opened yet. Default is one listing per run, then retry the misses.
+    One blocked page can stop that actor run and discard every URL it has not
+    opened yet. Default is several listings per run (BBS_APIFY_BATCH, default
+    10), then retry misses in smaller batches down to one.
     """
     if not token:
         raise RuntimeError("APIFY_TOKEN is empty")
@@ -700,8 +720,12 @@ def fetch_with_apify(
         return {}
 
     titles = titles or {}
-    batch = max(1, int(os.environ.get("BBS_APIFY_BATCH", "1")))
-    rounds = max(1, int(os.environ.get("BBS_APIFY_ROUNDS", "3")))
+    if batch is None:
+        batch = int(os.environ.get("BBS_APIFY_BATCH", "10"))
+    if rounds is None:
+        rounds = int(os.environ.get("BBS_APIFY_ROUNDS", "3"))
+    batch = max(1, batch)
+    rounds = max(1, rounds)
     pending = list(urls)
     results: dict[str, Enrichment] = {}
     for round_i in range(rounds):
@@ -709,10 +733,12 @@ def fetch_with_apify(
             break
         gained = 0
         still: list[str] = []
-        chunks = chunk_urls(pending, batch)
+        round_batch = batch_size_for_round(batch, round_i)
+        chunks = chunk_urls(pending, round_batch)
         for n, chunk in enumerate(chunks, start=1):
             _log(
-                f"apify round {round_i + 1}/{rounds} batch {n}/{len(chunks)} urls={len(chunk)}",
+                f"apify round {round_i + 1}/{rounds} batch {n}/{len(chunks)} "
+                f"urls={len(chunk)} size={round_batch}",
                 quiet,
             )
             got = _apify_fetch_once(
@@ -731,7 +757,7 @@ def fetch_with_apify(
                 else:
                     still.append(url)
         pending = still
-        if gained == 0:
+        if gained == 0 and round_batch == 1:
             break
     for url in urls:
         if url not in results:
@@ -904,6 +930,12 @@ def main() -> None:
         help="Apify actor id (default abotapi~bizbuysell-scraper)",
     )
     ap.add_argument(
+        "--batch",
+        type=int,
+        default=None,
+        help="Listings per Apify run (default BBS_APIFY_BATCH or 10). Retries shrink.",
+    )
+    ap.add_argument(
         "--from-run",
         default="",
         help="Re-parse an existing Apify run dataset (no new scrape / no extra $)",
@@ -961,7 +993,9 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        details = listing_details(list(args.urls), token=token)
+        details = listing_details(
+            list(args.urls), token=token, batch=args.batch
+        )
         print(json.dumps(details, indent=2))
         failed = [row for row in details if not row["ok"]]
         sys.exit(1 if failed else 0)
@@ -1028,7 +1062,11 @@ def main() -> None:
         titles = {r["url_norm"]: (r["title"] or "") for r in rows if r["url_norm"]}
         if backend == "apify":
             fetched = fetch_with_apify(
-                urls, token=token, actor_id=args.actor, titles=titles
+                urls,
+                token=token,
+                actor_id=args.actor,
+                titles=titles,
+                batch=args.batch,
             )
         else:
             fetched = fetch_with_playwright(urls, pause_s=args.pause)

@@ -43,6 +43,13 @@ class ListingQueryTest(unittest.TestCase):
         chunks = bbs.chunk_urls(["a", "b", "c", "d", "e"], 2)
         self.assertEqual(chunks, [["a", "b"], ["c", "d"], ["e"]])
 
+    def test_batch_shrinks_across_rounds(self):
+        self.assertEqual(bbs.batch_size_for_round(10, 0), 10)
+        self.assertEqual(bbs.batch_size_for_round(10, 1), 3)
+        self.assertEqual(bbs.batch_size_for_round(10, 2), 1)
+        self.assertEqual(bbs.batch_size_for_round(10, 3), 1)
+        self.assertEqual(bbs.batch_size_for_round(1, 0), 1)
+
     def test_category_is_not_a_state(self):
         self.assertIsNone(bbs.normalize_state("Banking and Loans"))
         self.assertEqual(bbs.normalize_state("Texas"), "TX")
