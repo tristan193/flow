@@ -4,6 +4,25 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-11 — `nm/bbs/enrich` — DONE
+
+**Scope:** Cut Apify credit burn by batching listings per actor run.
+**Risk:** medium (a blocked page can still drop the rest of that batch; retries shrink)
+**Coords:** none
+
+### Changed
+- `pipeline/enrich_bizbuysell.py` — `BBS_APIFY_BATCH` default **10** (was 1). Misses retry shrinking 10 → 3 → 1 (`BBS_APIFY_ROUNDS` default 3). `--batch` CLI override.
+- `.github/workflows/daily-harvest.yml` + `bbs-lookup.yml` — set `BBS_APIFY_BATCH=10`.
+- `docs/agents/SYSTEM.md`, `MAILMAN.md` — document batch + shrink.
+
+### Do not touch
+- Do not turn off the buy-box skip. Do not dump an unbounded URL list in one run (keep a moderate batch).
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-09 — `nm/bbs/enrich` — DONE
 
 **Scope:** A blocked BizBuySell page no longer drops the rest of a lookup.
