@@ -4,6 +4,25 @@ Append **newest entries at the top**. Follow [IDENTITY.md](./IDENTITY.md).
 
 **Update this file only after a change is tested and implemented for production** (on `main`, live harvest/app as applicable). Skip entries for pure experiments, dry-runs, and WIP that never shipped.
 
+## 2026-10-22 — `nm/bbs/enrich` — DONE
+
+**Scope:** Stop re-scraping enriched BizBuySell listings; keep one Apify actor start per pass.
+**Risk:** medium (store actor can still drop remaining URLs mid-run; misses get one follow-up start)
+**Coords:** none
+
+### Changed
+- `pipeline/enrich_bizbuysell.py` — stamp `bbs_page_at` on clean fetch / listing gone; skip rows with earnings or page stamp; default `BBS_APIFY_BATCH=50` in **one** `/runs` call; `BBS_APIFY_CONCURRENCY` is in-run only (not parallel starts).
+- `pipeline/db.py` — ensure `bbs_page_at` column.
+- Workflows + `SYSTEM.md` / `MAILMAN.md` — document single-start + no-rescrape.
+
+### Do not touch
+- Do not fan out parallel Apify `/runs` (actor start is the expensive cost). Do not turn off the buy-box skip.
+
+### Follow-ups
+- none
+
+---
+
 ## 2026-10-11 — `nm/bbs/enrich` — DONE
 
 **Scope:** Cut Apify credit burn by batching listings per actor run.
