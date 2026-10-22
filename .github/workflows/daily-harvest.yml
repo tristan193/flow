@@ -117,9 +117,11 @@ jobs:
           MAX_ATTEMPTS: "3"
           NM_LOCAL_DB: ${{ github.workspace }}/pipeline/nm_deals.db
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-          # Several listings per Apify run; retries shrink toward 1 on misses.
-          BBS_APIFY_BATCH: "10"
-          # 0 = enrich every BBS candidate (missing earnings or thin blurb).
+          # One actor start packs many URLs (start cost dominates). In-run only.
+          BBS_APIFY_BATCH: "50"
+          BBS_APIFY_CONCURRENCY: "5"
+          BBS_APIFY_ROUNDS: "2"
+          # 0 = enrich every BBS candidate still missing a page check.
           BBS_ENRICH_LIMIT: "0"
           MAILMAN_ONLY: ${{ github.event.inputs.mailman_only == 'true' }}
         run: |

@@ -184,7 +184,7 @@ When a BizBuySell card has `q=` and is missing earnings or a description, dispat
 gh workflow run "BizBuySell lookup" --ref main -f ids=$'2483522 | Successful, Growing Landscape Company in North Texas!\n2562233 | National Mortgage Broker and Lender'
 ```
 
-Put the headline after `|`. A bare `q=` id is fetched as `/business-opportunity/listing/{id}/` and the actor returns an empty dataset. A full `/business-opportunity/{slug}/{id}/` URL is also fine. The lookup batches several listings per actor run (default 10), then retries misses in smaller batches down to one when a blocked page drops the rest. Copy `asking`, `sde`, `ebitda`, `revenue`, `city`, `state`, and `blurb` onto that deals row. Leave a null field alone. The buy-box skip is a separate harvest check. This lookup does not apply it.
+Put the headline after `|`. A bare `q=` id is fetched as `/business-opportunity/listing/{id}/` and the actor returns an empty dataset. A full `/business-opportunity/{slug}/{id}/` URL is also fine. The lookup puts the listings in **one** Apify actor start (default batch 50). Copy `asking`, `sde`, `ebitda`, `revenue`, `city`, `state`, and `blurb` onto that deals row. Leave a null field alone. The buy-box skip is a separate harvest check. This lookup does not apply it.
 
 ## House rules
 

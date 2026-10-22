@@ -22,10 +22,12 @@ missing earnings is enriched unless the email headline hits a buy-box exclusion
   set APIFY_TOKEN=...   # Apify → Settings → Integrations → API tokens
   python enrich_bizbuysell.py --db nm_deals.db --backend apify --limit 5 --dry-run
   python enrich_bizbuysell.py --db nm_deals.db --backend apify
-  python enrich_bizbuysell.py --db nm_deals.db --backend apify --batch 10
 
 Requires Apify Starter (or higher) — Free plan has no residential proxy.
-Default BBS_APIFY_BATCH=10 (several listings per actor run); retries shrink.
+
+One Apify actor start per enrich pass (many URLs in that run). Actor start is
+the expensive part — do not fan out parallel /runs. Deals that already have
+earnings or bbs_page_at are not scraped again.
 """
 from __future__ import annotations
 
@@ -40,6 +42,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -414,6 +417,44 @@ def headline_buybox_reject(title: str, blurb: str = "") -> Optional[str]:
     return None
 
 
+def ensure_bbs_page_column(con: sqlite3.Connection) -> None:
+    """Add bbs_page_at on DBs that predate the no-rescrape stamp."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(deals)")}
+    if "bbs_page_at" not in cols:
+        con.execute("ALTER TABLE deals ADD COLUMN bbs_page_at TEXT")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def deal_already_enriched(row: sqlite3.Row | dict) -> bool:
+    """True when Apify already returned page data (or we already have earnings).
+
+    Stops the daily harvest from re-paying for the same listing. Earnings on
+    the row count even before bbs_page_at existed.
+    """
+    try:
+        page_at = row["bbs_page_at"]
+    except (KeyError, IndexError):
+        page_at = None
+    if page_at:
+        return True
+    if row["sde"] is not None or row["ebitda"] is not None:
+        return True
+    return False
+
+
+def deal_needs_apify(row: sqlite3.Row | dict) -> bool:
+    """Whether this BizBuySell deal still needs a listing-page fetch."""
+    if deal_already_enriched(row):
+        return False
+    needs_earnings = row["ebitda"] is None and row["sde"] is None
+    needs_blurb = blurb_is_thin(row["title"] or "", row["blurb"] or "")
+    needs_asking = row["asking"] is None
+    return needs_earnings or needs_blurb or needs_asking
+
+
 def candidates(
     con: sqlite3.Connection,
     limit: int = 0,
@@ -423,33 +464,28 @@ def candidates(
 ) -> tuple[list[sqlite3.Row], list[tuple[sqlite3.Row, str]]]:
     """BizBuySell rows that still need page enrich.
 
-    Pulls deals missing earnings, or whose blurb is empty / just the headline.
+    Skips deals that already have earnings or bbs_page_at (page already checked).
     Returns (to_enrich, skipped_buybox) where skipped entries are (row, reason).
     """
+    ensure_bbs_page_column(con)
     order = "last_seen DESC, id DESC" if newest else "id"
-    # SQL prefilter keeps the scan cheap; title-echo blurbs are confirmed in Python.
+    # SQL prefilter keeps the scan cheap; already-enriched rows are dropped in Python.
     sql = f"""
       SELECT id, ext_id, title, blurb, url_norm, city, state,
-             revenue, ebitda, sde, asking, needs_llm, source, nickname
+             revenue, ebitda, sde, asking, needs_llm, source, nickname,
+             bbs_page_at
       FROM deals
       WHERE url_norm LIKE '%bizbuysell.com%'
-        AND (
-          (ebitda IS NULL AND sde IS NULL)
-          OR asking IS NULL
-          OR blurb IS NULL
-          OR TRIM(blurb) = ''
-          OR length(TRIM(blurb)) <= length(TRIM(COALESCE(title, ''))) + 60
-        )
+        AND bbs_page_at IS NULL
+        AND ebitda IS NULL
+        AND sde IS NULL
       ORDER BY {order}
     """
     rows = list(con.execute(sql))
     keep: list[sqlite3.Row] = []
     skipped: list[tuple[sqlite3.Row, str]] = []
     for row in rows:
-        needs_earnings = row["ebitda"] is None and row["sde"] is None
-        needs_blurb = blurb_is_thin(row["title"] or "", row["blurb"] or "")
-        needs_asking = row["asking"] is None
-        if not needs_earnings and not needs_blurb and not needs_asking:
+        if not deal_needs_apify(row):
             continue
         if skip_buybox:
             reason = headline_buybox_reject(row["title"] or "", row["blurb"] or "")
@@ -480,8 +516,22 @@ def mark_buybox_skip(
         pass
 
 
+def mark_page_checked(
+    con: sqlite3.Connection, deal_id: int, dry_run: bool, when: str = ""
+) -> None:
+    """Record that Apify opened this listing so harvest will not pay again."""
+    if dry_run:
+        return
+    ensure_bbs_page_column(con)
+    con.execute(
+        "UPDATE deals SET bbs_page_at=COALESCE(bbs_page_at, ?) WHERE id=?",
+        (when or utc_now_iso(), deal_id),
+    )
+
+
 def apply_enrichment(con: sqlite3.Connection, deal_id: int, e: Enrichment, dry_run: bool) -> dict:
     """Write page financials / blurb onto the deal; clear needs_llm earnings when filled."""
+    ensure_bbs_page_column(con)
     row = con.execute("SELECT * FROM deals WHERE id=?", (deal_id,)).fetchone()
     if not row:
         return {"updated": False}
@@ -519,6 +569,10 @@ def apply_enrichment(con: sqlite3.Connection, deal_id: int, e: Enrichment, dry_r
         if e.ok and "earnings" in needs:
             needs = [n for n in needs if n != "earnings"]
             updates["needs_llm"] = json.dumps(needs)
+
+    # Always stamp page-checked on a clean fetch (including Not Disclosed).
+    if e.ok and not row["bbs_page_at"]:
+        updates["bbs_page_at"] = utc_now_iso()
 
     if not updates:
         return {"updated": False, "reason": "nothing new"}
@@ -592,6 +646,7 @@ def listing_details(
     token: str = "",
     quiet: bool = False,
     batch: Optional[int] = None,
+    concurrency: Optional[int] = None,
 ) -> list[dict]:
     """Fetch BizBuySell listing pages. Callers pass URLs; this owns Apify."""
     fetched = fetch_with_apify(
@@ -600,17 +655,28 @@ def listing_details(
         titles=titles or {},
         quiet=quiet,
         batch=batch,
+        concurrency=concurrency,
     )
     return [enrichment_dict(url, fetched.get(url)) for url in urls]
 
 
-def _apify_run_input(actor_id: str, fetch_urls: list[str]) -> dict:
-    """Build actor input. The store actor wants slug URLs, not Profile/?q=."""
+def _apify_run_input(
+    actor_id: str,
+    fetch_urls: list[str],
+    *,
+    max_concurrency: int = 5,
+) -> dict:
+    """Build actor input. The store actor wants slug URLs, not Profile/?q=.
+
+    max_concurrency is in-run page parallelism (one actor start), not parallel
+    Apify /runs. Actor start is the expensive cost.
+    """
     proxy = {
         "useApifyProxy": True,
         "apifyProxyGroups": ["RESIDENTIAL"],
         "apifyProxyCountry": "US",
     }
+    conc = max(1, int(max_concurrency))
     if "playwright-scraper" in actor_id or "puppeteer-scraper" in actor_id:
         return {
             "startUrls": [{"url": u} for u in fetch_urls],
@@ -619,11 +685,12 @@ def _apify_run_input(actor_id: str, fetch_urls: list[str]) -> dict:
             "launcher": "firefox",
             "headless": True,
             "maxRequestsPerCrawl": len(fetch_urls),
-            "maxConcurrency": 2,
+            "maxConcurrency": conc,
             "navigationTimeoutSecs": 60,
             "handlePageTimeoutSecs": 90,
         }
-    # Store BizBuySell actors (often expect /business-opportunity/.../id/)
+    # Store BizBuySell actors (often expect /business-opportunity/.../id/).
+    # Pass concurrency hints the actor may honor for detail fetches in-run.
     return {
         "mode": "url",
         "urls": fetch_urls,
@@ -631,6 +698,8 @@ def _apify_run_input(actor_id: str, fetch_urls: list[str]) -> dict:
         "fetchDetails": True,
         "maxListings": len(fetch_urls),
         "maxPages": 1,
+        "maxConcurrency": conc,
+        "maxRequestRetries": 2,
         "proxy": proxy,
         "proxyConfiguration": proxy,
     }
@@ -685,19 +754,6 @@ def chunk_urls(urls: list[str], size: int) -> list[list[str]]:
     return [urls[i : i + step] for i in range(0, len(urls), step)]
 
 
-def batch_size_for_round(base: int, round_i: int) -> int:
-    """Start large to cut Apify run overhead; shrink so blocked pages isolate.
-
-    Round 0 uses `base` (default 10). Later rounds divide by 3 each time and
-    floor at 1, so a mid-batch Akamai block only forces a cheap retry of the
-    remaining URLs instead of one billed run per listing from the start.
-    """
-    size = max(1, int(base))
-    for _ in range(max(0, round_i)):
-        size = max(1, size // 3)
-    return size
-
-
 def fetch_with_apify(
     urls: list[str],
     token: str,
@@ -707,12 +763,14 @@ def fetch_with_apify(
     quiet: bool = False,
     batch: Optional[int] = None,
     rounds: Optional[int] = None,
+    concurrency: Optional[int] = None,
 ) -> dict[str, Enrichment]:
     """Fetch listing pages via Apify; return enrichment keyed by input url_norm.
 
-    One blocked page can stop that actor run and discard every URL it has not
-    opened yet. Default is several listings per run (BBS_APIFY_BATCH, default
-    10), then retry misses in smaller batches down to one.
+    Actor start is the expensive cost. Default is one /runs call with all
+    pending URLs (BBS_APIFY_BATCH, default 50). In-run maxConcurrency is a
+    hint inside that single start — never parallel Apify actor starts.
+    Misses may get one follow-up start (BBS_APIFY_ROUNDS, default 2).
     """
     if not token:
         raise RuntimeError("APIFY_TOKEN is empty")
@@ -721,11 +779,14 @@ def fetch_with_apify(
 
     titles = titles or {}
     if batch is None:
-        batch = int(os.environ.get("BBS_APIFY_BATCH", "10"))
+        batch = int(os.environ.get("BBS_APIFY_BATCH", "50"))
     if rounds is None:
-        rounds = int(os.environ.get("BBS_APIFY_ROUNDS", "3"))
+        rounds = int(os.environ.get("BBS_APIFY_ROUNDS", "2"))
+    if concurrency is None:
+        concurrency = int(os.environ.get("BBS_APIFY_CONCURRENCY", "5"))
     batch = max(1, batch)
     rounds = max(1, rounds)
+    concurrency = max(1, concurrency)
     pending = list(urls)
     results: dict[str, Enrichment] = {}
     for round_i in range(rounds):
@@ -733,12 +794,13 @@ def fetch_with_apify(
             break
         gained = 0
         still: list[str] = []
-        round_batch = batch_size_for_round(batch, round_i)
-        chunks = chunk_urls(pending, round_batch)
+        # Sequential chunks only — each chunk is one actor start. Do not
+        # ThreadPool multiple /runs; that multiplies the expensive start cost.
+        chunks = chunk_urls(pending, batch)
         for n, chunk in enumerate(chunks, start=1):
             _log(
-                f"apify round {round_i + 1}/{rounds} batch {n}/{len(chunks)} "
-                f"urls={len(chunk)} size={round_batch}",
+                f"apify round {round_i + 1}/{rounds} start {n}/{len(chunks)} "
+                f"urls={len(chunk)} in_run_concurrency={concurrency}",
                 quiet,
             )
             got = _apify_fetch_once(
@@ -748,6 +810,7 @@ def fetch_with_apify(
                 wait_secs=wait_secs,
                 titles=titles,
                 quiet=quiet,
+                max_concurrency=concurrency,
             )
             for url in chunk:
                 e = got.get(url)
@@ -755,9 +818,11 @@ def fetch_with_apify(
                     results[url] = e
                     gained += 1
                 else:
+                    if e:
+                        results[url] = e
                     still.append(url)
         pending = still
-        if gained == 0 and round_batch == 1:
+        if gained == 0:
             break
     for url in urls:
         if url not in results:
@@ -777,8 +842,9 @@ def _apify_fetch_once(
     wait_secs: int = 900,
     titles: Optional[dict[str, str]] = None,
     quiet: bool = False,
+    max_concurrency: int = 5,
 ) -> dict[str, Enrichment]:
-    """One actor run. A proxy block ends the run early and omits the rest."""
+    """One actor run (one billed start). Many URLs go in this single start."""
     if not urls:
         return {}
 
@@ -788,7 +854,9 @@ def _apify_fetch_once(
         fetch_urls = [bbs_actor_url(u, titles.get(u, "")) for u in urls]
     else:
         fetch_urls = [canonical_bbs_url(u) for u in urls]
-    run_input = _apify_run_input(actor_id, fetch_urls)
+    run_input = _apify_run_input(
+        actor_id, fetch_urls, max_concurrency=max_concurrency
+    )
 
     _log(f"apify actor={actor_id} urls={len(fetch_urls)}", quiet)
     for fu in fetch_urls:
@@ -933,7 +1001,13 @@ def main() -> None:
         "--batch",
         type=int,
         default=None,
-        help="Listings per Apify run (default BBS_APIFY_BATCH or 10). Retries shrink.",
+        help="Listings per Apify actor start (default BBS_APIFY_BATCH or 50).",
+    )
+    ap.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help="In-run page concurrency hint (default 5). Not parallel actor starts.",
     )
     ap.add_argument(
         "--from-run",
@@ -994,7 +1068,10 @@ def main() -> None:
             )
             sys.exit(1)
         details = listing_details(
-            list(args.urls), token=token, batch=args.batch
+            list(args.urls),
+            token=token,
+            batch=args.batch,
+            concurrency=args.concurrency,
         )
         print(json.dumps(details, indent=2))
         failed = [row for row in details if not row["ok"]]
@@ -1018,6 +1095,7 @@ def main() -> None:
 
     con = sqlite3.connect(args.db)
     con.row_factory = sqlite3.Row
+    ensure_bbs_page_column(con)
     rows, skipped = candidates(
         con,
         args.limit,
@@ -1067,6 +1145,7 @@ def main() -> None:
                 actor_id=args.actor,
                 titles=titles,
                 batch=args.batch,
+                concurrency=args.concurrency,
             )
         else:
             fetched = fetch_with_playwright(urls, pause_s=args.pause)
@@ -1077,6 +1156,7 @@ def main() -> None:
         "updated": 0,
         "with_earnings": 0,
         "with_blurb": 0,
+        "page_checked": 0,
         "buybox_skip": len(skipped),
     }
     for row in rows:
@@ -1085,18 +1165,28 @@ def main() -> None:
         )
         if not e.ok:
             stats["fail"] += 1
+            err = (e.error or "not ok").lower()
+            # Gone listings will never return data — stop paying for them.
+            if "listing gone" in err or "page not found" in err:
+                mark_page_checked(con, row["id"], args.dry_run)
+                stats["page_checked"] += 1
             print(f"skip id={row['id']}: {e.error or 'not ok'} | {row['title'][:50]}")
             continue
         stats["ok"] += 1
         if e.sde is not None or e.ebitda is not None:
             stats["with_earnings"] += 1
         result = apply_enrichment(con, row["id"], e, args.dry_run)
+        if result.get("updates", {}).get("bbs_page_at") or result.get("updated"):
+            if (result.get("updates") or {}).get("bbs_page_at"):
+                stats["page_checked"] += 1
         if result.get("updated"):
             stats["updated"] += 1
             upd = dict(result.get("updates") or {})
             if "blurb" in upd:
                 stats["with_blurb"] += 1
                 upd["blurb"] = f"<{len(str(upd['blurb']))} chars>"
+            if "bbs_page_at" in upd:
+                upd["bbs_page_at"] = "<set>"
             print(f"update id={row['id']} {upd} | {row['title'][:50]}")
 
     if not args.dry_run:

@@ -101,12 +101,12 @@ Fuzzy title match never auto-applies unless an expectation is open (and even the
 
 ### Behavior
 
-1. Candidates: BizBuySell URLs missing earnings **or** with a thin blurb (empty / headline echo).
+1. Candidates: BizBuySell URLs with **no** `bbs_page_at` and **no** SDE/EBITDA yet. Already-enriched rows are never re-scraped.
 2. **Buy-box skip:** if title/blurb hits excluded categories (restaurant, retail, franchise, …) and is not strategic → do **not** call Apify; stamp `rejected` / `reject_reason`.
 3. Else build actor URL:  
    `https://www.bizbuysell.com/business-opportunity/{slugify(title)}/{listingId}/`  
    (Not `Profile/?q=` — that returns empty dataset on the store actor.)
-4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`). A blocked page can stop that run and drop every URL it has not opened. First pass batches listings per run (`BBS_APIFY_BATCH`, default 10) to cut Apify run overhead; misses retry in smaller batches down to 1 (`BBS_APIFY_ROUNDS`, default 3).
+4. Actor: `abotapi~bizbuysell-scraper` (override `APIFY_BBS_ACTOR`). **One actor start** packs many URLs (`BBS_APIFY_BATCH`, default 50). In-run `maxConcurrency` (`BBS_APIFY_CONCURRENCY`, default 5) is a hint inside that start — never parallel `/runs`. Misses may get one follow-up start (`BBS_APIFY_ROUNDS`, default 2). A clean page fetch stamps `bbs_page_at` (including Not Disclosed).
 5. Map: `cashFlow`→`sde`, `ebitda`→`ebitda`, `grossRevenue`→`revenue`, fill nulls;
    `fullDescription`/`shortDescription`→`blurb` when the stored blurb is thin; clear `needs_llm` earnings when page checked.
 

@@ -173,6 +173,13 @@ def norm_url(u: str) -> str:
     return u.lower()
 
 
+def _ensure_bbs_page_column(con: sqlite3.Connection) -> None:
+    """Stamp when Apify already opened the BizBuySell listing page."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(deals)")}
+    if "bbs_page_at" not in cols:
+        con.execute("ALTER TABLE deals ADD COLUMN bbs_page_at TEXT")
+
+
 def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
@@ -182,6 +189,7 @@ def connect(path: str = "deals.db", wal: bool = False) -> sqlite3.Connection:
     con.executescript(SCHEMA)
     _ensure_attribution_columns(con)
     _ensure_region_column(con)
+    _ensure_bbs_page_column(con)
     _ensure_mail_table(con)
     return con
 
